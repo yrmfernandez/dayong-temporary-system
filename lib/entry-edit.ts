@@ -14,6 +14,8 @@ import { recordCorrection } from "@/lib/record-corrections";
 import { calculateRemittance, calculateSaleIncentive, savedDifferentRate, tiersForBranch } from "@/lib/remittance";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { findActivePaymentMethod, getPaymentMethods } from "@/lib/remittance-methods";
+import { validDate } from "@/lib/manila-date";
+import { formatPesoShort, toCents } from "@/lib/money";
 
 /**
  * Edit / Corrections: a whole entry (owner, October 15, 2026). IT and Administrators change any part of a New Sale or
@@ -39,9 +41,7 @@ import { findActivePaymentMethod, getPaymentMethods } from "@/lib/remittance-met
 export type EditKind = "New Sale" | "Collection";
 const text = (value: unknown) => String(value ?? "").trim();
 const day = (value: unknown) => text(value).slice(0, 10);
-const cents = (value: number) => Math.round(value * 100);
-const round = (value: number) => cents(value) / 100;
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+const round = (value: number) => toCents(value) / 100;
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
 
 const { sales, collections, member_programs: memberPrograms, members, programs } = schema;
@@ -182,7 +182,7 @@ export async function repriceCollections(tx: Queryable, ids: string[]) {
     const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
     const forfeit = forfeited ? round(amount - quote.remittance) : row.forfeited_incentive;
-    if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && Number(forfeit ?? 0) === Number(row.forfeited_incentive ?? 0) && isDeepStrictEqual(row.remittance_breakdown, quote.breakdown)) continue;
+    if (toCents(share) === toCents(Number(row.remittance_amount ?? 0)) && Number(forfeit ?? 0) === Number(row.forfeited_incentive ?? 0) && isDeepStrictEqual(row.remittance_breakdown, quote.breakdown)) continue;
     await tx.update(collections).set({ remittance_amount: share, remittance_breakdown: quote.breakdown, forfeited_incentive: forfeit }).where(eq(collections.collection_id, row.collection_id));
     if (text(row.linked_remittance_id) && !["", "Outstanding", "Returned"].includes(text(row.remittance_status)) && await followSlip(tx, row.collection_id, text(row.linked_remittance_id), share)) slips.add(text(row.linked_remittance_id));
     repriced++;
@@ -212,7 +212,7 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     }
     const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
     const share = forfeited ? amount : quote.remittance;
-    if (cents(share) === cents(Number(row.remittance_amount ?? 0)) && cents(amount - share) === cents(Number(row.mas_incentive ?? 0)) && (!forfeited || cents(quote.incentive) === cents(Number(row.forfeited_incentive ?? 0)))) continue;
+    if (toCents(share) === toCents(Number(row.remittance_amount ?? 0)) && toCents(amount - share) === toCents(Number(row.mas_incentive ?? 0)) && (!forfeited || toCents(quote.incentive) === toCents(Number(row.forfeited_incentive ?? 0)))) continue;
     await tx.update(sales).set({ remittance_amount: share, mas_incentive: round(amount - share), forfeited_incentive: forfeited ? quote.incentive : row.forfeited_incentive }).where(eq(sales.sale_id, row.sale_id));
     if (text(row.linked_remittance_id) && !["", "Outstanding", "Returned"].includes(text(row.remittance_status)) && await followSlip(tx, row.sale_id, text(row.linked_remittance_id), share)) slips.add(text(row.linked_remittance_id));
     repriced++;
@@ -293,7 +293,6 @@ export function renumber(start: NumberingStart, payments: AccountPayment[], coun
 
 /** A program's pay, for counting a receipt's months in it. */
 export type PayRule = { name: string; rate: number; flexible: boolean; max: number | null };
-const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 
 /**
  * The months each receipt covers in the target program, or null when they stay as they are (same pay). A fixed program:
@@ -313,9 +312,9 @@ export function receiptMonthsIn(to: PayRule) {
   return (payment: AccountPayment) => {
     const paid = Math.round(payment.amount * 100), had = Math.max(1, payment.nopTo - payment.nopFrom + 1);
     const months = to.flexible ? (paid >= rate * had ? had : Math.floor(paid / rate)) : paid % rate === 0 ? paid / rate : 0;
-    const receipt = `OR ${payment.orNumber || payment.id} (${peso(payment.amount)})`;
-    if (months < 1) throw new Error(to.flexible ? `${receipt} is less than the ${peso(to.rate)} minimum of ${to.name}.` : `${receipt} is not a whole number of ${peso(to.rate)} months of ${to.name}.`);
-    if (to.flexible && to.max && paid > Math.round(to.max * 100) * months) throw new Error(`${receipt} is more than the ${peso(to.max)} monthly maximum of ${to.name}.`);
+    const receipt = `OR ${payment.orNumber || payment.id} (${formatPesoShort(payment.amount)})`;
+    if (months < 1) throw new Error(to.flexible ? `${receipt} is less than the ${formatPesoShort(to.rate)} minimum of ${to.name}.` : `${receipt} is not a whole number of ${formatPesoShort(to.rate)} months of ${to.name}.`);
+    if (to.flexible && to.max && paid > Math.round(to.max * 100) * months) throw new Error(`${receipt} is more than the ${formatPesoShort(to.max)} monthly maximum of ${to.name}.`);
     return months;
   };
 }
@@ -391,7 +390,7 @@ async function editCollection(tx: Transaction, input: EntryEditInput): Promise<O
   const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // The share is worked out again only when what it depends on changed; a receipt-number or date fix keeps the share
   // the entry was remitted with (imported entries carry their old system's figures).
-  const repriced = moved || cents(amount) !== cents(Number(row.amount_collected)) || mine.nopFrom !== (row.nop_from ?? 0) || mine.nopTo !== (row.nop_to ?? 0);
+  const repriced = moved || toCents(amount) !== toCents(Number(row.amount_collected)) || mine.nopFrom !== (row.nop_from ?? 0) || mine.nopTo !== (row.nop_to ?? 0);
   const share = !repriced ? Number(row.remittance_amount ?? 0) : forfeited ? amount : quote.remittance;
 
   const after = {
@@ -452,8 +451,8 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   if (orDate && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid application date, today or earlier.");
   if (dateRemitted && (!validDate(dateRemitted) || (orDate && dateRemitted < orDate))) throw new Error("The Date Remitted must be a valid date on or after the application date.");
   if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid amount paid.");
-  if (program.flexible && cents(amount) < cents(fixedNewSaleAmount(program))) throw new Error(`${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
-  if (!program.flexible && !program.newSaleAmountEditable && cents(amount) !== cents(fixedNewSaleAmount(program))) throw new Error(`${program.name} has a fixed New Sale amount of ${fixedNewSaleAmount(program)}.`);
+  if (program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
+  if (!program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} has a fixed New Sale amount of ${fixedNewSaleAmount(program)}.`);
 
   // The account this New Sale opened: the member's account in the sale's program.
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
@@ -492,7 +491,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount);
   const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // As for collections: worked out again only when the amount or program changed.
-  const repriced = changesProgram || cents(amount) !== cents(Number(row.amount_paid ?? 0));
+  const repriced = changesProgram || toCents(amount) !== toCents(Number(row.amount_paid ?? 0));
   const share = !repriced ? Number(row.remittance_amount ?? 0) : forfeited ? amount : quote.remittance;
   const after = {
     program_id: programId, application_no: applicationNumber, or_number: orNumber || null, or_date: orDate || null, doi: doi || null, doi_time: doiTime || null, amount_paid: amount, notes: notes || null,

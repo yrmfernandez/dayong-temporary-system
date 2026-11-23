@@ -1,4 +1,4 @@
-import { addMonths, todayInManila } from "@/lib/account-rules";
+import { addMonths } from "@/lib/account-rules";
 import { sql } from "drizzle-orm";
 
 import { PROGRAMS_RANGE, REMITTANCES_RANGE } from "@/lib/sheet-ranges";
@@ -8,6 +8,7 @@ import { openAccountOfDeceased } from "@/lib/account-deactivation";
 import { getCompanyTargets } from "@/lib/company-targets";
 import { manilaDateOf } from "@/lib/remittance-deadline";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
+import { manilaToday } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
@@ -123,7 +124,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * used. Same figures (checked against the previous code for every period).
  */
 export async function getExecutiveAnalytics(selection: ExecutivePeriod | ExecutiveSelection, { financeOnly = false }: { financeOnly?: boolean } = {}) {
-  const today = todayInManila();
+  const today = manilaToday();
   const { period, month: chosenMonth, periodLabel, compareLabel, ...range } = selectionRange(typeof selection === "string" ? { period: selection } : selection, today);
   const since = financeOnly ? range.from : [range.previousFrom, `${today.slice(0, 4)}-01-01`, addMonths(`${today.slice(0, 7)}-01`, -11)].sort()[0];
   const ledgerRanges = ["'Expenses'!A:Q", REMITTANCES_RANGE, "'Cash Transactions'!A:P", "'Cash Accounts'!A:E", "'Payroll Runs'!A:X", "'Payroll Lines'!A:X", "'Vendor Payables'!A:O"];

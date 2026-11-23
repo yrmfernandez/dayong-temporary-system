@@ -1,8 +1,10 @@
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 
-import { accountState, todayInManila, validDate, type AccountPayment } from "@/lib/account-rules";
+import { accountState, type AccountPayment } from "@/lib/account-rules";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
+import { validDate, manilaToday } from "@/lib/manila-date";
+import { roundMoney } from "@/lib/money";
 
 /**
  * Fully Paid accounts and their certificates (owner, October 27, 2026). An account is Fully Paid when its receipts complete
@@ -15,7 +17,6 @@ import { getEncoder } from "@/lib/encoder-context";
  */
 const { member_programs: accounts, branches, members, programs } = schema;
 const text = (value: unknown) => String(value ?? "").trim();
-const money = (value: number) => Math.round(value * 100) / 100;
 export const CERTIFICATE_STATUSES = ["Pending", "Released"] as const;
 export type CertificateStatus = (typeof CERTIFICATE_STATUSES)[number];
 export type FullPaymentSource = "Receipts" | "Manual" | "Old list";
@@ -65,7 +66,7 @@ export async function recordFullPayment(tx: Transaction, input: FullPaymentInput
     .from(accounts).where(eq(accounts.enrollment_id, text(input.enrollmentId))).for("update");
   if (!account) throw new Error("Account not found.");
   if (account.paidOn) throw new Error(`This account is already Fully Paid (${account.paidOn}${account.certificate ? `, certificate ${account.certificate}` : ""}).`);
-  if (!validDate(input.paidOn) || input.paidOn > todayInManila()) throw new Error("Enter the date of full payment (today or earlier).");
+  if (!validDate(input.paidOn) || input.paidOn > manilaToday()) throw new Error("Enter the date of full payment (today or earlier).");
   if (account.doi && input.paidOn < account.doi) throw new Error("The date of full payment is before the account's DOI.");
   if (!Number.isFinite(input.total) || input.total <= 0) throw new Error("Enter the total amount of the full payment.");
   let number = text(input.certificateNumber).toUpperCase();
@@ -73,11 +74,11 @@ export async function recordFullPayment(tx: Transaction, input: FullPaymentInput
     const [taken] = await tx.select({ id: accounts.enrollment_id }).from(accounts).where(sql`upper(${accounts.certificate_number}) = ${number}`).limit(1);
     if (taken) throw new Error(`Certificate ${number} is already used by account ${taken.id}.`);
   } else {
-    number = await nextCertificateNumber(tx, await prefixOf(tx, account.branchId, text(account.branch)), Number(todayInManila().slice(0, 4)));
+    number = await nextCertificateNumber(tx, await prefixOf(tx, account.branchId, text(account.branch)), Number(manilaToday().slice(0, 4)));
   }
   const status: CertificateStatus = input.certificateStatus ?? "Pending";
   await tx.update(accounts).set({
-    account_status: "Fully Paid", fully_paid_on: input.paidOn, fully_paid_total: money(input.total), fully_paid_source: input.source, fully_paid_recorded_by: getEncoder().name,
+    account_status: "Fully Paid", fully_paid_on: input.paidOn, fully_paid_total: roundMoney(input.total), fully_paid_source: input.source, fully_paid_recorded_by: getEncoder().name,
     certificate_number: number, certificate_status: status,
     certificate_released_on: status === "Released" ? (input.releasedOn || null) : null, certificate_released_by: status === "Released" ? (text(input.releasedBy) || null) : null,
   }).where(eq(accounts.enrollment_id, account.id));
@@ -93,7 +94,7 @@ export async function recordCompletedAccounts(tx: Transaction, completed: Array<
   for (const item of completed) {
     const [row] = await tx.select({ paidOn: accounts.fully_paid_on }).from(accounts).where(eq(accounts.enrollment_id, item.id));
     if (!row || row.paidOn) continue;
-    const last = [...item.payments].sort((a, b) => a.orDate.localeCompare(b.orDate)).at(-1)?.orDate ?? todayInManila();
+    const last = [...item.payments].sort((a, b) => a.orDate.localeCompare(b.orDate)).at(-1)?.orDate ?? manilaToday();
     const total = item.payments.reduce((sum, payment) => sum + payment.amount, 0) + (item.saleCredit ?? 0);
     try { await recordFullPayment(tx, { enrollmentId: item.id, paidOn: last, total, source: "Receipts" }); recorded++; }
     catch (error) { console.error(`Fully Paid ${item.id}: not recorded.`, error); }
@@ -103,7 +104,7 @@ export async function recordCompletedAccounts(tx: Transaction, completed: Array<
 
 /** Marks a certificate released (date and who received it), or back to pending. */
 export async function setCertificateRelease(enrollmentId: string, released: boolean, releasedOn = "", receivedBy = "") {
-  if (released && (!validDate(releasedOn) || releasedOn > todayInManila())) throw new Error("Enter the date the certificate was released.");
+  if (released && (!validDate(releasedOn) || releasedOn > manilaToday())) throw new Error("Enter the date the certificate was released.");
   return inTransaction(async (tx) => {
     const [row] = await tx.select({ number: accounts.certificate_number }).from(accounts).where(eq(accounts.enrollment_id, text(enrollmentId))).for("update");
     if (!row?.number) throw new Error("This account has no certificate.");

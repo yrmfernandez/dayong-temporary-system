@@ -13,8 +13,8 @@ import { getEmployees } from "@/lib/employees";
 import { getActiveAttendanceEmployees, getBranches } from "@/lib/google-sheets-data";
 import { getClockInChecks } from "@/lib/clock-in-checks";
 import { formatDate as showDate } from "@/lib/date-format";
+import { validDate } from "@/lib/manila-date";
 
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const MAX_LATE_MINUTES = 24 * 60;
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 const MAX_MARKS = 1000;

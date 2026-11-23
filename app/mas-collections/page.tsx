@@ -19,6 +19,7 @@ import { useFormDraft } from "@/lib/use-form-draft";
 import { useSeenRejections } from "@/lib/use-seen-rejections";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
+import { formatPeso, roundMoney } from "@/lib/money";
 
 /**
  * Submit Collections (owner, October 31, 2026): a MAS, on their phone, picks the members who paid them and how many
@@ -56,8 +57,6 @@ type Choice = { collectedBy: CollectedBy | ""; mas: string };
 /** One member in the batch being filled: what the MAS chose. `amount`: typed on a flexible program; "" is its Base Pay, or the minimum if none. */
 type BatchItem = { enrollmentId: string; months: number; amount: string; waiver: boolean };
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
-const cents = (value: number) => Math.round(value * 100) / 100;
 const monthsText = (from: string, to: string) => from === to ? formatMonth(from) : `${formatMonth(from)} – ${formatMonth(to)}`;
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
@@ -237,7 +236,7 @@ export default function MasCollectionsPage() {
     if (!shownRows.length || busy) return;
     if (problems.length) { setOpenId(problems[0].pick.enrollmentId); setMessage(`${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}`); return; }
     if (missingWaiver.length) { setOpenId(missingWaiver[0].pick.enrollmentId); setMessage(`${missingWaiver[0].account?.memberName} is suspended. Have the member sign the Waiver, then tick Waiver.`); return; }
-    const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${money(cents(group.totals.amount))}; ${quoteAs.dto ? `DTO, no incentive: remit the whole ${money(cents(group.totals.remittance))}.` : `remit ${money(cents(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${money(cents(group.totals.incentive))} incentive.`}`);
+    const perBranch = groups.map((group) => `${group.name}: ${plural(group.rows.length, "member")}, collected ${formatPeso(roundMoney(group.totals.amount))}; ${quoteAs.dto ? `DTO, no incentive: remit the whole ${formatPeso(roundMoney(group.totals.remittance))}.` : `remit ${formatPeso(roundMoney(group.totals.remittance))} by ${formatDeadline(group.deadline)} to keep your ${formatPeso(roundMoney(group.totals.incentive))} incentive.`}`);
     const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per ${perBatch}?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
     const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : memberMas ? `the members of ${memberMas.name}` : "your assigned members"} · ${quoteAs.dto ? "DTO: no incentive" : `ORC ${quoteAs.orc ? "Yes" : "No"}`}.`
       : collector?.isCollector ? "\n\nCollected by you as MAS: your own members, at the MAS incentive." : "";
@@ -353,7 +352,7 @@ export default function MasCollectionsPage() {
       {groups.map((group) => <div key={group.id} className="space-y-3">
         {(manyBranches || groups.length > 1) && <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-b pb-1">
           <h3 className="font-semibold">{group.name} <span className="text-sm font-normal text-muted-foreground">· {plural(group.rows.length, "member")}</span></h3>
-          <p className="text-xs text-muted-foreground">Remit <strong className="text-foreground">{money(cents(group.totals.remittance))}</strong>{group.deadline ? ` by ${formatDeadline(group.deadline)}` : ""}</p>
+          <p className="text-xs text-muted-foreground">Remit <strong className="text-foreground">{formatPeso(roundMoney(group.totals.remittance))}</strong>{group.deadline ? ` by ${formatDeadline(group.deadline)}` : ""}</p>
         </div>}
         <div className="space-y-2">
         {group.rows.map(({ pick, account, orDate, quote, problem }) => openId !== pick.enrollmentId
@@ -367,8 +366,8 @@ export default function MasCollectionsPage() {
                   : needsWaiver(account, orDate) && !pick.waiver ? <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Tick Waiver</span> : null}
               </span>
               {quote && <span className="shrink-0 text-right">
-                <span className="block text-sm font-semibold tabular-nums">{money(quote.amount)}</span>
-                <span className="block text-[11px] tabular-nums text-muted-foreground">remit {money(quote.remittance)}</span>
+                <span className="block text-sm font-semibold tabular-nums">{formatPeso(quote.amount)}</span>
+                <span className="block text-[11px] tabular-nums text-muted-foreground">remit {formatPeso(quote.remittance)}</span>
               </span>}
               <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
@@ -405,15 +404,15 @@ export default function MasCollectionsPage() {
                 <Input type="number" inputMode="decimal" min={0} step="0.01" aria-label="Amount paid" className="h-11 w-36 text-right text-lg font-semibold tabular-nums"
                   placeholder={(monthlyPay(account) * Math.max(1, pick.months)).toFixed(2)} value={pick.amount} onChange={(event) => change(pick.enrollmentId, { amount: event.target.value })} />
               </label>
-              <p className="text-xs text-muted-foreground">Flexible program: {monthlyPay(account) !== account.basePay ? `base pay ${money(monthlyPay(account))}, ` : ""}at least {money(account.basePay)} a month{account.maxMonthlyPayment != null ? `, at most ${money(account.maxMonthlyPayment)} a month` : ""}. Leave empty for the minimum.</p>
+              <p className="text-xs text-muted-foreground">Flexible program: {monthlyPay(account) !== account.basePay ? `base pay ${formatPeso(monthlyPay(account))}, ` : ""}at least {formatPeso(account.basePay)} a month{account.maxMonthlyPayment != null ? `, at most ${formatPeso(account.maxMonthlyPayment)} a month` : ""}. Leave empty for the minimum.</p>
             </div>}
 
             {quote && <>
               <p className="text-sm text-muted-foreground">Covers <strong className="text-foreground">{monthsText(quote.monthFrom, quote.monthTo)}</strong> · NOP {quote.nopFrom === quote.nopTo ? quote.nopFrom : `${quote.nopFrom}–${quote.nopTo}`}</p>
               <dl className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2 text-center">
-                <div><dt className="text-[11px] text-muted-foreground">Collect</dt><dd className="font-semibold tabular-nums">{money(quote.amount)}</dd></div>
-                <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{money(quote.incentive)}</dd></div>
-                <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{money(quote.remittance)}</dd></div>
+                <div><dt className="text-[11px] text-muted-foreground">Collect</dt><dd className="font-semibold tabular-nums">{formatPeso(quote.amount)}</dd></div>
+                <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{formatPeso(quote.incentive)}</dd></div>
+                <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{formatPeso(quote.remittance)}</dd></div>
               </dl>
             </>}
             {problem && <p className="text-sm font-medium text-destructive">{problem}</p>}
@@ -450,7 +449,7 @@ export default function MasCollectionsPage() {
             return <li key={account.id} className={`flex items-center gap-3 py-3 ${inBatch || waiting ? "opacity-70" : ""}`}>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2"><span className="truncate font-semibold">{account.memberName}</span><Badge className={`shrink-0 border font-mono text-[10px] ${mamStatusClass(account.status)}`}>{account.status}</Badge></p>
-                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {money(monthlyPay(account))}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}{assigned ? ` · ${account.mas}` : ""}</p>
+                <p className="truncate text-xs text-muted-foreground">{account.memberNumber} · {account.programName} · {formatPeso(monthlyPay(account))}/month{manyBranches && !filterBranch ? ` · ${account.branch}` : ""}{assigned ? ` · ${account.mas}` : ""}</p>
                 {account.blocked ? <p className="text-xs text-destructive">{account.blocked}</p> : <p className="text-xs text-muted-foreground">Next month due {formatMonth(account.nextMonth)}{account.unpaidMonths > 1 ? ` · ${account.unpaidMonths} months behind` : ""}</p>}
                 {!account.blocked && account.temporarilySuspended && <p className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Suspended: Waiver needed · forfeits {formatDate(account.forfeitedAt)}</p>}
               </div>
@@ -468,11 +467,11 @@ export default function MasCollectionsPage() {
     {shownRows.length > 0 && <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
       <div className="mx-auto max-w-3xl space-y-2">
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div><p className="text-[11px] text-muted-foreground">Collected</p><p className="font-bold tabular-nums">{money(cents(totals.amount))}</p></div>
-          <div><p className="text-[11px] text-muted-foreground">Your incentive</p><p className="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{money(cents(totals.incentive))}</p></div>
-          <div><p className="text-[11px] text-muted-foreground">To remit</p><p className="font-bold tabular-nums">{money(cents(totals.remittance))}</p></div>
+          <div><p className="text-[11px] text-muted-foreground">Collected</p><p className="font-bold tabular-nums">{formatPeso(roundMoney(totals.amount))}</p></div>
+          <div><p className="text-[11px] text-muted-foreground">Your incentive</p><p className="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{formatPeso(roundMoney(totals.incentive))}</p></div>
+          <div><p className="text-[11px] text-muted-foreground">To remit</p><p className="font-bold tabular-nums">{formatPeso(roundMoney(totals.remittance))}</p></div>
         </div>
-        {groups.length === 1 && groups[0].deadline && <p className="text-center text-xs text-muted-foreground">Remit at the office by <strong className="text-foreground">{formatDeadline(groups[0].deadline)}</strong> to keep the incentive. Later, the whole {money(cents(totals.amount))} is remitted. Check before submitting: only the clerk can change it after.</p>}
+        {groups.length === 1 && groups[0].deadline && <p className="text-center text-xs text-muted-foreground">Remit at the office by <strong className="text-foreground">{formatDeadline(groups[0].deadline)}</strong> to keep the incentive. Later, the whole {formatPeso(roundMoney(totals.amount))} is remitted. Check before submitting: only the clerk can change it after.</p>}
         {groups.length > 1 && <p className="text-center text-xs text-muted-foreground">Sent as {groups.length} batches, one per {perBatch}: remit each at its branch by its deadline above to keep the incentive. Check before submitting: only the clerk can change it after.</p>}
         {(problems.length > 0 || missingWaiver.length > 0) && <p className="text-center text-xs font-medium text-destructive">{problems.length ? `${problems[0].account?.memberName ?? "A member"}: ${problems[0].problem}` : `${missingWaiver[0].account?.memberName}: tick Waiver after the member signs it.`}</p>}
         <div className="flex gap-2">
@@ -499,7 +498,7 @@ function figuresOf(submission: Submission, now: string): Figures {
   const late = Boolean(deadline) && (submission.status === "Submitted" ? now > deadline
     : (submission.status === "Remitted" || submission.status === "Saved") && Boolean(submission.remittedAt) && submission.remittedAt > deadline);
   const kept = !late && submission.status !== "Rejected";
-  return { remit: cents(kept ? submission.totalAmount - submission.totalIncentive : submission.status === "Rejected" ? 0 : submission.totalAmount), incentive: submission.totalIncentive, kept, late };
+  return { remit: roundMoney(kept ? submission.totalAmount - submission.totalIncentive : submission.status === "Rejected" ? 0 : submission.totalAmount), incentive: submission.totalIncentive, kept, late };
 }
 
 function Figure({ label, value, tone = "", note = "" }: { label: string; value: string; tone?: string; note?: string }) {
@@ -522,9 +521,9 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
   const hidden = all.length - submissions.length;
   // The cash still in hand: submitted, not yet received by the clerk.
   const waiting = all.filter((submission) => submission.status === "Submitted");
-  const toHandOver = cents(waiting.reduce((sum, submission) => sum + figuresOf(submission, now).remit, 0));
-  const waitingCollected = cents(waiting.reduce((sum, submission) => sum + submission.totalAmount, 0));
-  const waitingIncentive = cents(waiting.filter((submission) => figuresOf(submission, now).kept).reduce((sum, submission) => sum + submission.totalIncentive, 0));
+  const toHandOver = roundMoney(waiting.reduce((sum, submission) => sum + figuresOf(submission, now).remit, 0));
+  const waitingCollected = roundMoney(waiting.reduce((sum, submission) => sum + submission.totalAmount, 0));
+  const waitingIncentive = roundMoney(waiting.filter((submission) => figuresOf(submission, now).kept).reduce((sum, submission) => sum + submission.totalIncentive, 0));
   const nextDeadline = waiting.map((submission) => submission.incentiveDeadline).filter((deadline) => deadline && deadline >= now).sort()[0] ?? "";
   const anyLate = waiting.some((submission) => figuresOf(submission, now).late);
   const beingEncoded = all.filter((submission) => submission.status === "Remitted").length;
@@ -537,12 +536,12 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
       <CardContent className="space-y-3 p-4">
         <div className="text-center">
           <p className="text-sm text-muted-foreground">Cash to hand over to the clerk</p>
-          <p className="text-3xl font-bold tabular-nums">{money(toHandOver)}</p>
+          <p className="text-3xl font-bold tabular-nums">{formatPeso(toHandOver)}</p>
           <p className="text-xs text-muted-foreground">{plural(waiting.length, "submission")} not yet remitted</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Figure label="Collected" value={money(waitingCollected)} />
-          <Figure label="Your incentive" value={money(waitingIncentive)} tone="text-emerald-700 dark:text-emerald-400" note="kept if remitted in time" />
+          <Figure label="Collected" value={formatPeso(waitingCollected)} />
+          <Figure label="Your incentive" value={formatPeso(waitingIncentive)} tone="text-emerald-700 dark:text-emerald-400" note="kept if remitted in time" />
         </div>
         {nextDeadline && <p className="text-center text-xs text-muted-foreground">Next deadline: <strong className="text-foreground">{formatDeadline(nextDeadline)}</strong></p>}
         {anyLate && <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-400">A deadline has passed: for that submission the whole amount collected is remitted, with no incentive.</p>}
@@ -566,13 +565,13 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
             </div>
 
             <div className={`grid grid-cols-3 gap-2 ${rejected ? "opacity-60" : ""}`}>
-              <Figure label="Collected" value={money(submission.totalAmount)} />
-              <Figure label={figures.late ? "Incentive lost" : "Incentive"} value={money(figures.incentive)} tone={figures.late ? "text-amber-700 line-through dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"} />
-              <Figure label={handedOver ? "Remitted" : "To remit"} value={rejected ? "—" : money(figures.remit)} tone={submission.status === "Submitted" ? "text-primary" : ""} />
+              <Figure label="Collected" value={formatPeso(submission.totalAmount)} />
+              <Figure label={figures.late ? "Incentive lost" : "Incentive"} value={formatPeso(figures.incentive)} tone={figures.late ? "text-amber-700 line-through dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"} />
+              <Figure label={handedOver ? "Remitted" : "To remit"} value={rejected ? "—" : formatPeso(figures.remit)} tone={submission.status === "Submitted" ? "text-primary" : ""} />
             </div>
 
             {submission.status === "Submitted" && submission.incentiveDeadline && <p className={figures.late ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>
-              {figures.late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: remit the whole ${money(submission.totalAmount)}.` : <>Remit by <strong className="text-foreground">{formatDeadline(submission.incentiveDeadline)}</strong> to keep the incentive.</>}
+              {figures.late ? `The ${formatDeadline(submission.incentiveDeadline)} deadline has passed: remit the whole ${formatPeso(submission.totalAmount)}.` : <>Remit by <strong className="text-foreground">{formatDeadline(submission.incentiveDeadline)}</strong> to keep the incentive.</>}
             </p>}
             {handedOver && submission.remittedAt && <p className={figures.late ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium text-emerald-700 dark:text-emerald-400"}>
               Received by {submission.remittedByName || "the clerk"} on {formatDateTime(submission.remittedAt)}{submission.incentiveDeadline ? (figures.late ? ": after the deadline, the incentive is forfeited." : ": in time, you keep your incentive.") : "."}
@@ -580,15 +579,15 @@ function MySubmissions({ submissions: all }: { submissions: Submission[] }) {
             {submission.status === "Saved" && submission.reviewedByName && <p className="text-xs text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
             {rejected && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}. Nothing to remit; these members can be added to a new batch.</p>}
             {submission.autoSubmitted && <p className="font-medium text-amber-700 dark:text-amber-400">Sent automatically after midnight: you did not press Submit.</p>}
-            {submission.fidelity > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {money(submission.fidelity)} added with this batch: your own savings.</p>}
+            {submission.fidelity > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {formatPeso(submission.fidelity)} added with this batch: your own savings.</p>}
 
             <details className="group rounded-md border">
               <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">See the {plural(submission.entries.length, "member")}</summary>
               <ul className="divide-y border-t">
                 {submission.entries.map((entry, index) => <li key={`${entry.enrollmentId}-${index}`} className="space-y-1 px-3 py-2">
-                  <p className="flex items-baseline justify-between gap-2"><span className="truncate font-medium">{entry.memberName}</span><span className="shrink-0 font-semibold tabular-nums">{money(entry.amount)}</span></p>
+                  <p className="flex items-baseline justify-between gap-2"><span className="truncate font-medium">{entry.memberName}</span><span className="shrink-0 font-semibold tabular-nums">{formatPeso(entry.amount)}</span></p>
                   <p className="text-xs text-muted-foreground">{entry.programName} · {plural(entry.months, "month")}{entry.monthFrom ? ` (${monthsText(entry.monthFrom, entry.monthTo)})` : ""}{entry.waiver ? " · Waiver" : ""}</p>
-                  <p className="flex justify-between gap-2 text-xs tabular-nums"><span className="text-emerald-700 dark:text-emerald-400">Incentive {money(entry.incentive)}</span><span>To remit {money(entry.remittance)}</span></p>
+                  <p className="flex justify-between gap-2 text-xs tabular-nums"><span className="text-emerald-700 dark:text-emerald-400">Incentive {formatPeso(entry.incentive)}</span><span>To remit {formatPeso(entry.remittance)}</span></p>
                 </li>)}
               </ul>
             </details>

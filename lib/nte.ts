@@ -4,6 +4,7 @@ import { getDb, encodedBy, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { validDate, addDays } from "@/lib/manila-date";
 
 /**
  * Notices to Explain (NTE). A notice is in force for 90 days from the date issued; an employee with 3 or more in force
@@ -15,8 +16,6 @@ export const NTE_DAYS = 90;
 export const SUSPENSION_THRESHOLD = 3;
 const notices = schema.notices_to_explain;
 const text = (value: unknown) => String(value ?? "").trim();
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 export type Nte = { id: string; employeeId: string; employeeName: string; issuedOn: string; expiresOn: string; reason: string; details: string; status: "Active" | "Expired" | "Withdrawn"; withdrawnReason: string; issuedBy: string;
   acknowledgedAt: string; explanation: string; explainedAt: string; reviewedAt: string; reviewedBy: string };

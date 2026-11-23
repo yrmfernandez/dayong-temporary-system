@@ -4,6 +4,7 @@ import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { validDate } from "@/lib/manila-date";
 
 /**
  * What an Entry Clerk records for their report besides New Sales and Collections:
@@ -57,7 +58,6 @@ export function duplicateReferenceProblem(remarks: unknown, deposits: unknown[][
   }
   return "";
 }
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const asRow = (row: typeof depositsTable.$inferSelect): unknown[] => [row.deposit_id, row.deposit_date, row.employee_id, row.employee_name, row.branch, row.bank_account_name, row.amount, row.transfer_type, row.mas, row.remarks, row.status];
 
 /**

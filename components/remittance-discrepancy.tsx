@@ -6,8 +6,7 @@ import { parseJsonResponse } from "@/lib/api-response";
 import type { DiscrepancyBreakdown } from "@/lib/remittance-discrepancy";
 import { formatDateTime as showDateTime } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+import { formatPeso } from "@/lib/money";
 
 /**
  * Why a remittance slip is short or over (GET /api/remittances/discrepancy; lib/remittance-discrepancy.ts): what it
@@ -39,9 +38,9 @@ export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }
   const tone = data.difference < 0 ? "text-red-700 dark:text-red-400" : data.difference > 0 ? "text-amber-800 dark:text-amber-300" : "text-emerald-700";
   return <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50/50 p-3 text-sm dark:border-amber-800 dark:bg-amber-500/5">
     <div className="flex flex-wrap gap-x-6 gap-y-1">
-      <span>Expected <strong className="tabular-nums">{money(data.expected)}</strong>{data.fidelity > 0 && <span className="text-xs text-muted-foreground"> (incl. Fidelity {money(data.fidelity)})</span>}</span>
-      <span>Recorded <strong className="tabular-nums">{money(data.actual)}</strong></span>
-      <span className={tone}>Difference <strong className="tabular-nums">{money(data.difference)}</strong> {data.difference < 0 ? "short" : data.difference > 0 ? "over" : ""}</span>
+      <span>Expected <strong className="tabular-nums">{formatPeso(data.expected)}</strong>{data.fidelity > 0 && <span className="text-xs text-muted-foreground"> (incl. Fidelity {formatPeso(data.fidelity)})</span>}</span>
+      <span>Recorded <strong className="tabular-nums">{formatPeso(data.actual)}</strong></span>
+      <span className={tone}>Difference <strong className="tabular-nums">{formatPeso(data.difference)}</strong> {data.difference < 0 ? "short" : data.difference > 0 ? "over" : ""}</span>
       <span className="text-xs text-muted-foreground">Slip made {showDateTime(data.createdAt) || "—"} · received {showDateTime(data.receivedAt) || "—"}{data.cashCount ? ` · cash count ${data.cashCount}` : ""}</span>
     </div>
     <div><p className="font-semibold">Why</p><ul className="mt-1 list-disc space-y-1 pl-5">{data.causes.map((cause) => <li key={cause}>{cause}</li>)}</ul></div>
@@ -50,7 +49,7 @@ export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }
         <thead className="bg-muted/50 uppercase text-muted-foreground"><tr>{["When", "What changed", "From", "To", "Entry", "Reason", "By"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
         <tbody>{data.changes.map((change, index) => <tr key={index} className="border-t align-top">
           <td className="whitespace-nowrap p-2">{showDateTime(change.at)}</td><td className="p-2">{change.what === "Entry share" ? "Entry's share on the slip" : `Slip ${change.what.toLowerCase()}`}</td>
-          <td className="p-2 tabular-nums">{money(change.from)}</td><td className="p-2 tabular-nums">{money(change.to)}</td>
+          <td className="p-2 tabular-nums">{formatPeso(change.from)}</td><td className="p-2 tabular-nums">{formatPeso(change.to)}</td>
           <td className="p-2">{change.entryId ? <><span className="font-mono">{change.entryId}</span>{change.orNumber && <span className="block text-muted-foreground">OR {change.orNumber}</span>}</> : "—"}</td>
           <td className="p-2">{change.reason || "—"}</td><td className="p-2">{change.by}</td>
         </tr>)}</tbody>
@@ -62,7 +61,7 @@ export function RemittanceDiscrepancy({ remittanceId }: { remittanceId: string }
           <thead className="bg-muted/50 uppercase text-muted-foreground"><tr>{["Entry", "OR", "Amount", "Share on slip", "Share now"].map((label) => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
           <tbody>{data.entries.map((entry) => { const drift = Math.round((entry.shareNow - entry.shareOnSlip) * 100) !== 0; return <tr key={entry.id} className={`border-t ${drift ? "bg-amber-50 dark:bg-amber-500/10" : ""}`}>
             <td className="p-2"><span className="block">{entry.kind}</span><span className="font-mono">{entry.id}</span></td><td className="p-2">{entry.orNumber || "—"}</td>
-            <td className="p-2 tabular-nums">{money(entry.amount)}</td><td className="p-2 tabular-nums">{money(entry.shareOnSlip)}</td><td className={`p-2 tabular-nums ${drift ? "font-semibold text-amber-800" : ""}`}>{money(entry.shareNow)}</td>
+            <td className="p-2 tabular-nums">{formatPeso(entry.amount)}</td><td className="p-2 tabular-nums">{formatPeso(entry.shareOnSlip)}</td><td className={`p-2 tabular-nums ${drift ? "font-semibold text-amber-800" : ""}`}>{formatPeso(entry.shareNow)}</td>
           </tr>; })}</tbody>
         </table>
       </div>

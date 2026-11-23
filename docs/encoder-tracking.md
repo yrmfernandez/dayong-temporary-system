@@ -61,7 +61,7 @@ Roles has no creation route in the inspected application; if one is added, use H
 ## Implementation and validation
 
 - `lib/encoder-context.ts` verifies the login before each mutation handler and carries one actor and timestamp through the entire request using AsyncLocalStorage. Existing role permission checks remain in place.
-- `lib/encoder-sheets.ts` checks the tracking headers and appends the encoder in the same write as each business row. It rejects writes without a verified encoder. Attendance updates write only business columns and latest-editor columns; leave reviews update only their existing business/reviewer columns.
+- On the database, each saved row records its encoder through `encodedBy` in `lib/db.ts`. The Google Sheets writer (`lib/encoder-sheets.ts`) was no longer used and was removed on 2026-11-23 with its tests.
 - All ten business POST handlers use the encoder wrapper. Read operations and authentication endpoints do not create encoder records.
 - `scripts/migrate-encoder-tracking.mjs` checks every target tab before modifying anything, rejects conflicting headers or occupied unlabelled columns, expands column capacity if necessary, and adds headers in a single batch request. It is safe to rerun.
 - Run `npm run sheets:encoder` for a dry run; use `npm run sheets:encoder -- --apply` to migrate another configured spreadsheet.

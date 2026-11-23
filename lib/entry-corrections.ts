@@ -6,9 +6,9 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { recordCorrection } from "@/lib/record-corrections";
 import { isDigitsOnlyOrNumber, normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
+import { validDate } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
 /**
  * Administrator correction of a New Sale or Collection, with the reason kept in Record Corrections. OR number and

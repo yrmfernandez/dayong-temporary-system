@@ -2,17 +2,17 @@ import { userWithPageAccess } from "@/lib/auth-server";
 import { getEarnedCommissions } from "@/lib/earned-commissions";
 import { withEncoder } from "@/lib/encoder-context";
 import { createCommission, getCommissions, payCommissionDirectly } from "@/lib/finance-operations";
+import { manilaToday, validDate } from "@/lib/manila-date";
 
 const denied = () => Response.json({ success: false, message: "You do not have access to Commissions." }, { status: 403 });
 const allowed = () => userWithPageAccess("/commissions");
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 // The register, plus what each commission earner actually earned in the chosen period (default: this month).
 export async function GET(request: Request) {
   if (!(await allowed())) return denied();
   try {
     const params = new URL(request.url).searchParams;
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
+    const today = manilaToday();
     const from = validDate(params.get("from") ?? "") ? params.get("from")! : `${today.slice(0, 7)}-01`;
     const to = validDate(params.get("to") ?? "") ? params.get("to")! : today;
     if (from > to) throw new Error("Choose a valid period.");

@@ -4,9 +4,25 @@
 
 const manilaDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" });
 
-/** Today's date in Manila, as YYYY-MM-DD. */
+/** Today's date in Manila, as YYYY-MM-DD. The one copy: pages and lib import it rather than writing their own. */
 export function manilaToday(now = new Date()) {
   return manilaDay.format(now);
+}
+
+/**
+ * A real calendar date written YYYY-MM-DD. Refuses impossible days (2026-02-31, 2026-04-31) and months (2026-13-01)
+ * without throwing. The one copy (November 23, 2026): nineteen local copies disagreed, some let February 31 through
+ * and some threw on month 13, which showed a server error instead of "choose a valid date".
+ */
+export function validDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/** The YYYY-MM-DD date a number of days after (or before, when negative) a YYYY-MM-DD date. */
+export function addDays(date: string, count: number) {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + count * 86_400_000).toISOString().slice(0, 10);
 }
 
 /**

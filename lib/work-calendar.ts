@@ -4,6 +4,7 @@ import { employeeIs, SYSTEM_EMPLOYEE } from "@/lib/attendance-data";
 import { currentDb, schema } from "@/lib/db";
 import { getBranches } from "@/lib/google-sheets-data";
 import type { DeclaredDay, WorkCalendar } from "@/lib/working-days";
+import { incentiveDeadline } from "@/lib/remittance-deadline";
 
 /**
  * The declared non-working days (attendance calendar: SYSTEM rows marked "Non-working Day", branch = "All branches" or
@@ -33,4 +34,17 @@ export async function declaredNonWorkingDays(): Promise<DeclaredDay[]> {
 /** The calendar for entries of one branch. */
 export async function loadWorkCalendar(branch = ""): Promise<WorkCalendar> {
   return { days: await declaredNonWorkingDays(), branch };
+}
+
+/**
+ * The incentive deadline of each submission (MAS Collections and New Sales): from its earliest OR date and its branch's
+ * calendar, "" when it has no OR date. One copy for both lists (November 23, 2026); reads the declared days once.
+ */
+export async function submissionDeadlines<T extends { branch: string }>(rows: T[], orDates: (row: T) => string[]) {
+  if (!rows.length) return [];
+  const days = await declaredNonWorkingDays();
+  return rows.map((row) => {
+    const first = orDates(row).filter(Boolean).sort()[0] ?? "";
+    return first ? incentiveDeadline(first, { days, branch: row.branch }) : "";
+  });
 }

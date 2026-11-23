@@ -9,11 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate as showDate } from "@/lib/date-format";
 import { MAS_WEEK_MAX_DAYS, masReportWeeks, masWeekPlace, type MasLine, type MasRow } from "@/lib/mas-report-rows";
+import { manilaToday } from "@/lib/manila-date";
 
 type Report = { branch: string; from: string; to: string; officers: string[]; rows: MasRow[]; total: { sales: MasLine; collections: MasLine }; entryCount: number };
 type Result = { success: boolean; message?: string; branches: string[]; officer: string; company: { name: string; address: string }; report: Report | null };
 
-const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const lastDayOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthLabel = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1]}-${month.slice(2, 4)}`;

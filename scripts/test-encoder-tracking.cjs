@@ -1824,32 +1824,6 @@ test('new Employee IDs follow the most used prefix and the current year, and sta
   assert.equal(suggestEmployeeId([], '2099'), 'MD-2099-0001');
 });
 
-test('attendance updates never touch original encoder cells, even for historical rows', async () => {
-  const h = harness();
-  const { withEncoder } = h.load('lib/encoder-context.ts');
-  const { updateEncodedRow } = h.load('lib/encoder-sheets.ts');
-  await withEncoder(async () => {
-    await updateEncodedRow({ range: 'Attendance!A5:R5', requestBody: { values: [Array(18).fill('')] } });
-    return Response.json({});
-  })(request());
-  const data = h.writes[0].requestBody.data;
-  assert.deepEqual(data.map((item) => item.range), ['Attendance!A5:R5', "'Attendance'!W5:Y5"]);
-  assert.deepEqual(data[1].values[0], ["'USR-1", "'DPE-0001", "'=encoder"]);
-});
-
-test('missing headers or missing encoder context cannot create untracked entries', async () => {
-  const h = harness();
-  const { appendEncodedRows } = h.load('lib/encoder-sheets.ts');
-  const params = { range: 'Members!A:R', requestBody: { values: [Array(18).fill('')] } };
-  await assert.rejects(appendEncodedRows(params), /verified encoder/);
-  h.missingHeaders();
-  await assert.rejects(h.load('lib/encoder-context.ts').withEncoder(async () => {
-    await appendEncodedRows(params);
-    return Response.json({});
-  })(request()), /headers are missing/);
-  assert.equal(h.writes.length, 0);
-});
-
 test('concurrent requests keep distinct encoder timestamps and identities', async () => {
   const h = harness();
   const { withEncoder, getEncoder } = h.load('lib/encoder-context.ts');
@@ -1868,37 +1842,12 @@ test('concurrent requests keep distinct encoder timestamps and identities', asyn
   assert.deepEqual(new Set(snapshots.map((actor) => actor.userId)), new Set(['USR-1', 'USR-2']));
 });
 
-test('all configured sheets append tracking after business columns', async () => {
-  const h = harness();
-  const { encoderSheets, columnName } = h.load('lib/encoder-schema.ts');
-  await h.load('lib/encoder-context.ts').withEncoder(async () => {
-    for (const schema of encoderSheets) {
-      await h.load('lib/encoder-sheets.ts').appendEncodedRows({
-        range: `'${schema.title}'!A:${columnName(schema.columns)}`,
-        requestBody: { values: [Array(schema.columns).fill('business')] },
-      });
-      const write = h.writes.at(-1);
-      assert.equal(write.range, `'${schema.title}'!A:${columnName(schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0))}`);
-      assert.equal(write.requestBody.values[0].length, schema.columns + 4 + (schema.title === "Member programs" ? 1 : 0));
-      assert.deepEqual(write.requestBody.values[0].slice(0, schema.columns), Array(schema.columns).fill('business'));
-    }
-    return Response.json({});
-  })(request());
-});
-
-test('leave review keeps encoder columns and existing permission checks reject unauthorized users', async () => {
+test('user accounts, attendance reviews and leave approvals reject unauthorized users', async () => {
   const h = harness();
   for (const route of ['user-accounts', 'attendance-reviews', 'leave-approvals']) {
     assert.equal((await h.load(`app/api/${route}/route.ts`).POST(request())).status, 403);
   }
   assert.equal(h.writes.length, 0);
-  await h.load('lib/encoder-context.ts').withEncoder(async () => {
-    await h.load('lib/encoder-sheets.ts').updateEncodedRow({
-      range: "'Leave Requests'!A2:K2", requestBody: { values: [Array(11).fill('')] },
-    });
-    return Response.json({});
-  })(request());
-  assert.deepEqual(h.writes[0].requestBody.data.map((item) => item.range), ["'Leave Requests'!A2:K2"]);
 });
 
 
@@ -2265,14 +2214,6 @@ test('audit log records edits as before/after, deletes as snapshots, and hides p
   assert.deepEqual(audit.planValuesUpdate({ range: 'Members!A1:E1', requestBody: { values: [[]] } }).edits, []);
   assert.deepEqual(audit.parseRange("'Payroll Runs'!G5:J5"), { title: 'Payroll Runs', startRow: 5, endRow: 5 });
   assert.equal(audit.parseRange("'Sales'!A:AI"), null);
-});
-
-test('deleting rows removes them bottom-up and keeps one row under a frozen header', async () => {
-  const h = harness({ userId: 'U1', employeeId: 'DPE-0001', name: 'admin', permissions: { manageUsers: true } });
-  h.rows['User Roles'] = [['user_id', 'role_id'], ['USR-2', 'ROLE-1'], ['USR-3', 'ROLE-1'], ['USR-2', 'ROLE-2']];
-  const removed = await h.load('lib/sheet-rows.ts').deleteRowsWhere('User Roles', (row) => row[0] === 'USR-2');
-  assert.equal(removed, 2);
-  assert.deepEqual(h.writes.at(-1).requestBody.requests.map((request) => request.deleteDimension.range.startIndex), [3, 1], 'bottom-up so indexes stay valid');
 });
 
 test('branch names stay unique across territories when creating or renaming', async () => {
@@ -3491,7 +3432,8 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   const expense = Array(21).fill(''); Object.assign(expense, { 0: 'EXP-1', 1: '2026-06-16', 2: 'Fare', 4: 100, 11: 'Posted', 18: 'DPE-7' });
   h.rows.Expenses = [[], expense];
   await h.sync();
-  const { buildClerkReport, weekOfMonth } = h.load('lib/clerk-report.ts');
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const { weekOfMonth } = h.load('lib/report-week.ts');
   // Weeks run Monday to Sunday within the month (owner, October 30, 2026): week 1 starts on the 1st, the last ends on the month's last day.
   assert.deepEqual(['2026-10-01', '2026-10-04', '2026-10-05', '2026-10-12', '2026-10-31', '2026-09-30', '2026-06-01', '2026-06-15', '2026-11-30'].map(weekOfMonth), [1, 1, 2, 3, 5, 5, 1, 3, 6]);
   const { periodSpan } = h.load('lib/daily-audit.ts');

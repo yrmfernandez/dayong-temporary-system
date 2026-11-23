@@ -10,9 +10,8 @@ import { getEntriesForRange } from "@/lib/todays-entries";
 import { withEncoder } from "@/lib/encoder-context";
 import { latestRequestsFor } from "@/lib/entry-reject-requests";
 import { resubmitReturned, submitReadyEntries } from "@/lib/remittance-workflow";
+import { validDate, addDays } from "@/lib/manila-date";
 
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
-const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 const UNFINISHED_DAYS = 60;
 
 /**

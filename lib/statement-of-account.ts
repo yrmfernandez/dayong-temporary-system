@@ -1,10 +1,10 @@
-import { accountState, todayInManila } from "@/lib/account-rules";
+import { accountState } from "@/lib/account-rules";
 import { accountReport, loadAccountData } from "@/lib/account-data";
 import { and, asc, eq } from "drizzle-orm";
 
 import { currentDb, schema } from "@/lib/db";
 import { getSetting, saveSetting } from "@/lib/system-settings";
-import { manilaDateOf } from "@/lib/manila-date";
+import { manilaDateOf, manilaToday } from "@/lib/manila-date";
 
 /** System Settings key for the Collection Department Head named on every printed SOA. */
 const COLLECTION_HEAD_KEY = "soa_collection_head";
@@ -44,7 +44,7 @@ export async function getStatementOfAccount(enrollmentId: string) {
       .where(eq(schema.programs.program_id, account.programId)).limit(1),
     getSetting(COLLECTION_HEAD_KEY),
   ]);
-  const today = todayInManila();
+  const today = manilaToday();
   const own = data.payments.filter((payment) => payment.enrollmentId === account.id);
   const state = accountState(account, own, today);
   const payments = [...own].sort((a, b) => a.nopFrom - b.nopFrom || a.orDate.localeCompare(b.orDate));

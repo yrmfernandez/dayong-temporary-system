@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { executivePeriods, MAX_CUSTOM_DAYS, type ExecutiveAnalytics, type Ranked } from "@/lib/executive-analytics";
 import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPesoWhole } from "@/lib/money";
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 const growth = (row: Ranked) => row.previous ? ((row.amount - row.previous) / row.previous) * 100 : null;
 const longDate = (value: string) => showDate(value);
 const healthColors = ["var(--brand-moss)", "var(--brand-gold)", "var(--brand-orange)", "var(--brand-red)", "var(--muted-foreground)"];
@@ -31,20 +31,20 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
 
     <KpiGroup title="Sales" description="Money received this period from New Sales and Collections, compared with the previous period.">
       <GrossSalesDrilldown label="Gross Sales" value={k.grossSales.value} change={k.grossSales.change} note="All money received: New Sales + Collections" from={data.from} to={data.to} />
-      <Kpi label="Net Sales" value={money(k.netSales.value)} change={k.netSales.change} note={`After ${money(f.commissions)} agent commissions`} icon={Wallet} tone="brand" />
-      <Kpi label="New Sales" value={money(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="orange" />
-      <Kpi label="Collections" value={money(k.collectionGross.value)} change={k.collectionGross.change} note={`${k.collectionCount.toLocaleString("en-PH")} posted payments`} icon={Receipt} tone="teal" />
+      <Kpi label="Net Sales" value={formatPesoWhole(k.netSales.value)} change={k.netSales.change} note={`After ${formatPesoWhole(f.commissions)} agent commissions`} icon={Wallet} tone="brand" />
+      <Kpi label="New Sales" value={formatPesoWhole(k.salesGross.value)} change={k.salesGross.change} note={`${k.newAccounts.value.toLocaleString("en-PH")} new accounts`} icon={FilePlus2} tone="orange" />
+      <Kpi label="Collections" value={formatPesoWhole(k.collectionGross.value)} change={k.collectionGross.change} note={`${k.collectionCount.toLocaleString("en-PH")} posted payments`} icon={Receipt} tone="teal" />
     </KpiGroup>
     <KpiGroup title="Profitability & cash" description="What is left after costs, and how long the cash on hand would last.">
-      <Kpi label="EBITDA" value={money(f.ebitda)} note="Net Sales less payroll, expenses and vendor bills" icon={Landmark} tone={f.ebitda < 0 ? "danger" : "success"} />
+      <Kpi label="EBITDA" value={formatPesoWhole(f.ebitda)} note="Net Sales less payroll, expenses and vendor bills" icon={Landmark} tone={f.ebitda < 0 ? "danger" : "success"} />
       <Kpi label="Net Profit Margin" value={f.margin === null ? "—" : `${f.margin.toFixed(1)}%`} note="Of Gross Sales, before interest and tax" icon={Percent} tone={f.margin === null ? "neutral" : f.margin < 0 ? "danger" : f.margin < 10 ? "warning" : "success"} />
-      <Kpi label="Cash on Hand" value={money(c.onHand)} note="All cash accounts, from the cash ledger" icon={Wallet} tone="teal" />
-      <Kpi label="Cash Runway" value={runway} note={`Burn ${money(c.monthlyOutflow)}/month · net ${c.netBurn > 0 ? `–${money(c.netBurn)}` : `+${money(-c.netBurn)}`}`} icon={Flame} tone={c.runwayMonths === null ? "success" : c.runwayMonths < 3 ? "danger" : c.runwayMonths < 6 ? "warning" : "success"} />
+      <Kpi label="Cash on Hand" value={formatPesoWhole(c.onHand)} note="All cash accounts, from the cash ledger" icon={Wallet} tone="teal" />
+      <Kpi label="Cash Runway" value={runway} note={`Burn ${formatPesoWhole(c.monthlyOutflow)}/month · net ${c.netBurn > 0 ? `–${formatPesoWhole(c.netBurn)}` : `+${formatPesoWhole(-c.netBurn)}`}`} icon={Flame} tone={c.runwayMonths === null ? "success" : c.runwayMonths < 3 ? "danger" : c.runwayMonths < 6 ? "warning" : "success"} />
     </KpiGroup>
     <KpiGroup title="Growth & portfolio" description="New accounts, recurring dues, and how many active accounts are paying on time.">
-      <Kpi label="Recurring Dues (ARR)" value={money(data.recurring.annual)} note={`${money(data.recurring.monthly)}/month from ${data.recurring.accounts.toLocaleString("en-PH")} paying accounts`} icon={Repeat} tone="info" />
+      <Kpi label="Recurring Dues (ARR)" value={formatPesoWhole(data.recurring.annual)} note={`${formatPesoWhole(data.recurring.monthly)}/month from ${data.recurring.accounts.toLocaleString("en-PH")} paying accounts`} icon={Repeat} tone="info" />
       <Kpi label="New Accounts" value={k.newAccounts.value.toLocaleString("en-PH")} change={k.newAccounts.change} note="Enrollments sold" icon={Users} tone="info" />
-      <Kpi label="Average Sale" value={money(k.averageSale.value)} change={k.averageSale.change} note="Per new account" icon={TrendingUp} tone="orange" />
+      <Kpi label="Average Sale" value={formatPesoWhole(k.averageSale.value)} change={k.averageSale.change} note="Per new account" icon={TrendingUp} tone="orange" />
       <Kpi label="Accounts Current" value={data.trackedAccounts ? `${k.currentRate.toFixed(1)}%` : "—"} note={`Of ${k.activeAccounts.toLocaleString("en-PH")} active accounts, not 60+ days late`} icon={Award} tone={!data.trackedAccounts ? "neutral" : k.currentRate >= 80 ? "success" : k.currentRate >= 60 ? "warning" : "danger"} />
     </KpiGroup>
 
@@ -56,11 +56,11 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
     <div className="grid gap-6 xl:grid-cols-3">
       <Panel title="Revenue Trend" subtitle="Last 12 months, by month" className="xl:col-span-2"><RevenueTrend points={data.trend} /></Panel>
       <Panel title="Profit & Loss" subtitle={data.periodLabel}>
-        <Rows rows={[["Gross Sales", money(f.grossSales)], ["Agent commissions", `– ${money(f.commissions)}`], ["Net Sales", money(f.netSales), true], ["Payroll (excl. commissions)", `– ${money(f.payroll)}`], ["Expenses", `– ${money(f.expenses)}`], ["Vendor bills", `– ${money(f.vendorBills)}`], ["EBITDA", money(f.ebitda), true], ["Net profit margin", f.margin === null ? "—" : `${f.margin.toFixed(1)}%`, true]]} />
+        <Rows rows={[["Gross Sales", formatPesoWhole(f.grossSales)], ["Agent commissions", `– ${formatPesoWhole(f.commissions)}`], ["Net Sales", formatPesoWhole(f.netSales), true], ["Payroll (excl. commissions)", `– ${formatPesoWhole(f.payroll)}`], ["Expenses", `– ${formatPesoWhole(f.expenses)}`], ["Vendor bills", `– ${formatPesoWhole(f.vendorBills)}`], ["EBITDA", formatPesoWhole(f.ebitda), true], ["Net profit margin", f.margin === null ? "—" : `${f.margin.toFixed(1)}%`, true]]} />
         <div className="my-4 border-t" />
-        <Rows rows={[["Cash on hand", money(c.onHand), true], ["Avg. monthly cash in", money(c.monthlyInflow)], ["Avg. monthly cash out (burn)", money(c.monthlyOutflow)], ["Months of costs covered", c.coverMonths === null ? "—" : c.coverMonths.toFixed(1)]]} />
+        <Rows rows={[["Cash on hand", formatPesoWhole(c.onHand), true], ["Avg. monthly cash in", formatPesoWhole(c.monthlyInflow)], ["Avg. monthly cash out (burn)", formatPesoWhole(c.monthlyOutflow)], ["Months of costs covered", c.coverMonths === null ? "—" : c.coverMonths.toFixed(1)]]} />
         <div className="my-4 border-t" />
-        <Rows rows={[["Expected remittance", money(f.expectedRemittance)], ["Actual remittance", money(f.actualRemittance)], ["Remittance gap", money(f.gap), true], ["Awaiting approval", `${f.pendingCount} · ${money(f.pendingAmount)}`]]} />
+        <Rows rows={[["Expected remittance", formatPesoWhole(f.expectedRemittance)], ["Actual remittance", formatPesoWhole(f.actualRemittance)], ["Remittance gap", formatPesoWhole(f.gap), true], ["Awaiting approval", `${f.pendingCount} · ${formatPesoWhole(f.pendingAmount)}`]]} />
         <p className="mt-4 text-xs text-muted-foreground">No interest, tax, depreciation or amortization is recorded, so EBITDA equals operating profit and the margin is before tax. Cash burn averages the last three complete months.</p>
       </Panel>
     </div>
@@ -71,7 +71,7 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
     </div>
 
     <Panel title="Branch Performance" subtitle="Ranked by total revenue">
-      <Table headers={["Branch", "New accounts", "New Sales", "Collections", "Total revenue", "Share", "Change"]} rows={data.branches.map((row) => [<span key="b" className="font-medium">{row.label}</span>, row.newAccounts.toLocaleString("en-PH"), money(row.sales), money(row.collections), <strong key="t" className="tabular-nums">{money(row.amount)}</strong>, <ShareCell key="s" value={row.share} />, <Change key="c" value={growth(row)} />])} />
+      <Table headers={["Branch", "New accounts", "New Sales", "Collections", "Total revenue", "Share", "Change"]} rows={data.branches.map((row) => [<span key="b" className="font-medium">{row.label}</span>, row.newAccounts.toLocaleString("en-PH"), formatPesoWhole(row.sales), formatPesoWhole(row.collections), <strong key="t" className="tabular-nums">{formatPesoWhole(row.amount)}</strong>, <ShareCell key="s" value={row.share} />, <Change key="c" value={growth(row)} />])} />
     </Panel>
 
     <div className="grid gap-6 xl:grid-cols-2">
@@ -85,12 +85,12 @@ export function ExecutiveDashboard({ data, employeeName }: { data: ExecutiveAnal
         <div className="mt-5"><Table compact headers={["Program", "Active", "60+ days late", "Late rate"]} rows={data.healthByProgram.slice(0, 6).map((row) => [row.label, row.active.toLocaleString("en-PH"), row.late.toLocaleString("en-PH"), <span key="r" className={`font-semibold tabular-nums ${row.lateRate >= 25 ? "text-red-700 dark:text-red-400" : row.lateRate >= 10 ? "text-amber-700" : ""}`}>{row.lateRate.toFixed(1)}%</span>])} /></div>
       </Panel>
       <Panel title="Best Selling Days" subtitle="New accounts by day of the week">
-        <Columns label="New accounts by day of the week" items={data.weekdays.map((row) => ({ label: row.label, value: row.accounts, detail: `${row.accounts} accounts · ${money(row.amount)}` }))} />
+        <Columns label="New accounts by day of the week" items={data.weekdays.map((row) => ({ label: row.label, value: row.accounts, detail: `${row.accounts} accounts · ${formatPesoWhole(row.amount)}` }))} />
       </Panel>
     </div>
 
     <div className="grid gap-6 xl:grid-cols-3">
-      <Panel title="Payment Modes" subtitle="How new members choose to pay"><RankBars format="count" rows={data.paymentModes.slice(0, 6).map((row) => ({ label: row.label, value: row.accounts, secondary: money(row.amount) }))} /></Panel>
+      <Panel title="Payment Modes" subtitle="How new members choose to pay"><RankBars format="count" rows={data.paymentModes.slice(0, 6).map((row) => ({ label: row.label, value: row.accounts, secondary: formatPesoWhole(row.amount) }))} /></Panel>
       <Panel title="Buyer Age" subtitle="New members by age group"><Columns label="New members by age group" items={data.ageBands.map((row) => ({ label: row.label, value: row.accounts, detail: `${row.accounts} new members` }))} /></Panel>
       <Panel title="Buyer Gender" subtitle="New members this period"><ShareBar label="New members by gender" segments={data.genders.slice(0, 3).map((row, index) => ({ label: row.label, value: row.accounts, color: ["var(--viz-1)", "var(--viz-2)", "var(--muted-foreground)"][index] }))} /></Panel>
     </div>
@@ -104,15 +104,15 @@ function Highlights({ data, className = "" }: { data: ExecutiveAnalytics; classN
   const falling = data.programs.filter((row) => row.previous > 0).sort((a, b) => (growth(a) ?? 0) - (growth(b) ?? 0))[0];
   const items: Array<{ icon: LucideIcon; tone: Tone; text: React.ReactNode }> = [];
   const [program, branch, agent] = [data.programs[0], data.branches[0], data.salesPeople[0]];
-  if (program) items.push({ icon: Award, tone: "brand", text: <><strong>{program.label}</strong> sells the most: {program.accounts} accounts, {money(program.amount)} ({program.share.toFixed(0)}% of New Sales).</> });
-  if (branch) items.push({ icon: Building2, tone: "orange", text: <><strong>{branch.label}</strong> leads the branches with {money(branch.amount)} in revenue ({branch.share.toFixed(0)}% of the company).</> });
-  if (agent) items.push({ icon: Users, tone: "teal", text: <><strong>{agent.label}</strong> is the top sales agent with {agent.accounts} new accounts worth {money(agent.amount)}.</> });
+  if (program) items.push({ icon: Award, tone: "brand", text: <><strong>{program.label}</strong> sells the most: {program.accounts} accounts, {formatPesoWhole(program.amount)} ({program.share.toFixed(0)}% of New Sales).</> });
+  if (branch) items.push({ icon: Building2, tone: "orange", text: <><strong>{branch.label}</strong> leads the branches with {formatPesoWhole(branch.amount)} in revenue ({branch.share.toFixed(0)}% of the company).</> });
+  if (agent) items.push({ icon: Users, tone: "teal", text: <><strong>{agent.label}</strong> is the top sales agent with {agent.accounts} new accounts worth {formatPesoWhole(agent.amount)}.</> });
   if (rising && (growth(rising) ?? 0) > 0) items.push({ icon: TrendingUp, tone: "success", text: <><strong>{rising.label}</strong> is growing fastest, up {growth(rising)!.toFixed(0)}% {data.compareLabel}.</> });
   if (falling && (growth(falling) ?? 0) < 0) items.push({ icon: TrendingDown, tone: "danger", text: <><strong>{falling.label}</strong> sales fell {Math.abs(growth(falling)!).toFixed(0)}% {data.compareLabel}.</> });
   if (data.kpis.currentRate < 80 && data.trackedAccounts) items.push({ icon: TrendingDown, tone: "warning", text: <>Only <strong>{data.kpis.currentRate.toFixed(0)}%</strong> of active accounts are current; {(data.trackedAccounts - data.accountHealth[0].count).toLocaleString("en-PH")} are 60+ days late or forfeited.</> });
   const target = data.targets.find((item) => item.target > 0);
-  if (target) items.push({ icon: target.projected >= target.target ? TrendingUp : TrendingDown, tone: target.projected >= target.target ? "success" : "warning", text: <>{target.label} is {target.projected >= target.target ? "on pace" : "behind pace"}: projected <strong>{money(target.projected)}</strong> against a {money(target.target)} target.</> });
-  if (data.cash.runwayMonths !== null) items.push({ icon: Flame, tone: data.cash.runwayMonths < 6 ? "danger" : "warning", text: <>Cash outflows exceed inflows by {money(data.cash.netBurn)} a month; cash on hand lasts about <strong>{data.cash.runwayMonths.toFixed(1)} months</strong>.</> });
+  if (target) items.push({ icon: target.projected >= target.target ? TrendingUp : TrendingDown, tone: target.projected >= target.target ? "success" : "warning", text: <>{target.label} is {target.projected >= target.target ? "on pace" : "behind pace"}: projected <strong>{formatPesoWhole(target.projected)}</strong> against a {formatPesoWhole(target.target)} target.</> });
+  if (data.cash.runwayMonths !== null) items.push({ icon: Flame, tone: data.cash.runwayMonths < 6 ? "danger" : "warning", text: <>Cash outflows exceed inflows by {formatPesoWhole(data.cash.netBurn)} a month; cash on hand lasts about <strong>{data.cash.runwayMonths.toFixed(1)} months</strong>.</> });
   if (!items.length) return <Card className={className}><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Highlights appear once sales are recorded for this period.</p></CardContent></Card>;
   return <Card className={className}><CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />Highlights</CardTitle></CardHeader><CardContent><ul className="grid gap-3 md:grid-cols-2">{items.map((item, index) => <li key={index} className={`tone-${item.tone} flex items-start gap-3 rounded-xl border p-3 text-sm`}><span className="tone-soft flex size-8 shrink-0 items-center justify-center rounded-lg"><item.icon className="size-4" /></span><span className="pt-1.5">{item.text}</span></li>)}</ul></CardContent></Card>;
 }

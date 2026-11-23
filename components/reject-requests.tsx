@@ -9,8 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseJsonResponse } from "@/lib/api-response";
 import { formatDateTime } from "@/lib/date-format";
 import type { RejectRequest } from "@/lib/entry-reject-requests";
-
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+import { formatPeso } from "@/lib/money";
 
 /**
  * The Reject requests tab of Remittances (lib/entry-reject-requests.ts): what Entry Clerks asked to be rejected, with
@@ -53,7 +52,7 @@ export function RejectRequests({ requests, onViewSlip, onChanged }: { requests: 
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{item.kind} <span className="font-mono">{item.entryId}</span> · {item.memberName || "—"} {item.memberNumber && <span className="font-normal text-muted-foreground">({item.memberNumber})</span>}</p>
-                <p className="text-xs text-muted-foreground">{[item.reference, money(item.amount), item.branch].filter(Boolean).join(" · ")} · slip <button type="button" className="font-mono hover:underline" onClick={() => onViewSlip(item.remittanceId)}>{item.remittanceId}</button></p>
+                <p className="text-xs text-muted-foreground">{[item.reference, formatPeso(item.amount), item.branch].filter(Boolean).join(" · ")} · slip <button type="button" className="font-mono hover:underline" onClick={() => onViewSlip(item.remittanceId)}>{item.remittanceId}</button></p>
                 <p className="text-xs text-muted-foreground">Asked by {item.requestedBy || "—"} · {formatDateTime(item.requestedAt)} · {item.id}</p>
                 <p className="rounded-md bg-muted/50 px-2 py-1 text-sm"><span className="font-semibold">Reason:</span> {item.reason}</p>
                 {stale && <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{item.entryStatus === "Returned" ? "The slip was already returned to the clerk: Accept just closes this request." : item.entryStatus === "Remitted" ? "The slip was already approved: undo the approval first, or decline this and correct the entry in Edit / Corrections." : `The entry is now ${item.entryStatus}: decline this request.`}</p>}
@@ -75,7 +74,7 @@ export function RejectRequests({ requests, onViewSlip, onChanged }: { requests: 
           <thead className="bg-muted/50 text-left"><tr>{["Request", "Entry", "Member", "Asked by", "Reason", "Decision", "Note"].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
           <tbody>{decided.map((item) => <tr key={item.id} className="border-t align-top">
             <td className="p-3 font-mono text-xs">{item.id}<span className="block font-sans text-muted-foreground">{formatDateTime(item.requestedAt)}</span></td>
-            <td className="p-3"><span className="font-mono text-xs">{item.entryId}</span><span className="block text-xs text-muted-foreground">{item.kind} · {money(item.amount)}</span></td>
+            <td className="p-3"><span className="font-mono text-xs">{item.entryId}</span><span className="block text-xs text-muted-foreground">{item.kind} · {formatPeso(item.amount)}</span></td>
             <td className="p-3">{item.memberName || "—"}<span className="block text-xs text-muted-foreground">{item.memberNumber}</span></td>
             <td className="p-3">{item.requestedBy || "—"}</td>
             <td className="p-3">{item.reason}</td>

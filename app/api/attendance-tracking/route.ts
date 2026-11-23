@@ -3,8 +3,7 @@ import { canViewAttendanceTracking } from "@/lib/attendance-board";
 import { getAttendanceRecordsForRange } from "@/lib/attendance-data";
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
-
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+import { validDate } from "@/lib/manila-date";
 
 export async function GET(request: Request) {
   const user = await getSessionUser();

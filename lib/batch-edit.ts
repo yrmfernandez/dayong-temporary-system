@@ -24,6 +24,8 @@ import type { WorkCalendar } from "@/lib/working-days";
 import { calculateRemittance, calculateSaleIncentive, differentRateOf, noIncentiveReasonOf, savedDifferentRate, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { toCents } from "@/lib/money";
+import { phoneKey } from "@/lib/match-keys";
 
 /**
  * Editing a Returned batch (owner, October 12, 2026). When the approver returns a batch (rejects its remittance slip),
@@ -52,8 +54,7 @@ import { manilaNow } from "@/lib/remittance-deadline";
  */
 export type BatchKind = "New Sale" | "Collection";
 const text = (value: unknown) => String(value ?? "").trim();
-const cents = (value: number) => Math.round(value * 100);
-const round = (value: number) => cents(value) / 100;
+const round = (value: number) => toCents(value) / 100;
 const day = (value: unknown) => text(value).slice(0, 10);
 const manilaDate = (stamp: unknown) => (text(stamp) ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date(text(stamp))) : "");
 
@@ -439,11 +440,6 @@ const memberDetailsOf = (details: SaleDetails, today: string): MemberDetails => 
 });
 
 /** Philippine mobile numbers compared without spaces, dashes or +63; blank when there is no usable number. */
-function phoneKey(value: unknown) {
-  let digits = String(value ?? "").replace(/\D/g, "");
-  if (digits.startsWith("63")) digits = `0${digits.slice(2)}`;
-  return digits.length >= 10 ? digits : "";
-}
 
 async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, EntryInput>, common: Common) {
   const programList = await getPrograms();
@@ -525,8 +521,8 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       if (ageError) throw new Error(`${label}: ${ageError}`);
     }
     if (!Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
-    if (program.flexible && cents(amount) < cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
-    if (!program.flexible && !program.newSaleAmountEditable && cents(amount) !== cents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
+    if (program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
+    if (!program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
     const priced = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId) }, amount);
     // No incentive (owner, October 20, 2026): still remitted whole; it can be marked or unmarked here.
     const noIncentiveReason = noIncentiveAfter(change, row.no_incentive_reason, label);
@@ -645,13 +641,13 @@ async function saveCollections(tx: Transaction, rows: Array<typeof collections.$
     // A DTO batch earns no incentive anyway (as when encoding).
     const noIncentiveReason = dto ? text(row.no_incentive_reason) : noIncentiveAfter(change, row.no_incentive_reason, label);
     const incentiveMarkChanged = noIncentiveReason !== text(row.no_incentive_reason);
-    const paymentChanged = moved || cents(amount) !== cents(Number(row.amount_collected)) || monthTo !== text(row.month_to).slice(0, 7) || orDate !== day(row.or_date) || waiver !== text(row.suspended);
+    const paymentChanged = moved || toCents(amount) !== toCents(Number(row.amount_collected)) || monthTo !== text(row.month_to).slice(0, 7) || orDate !== day(row.or_date) || waiver !== text(row.suspended);
     if (paymentChanged) {
       // A later payment of the account was built on this one, so its months and amount stay as they are.
       // Another entry of this batch for the same account counts too.
       const later = data.payments.find((payment) => payment.enrollmentId === row.enrollment_id && payment.id !== row.collection_id && !moving.has(payment.id) && payment.nopFrom > (row.nop_from ?? 0));
       if (later && moved) throw new Error(`${label}: OR ${later.orNumber} was recorded after it on ${encoded.programName}, so it cannot move. Ask an administrator.`);
-      if (later && (cents(amount) !== cents(Number(row.amount_collected)) || monthTo !== text(row.month_to).slice(0, 7))) throw new Error(`${label}: OR ${later.orNumber} was recorded after it, so its months and amount cannot change here. Ask an administrator.`);
+      if (later && (toCents(amount) !== toCents(Number(row.amount_collected)) || monthTo !== text(row.month_to).slice(0, 7))) throw new Error(`${label}: OR ${later.orNumber} was recorded after it, so its months and amount cannot change here. Ask an administrator.`);
       if (!later) {
         const before = payments.filter((payment) => payment.enrollmentId === account.id && payment.nopFrom < nopFrom);
         validatePayment(account, [...payments.filter((payment) => payment.enrollmentId !== account.id), ...before],

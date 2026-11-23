@@ -1,3 +1,4 @@
+import { manilaToday, validDate } from "./manila-date.ts";
 import { monthlyPay, validateMonthlyMaximum } from "./program-payment-limit.mjs";
 
 export type AccountStatus = "NS" | "U" | "ADV" | "60D" | "90D" | "120D" | "150D" | "Fully Paid" | "Forfeited";
@@ -50,14 +51,8 @@ export type AccountPayment = {
   amount: number; dateRemitted: string; mas: string;
 };
 
-// Made once: building an Intl.DateTimeFormat is slow, and every account's status check asks for today.
-const manilaDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" });
-export function todayInManila() {
-  return manilaDay.format(new Date());
-}
-export function validDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-}
+// Today and the date check live in lib/manila-date.ts; kept here under the old names for the maintenance scripts.
+export { manilaToday as todayInManila, validDate };
 export function validMonth(value: string) { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
 export function monthIndex(value: string) { const [y, m] = value.split("-").map(Number); return y * 12 + m - 1; }
 export function monthName(index: number) { return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`; }
@@ -109,7 +104,7 @@ export function paymentsByEnrollment<T extends { enrollmentId: string }>(payment
   return grouped;
 }
 
-export function accountState(account: Account, allPayments: AccountPayment[], today = todayInManila()) {
+export function accountState(account: Account, allPayments: AccountPayment[], today = manilaToday()) {
   if (!validDate(account.doi) || !validDate(today) || !Number.isFinite(account.basePay) || account.basePay <= 0) throw new Error(`Account ${account.id} needs a valid DOI and monthly program rate.`);
   const payments = allPayments.filter((p) => p.enrollmentId === account.id && p.orDate <= today);
   const coverage = allocations(payments, account.basePay, account.flexible);
@@ -203,7 +198,7 @@ export const incentiveRoleFor = (channel: string): "MAS" | "Collector" | "DTO" =
  * day a forfeited account takes no payment. Add a day here only on the owner's instruction.
  */
 export const FORFEITED_PAYMENT_DAYS: readonly string[] = ["2026-10-13"];
-export const forfeitedPaymentsAllowed = (today = todayInManila()) => FORFEITED_PAYMENT_DAYS.includes(today);
+export const forfeitedPaymentsAllowed = (today = manilaToday()) => FORFEITED_PAYMENT_DAYS.includes(today);
 
 /**
  * A Waiver is needed only when the member paid on or after the day the account became suspended (the OR date, not the
@@ -222,7 +217,7 @@ export const waiverOnOrDate = (entry: { temporarilySuspended: boolean; suspended
   entry.ifSuspended === "Waiver" && entry.suspendedAt && entry.orDate && !needsWaiver(entry) ? "" : entry.ifSuspended;
 
 export type PaymentInput = { monthFrom: string; monthTo: string; nopFrom: number; nopTo: number; amount: number; orDate: string; orNumber: string; waiver: string; collectedByRole: string; originalMas: string };
-export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = todayInManila()) {
+export function validatePayment(account: Account, history: AccountPayment[], input: PaymentInput, today = manilaToday()) {
   const state = accountState(account, history, today);
   const forfeitedAllowed = forfeitedPaymentsAllowed(today);
   if (state.status === "Fully Paid") throw new Error("This program account is fully paid. No more payments are taken.");

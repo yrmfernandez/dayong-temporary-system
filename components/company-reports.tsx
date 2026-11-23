@@ -14,6 +14,8 @@ import { reportWeek } from "@/lib/report-week";
 import type { ReportLine, ReportSummary } from "@/lib/reports";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDateTime as showDateTime } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Report = {
   from: string; to: string; generatedAt: string; summary: ReportSummary;
@@ -30,9 +32,7 @@ type Period = "today" | "week" | "month" | "year" | "custom";
 type View = "branch" | "program" | "person" | "day" | "clerk";
 type Row = { label: string; detail?: string; salesCount: number; salesGross: number; collectionCount: number; collectionGross: number; incentives: number; fidelity: number; penalty: number; net: number };
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const round = (value: number) => Math.round(value * 100) / 100;
-const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 function rangeFor(period: Period, today: string): [string, string] {
   if (period === "week") { const { start, end } = reportWeek(today); return [start, end]; }
   if (period === "month") return [`${today.slice(0, 7)}-01`, new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10)];
@@ -67,7 +67,7 @@ const csvCell = (value: string | number) => { const text = String(value); return
  */
 export function CompanyReports() {
   const [period, setPeriod] = useState<Period>("month");
-  const [[from, to], setRange] = useState<[string, string]>(() => rangeFor("month", todayInManila()));
+  const [[from, to], setRange] = useState<[string, string]>(() => rangeFor("month", manilaToday()));
   const [branch, setBranch] = useState("");
   const [program, setProgram] = useState("");
   const [person, setPerson] = useState("");
@@ -113,7 +113,7 @@ export function CompanyReports() {
     finally { setSavingRemark(false); }
   };
 
-  const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
+  const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, manilaToday())); };
   const rows = useMemo(() => {
     if (!report) return [];
     const by: Record<View, [(line: ReportLine) => string, ((line: ReportLine) => string)?]> = {
@@ -173,10 +173,10 @@ export function CompanyReports() {
 
       {summary && totals && <>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MetricTile tone="brand" label="Gross" value={money(summary.gross)} detail={`${summary.accounts} entries`} />
-          <MetricTile tone="info" label="New Sales" value={money(totals.salesGross)} detail={`${totals.salesCount} sales`} />
-          <MetricTile tone="teal" label="Collections" value={money(totals.collectionGross)} detail={`${totals.collectionCount} payments`} />
-          <MetricTile tone="warning" label="Incentives" value={money(summary.incentives)} detail={`MAS ${money(summary.masCommission)} · Collector ${money(summary.collectorCommission)}`} />
+          <MetricTile tone="brand" label="Gross" value={formatPeso(summary.gross)} detail={`${summary.accounts} entries`} />
+          <MetricTile tone="info" label="New Sales" value={formatPeso(totals.salesGross)} detail={`${totals.salesCount} sales`} />
+          <MetricTile tone="teal" label="Collections" value={formatPeso(totals.collectionGross)} detail={`${totals.collectionCount} payments`} />
+          <MetricTile tone="warning" label="Incentives" value={formatPeso(summary.incentives)} detail={`MAS ${formatPeso(summary.masCommission)} · Collector ${formatPeso(summary.collectorCommission)}`} />
         </div>
         <Card><CardHeader><CardTitle>Cash</CardTitle></CardHeader><CardContent>
           <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -184,7 +184,7 @@ export function CompanyReports() {
               ["Company share (gross less incentives)", summary.net], ["Fidelity", summary.fidelity], ["Penalties", summary.penalty],
               ["Posted expenses", summary.expenses], ["Expected remittance (share less expenses)", summary.expectedRemittance], ["Approved remittances", summary.actualRemittance],
               ["Bank deposits", summary.deposits], ["Difference (expected less approved)", summary.difference],
-            ] as Array<[string, number]>).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b py-1"><dt className="text-muted-foreground">{label}</dt><dd className={`font-medium tabular-nums ${label.startsWith("Difference") && value !== 0 ? "text-red-700" : ""}`}>{money(value)}</dd></div>)}
+            ] as Array<[string, number]>).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b py-1"><dt className="text-muted-foreground">{label}</dt><dd className={`font-medium tabular-nums ${label.startsWith("Difference") && value !== 0 ? "text-red-700" : ""}`}>{formatPeso(value)}</dd></div>)}
           </dl>
         </CardContent></Card>
       </>}
@@ -201,11 +201,11 @@ export function CompanyReports() {
               <tbody>
                 {rows.map((row) => <tr key={row.label} className="border-t">
                   <td className="p-2">{row.label}{row.detail && <span className="block text-xs text-muted-foreground">{row.detail}</span>}</td>
-                  {[row.salesCount, money(row.salesGross), row.collectionCount, money(row.collectionGross), money(row.incentives), money(row.fidelity), money(row.penalty), money(row.net)].map((value, index) => <td key={index} className="p-2 text-right tabular-nums">{value}</td>)}
+                  {[row.salesCount, formatPeso(row.salesGross), row.collectionCount, formatPeso(row.collectionGross), formatPeso(row.incentives), formatPeso(row.fidelity), formatPeso(row.penalty), formatPeso(row.net)].map((value, index) => <td key={index} className="p-2 text-right tabular-nums">{value}</td>)}
                 </tr>)}
                 {!rows.length && <tr><td colSpan={headers.length} className="p-8 text-center text-muted-foreground">{loading ? "Loading..." : "Nothing in this period."}</td></tr>}
               </tbody>
-              {totals && rows.length > 1 && <tfoot className="border-t bg-muted/30 font-medium"><tr><td className="p-2">Total</td>{[totals.salesCount, money(totals.salesGross), totals.collectionCount, money(totals.collectionGross), money(totals.incentives), money(totals.fidelity), money(totals.penalty), money(totals.net)].map((value, index) => <td key={index} className="p-2 text-right tabular-nums">{value}</td>)}</tr></tfoot>}
+              {totals && rows.length > 1 && <tfoot className="border-t bg-muted/30 font-medium"><tr><td className="p-2">Total</td>{[totals.salesCount, formatPeso(totals.salesGross), totals.collectionCount, formatPeso(totals.collectionGross), formatPeso(totals.incentives), formatPeso(totals.fidelity), formatPeso(totals.penalty), formatPeso(totals.net)].map((value, index) => <td key={index} className="p-2 text-right tabular-nums">{value}</td>)}</tr></tfoot>}
             </table>
           </div>
           {report?.notes.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">{report.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}

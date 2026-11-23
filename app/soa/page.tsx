@@ -9,6 +9,7 @@ import { SearchSelect } from "@/components/ui/search-select";
 import type { StatementOfAccount } from "@/lib/statement-of-account";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPeso } from "@/lib/money";
 
 type AccountOption = { id: string; memberName: string; memberNumber: string; programName: string; branch: string; mas: string; doi: string; status: string; temporarilySuspended: boolean };
 type Filters = { search: string; branch: string; mas: string; program: string; status: string };
@@ -19,7 +20,6 @@ const statusFilters: Array<[string, string]> = [["U", "U - Updated"], ["ADV", "A
 const matchesStatus = (item: AccountOption, status: string) => !status || (status === "Suspended" ? item.temporarilySuspended && item.status !== "Forfeited" : item.status === status);
 const statusLabel = (item: AccountOption) => `${item.status}${item.temporarilySuspended && item.status !== "Forfeited" ? " · suspended" : ""}`;
 const statusTone = (status: string) => ["U", "ADV", "Fully Paid"].includes(status) ? "success" as const : status === "NS" ? "info" as const : status === "Needs review" ? "warning" as const : "danger" as const;
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const longDate = (value: string) => value ? showDate(value) : "—";
 const monthLabel = (value: string) => value ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 const statusText: Record<string, string> = { NS: "New sale, no collection yet", U: "Updated", ADV: "Paid in advance", "60D": "60 days behind", "90D": "90 days behind", "120D": "120 days behind", "150D": "150 days behind", Paid: "Fully paid", Forfeited: "Forfeited" };
@@ -126,7 +126,7 @@ function StatementContent() {
 
       <div className="grid gap-6 sm:grid-cols-2">
         <Block title="Member">{[["Name", statement.member.name], ["Member no.", statement.member.number], ["Address", statement.member.address], ["Contact", statement.member.contact]]}</Block>
-        <Block title="Account">{[["Program", statement.account.programName], ["Category", statement.account.programCategory], ["MAS", statement.account.mas], ["Date of issue (DOI)", longDate(statement.account.doi)], ["Application no.", statement.account.applicationNumber], ["Monthly due", money(statement.account.monthlyDue)]]}</Block>
+        <Block title="Account">{[["Program", statement.account.programName], ["Category", statement.account.programCategory], ["MAS", statement.account.mas], ["Date of issue (DOI)", longDate(statement.account.doi)], ["Application no.", statement.account.applicationNumber], ["Monthly due", formatPeso(statement.account.monthlyDue)]]}</Block>
       </div>
 
       <div>
@@ -134,8 +134,8 @@ function StatementContent() {
         <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left">
           <thead><tr className="border-b text-xs uppercase text-muted-foreground">{["OR date", "OR no.", "Months covered", "NOP", "Amount", "Total paid"].map((h, i) => <th key={h} className={`py-2 pr-3 ${i > 3 ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
           <tbody>
-            {statement.newSale && <tr className="border-b"><td className="py-2 pr-3">{longDate(statement.newSale.date)}</td><td className="py-2 pr-3">{statement.account.applicationNumber ? `App ${statement.account.applicationNumber}` : "—"}</td><td className="py-2 pr-3">New sale{statement.newSale.registration > 0 ? " · registration" : ""}</td><td className="py-2 pr-3">—</td><td className="py-2 pr-3 text-right tabular-nums">{money(statement.newSale.amount)}</td><td className="py-2 pr-3 text-right tabular-nums">{money(statement.newSale.amount)}</td></tr>}
-            {statement.history.map((row) => <tr key={`${row.orNumber}-${row.nopFrom}`} className="border-b last:border-0"><td className="py-2 pr-3">{longDate(row.orDate)}</td><td className="py-2 pr-3">{row.orNumber}</td><td className="py-2 pr-3">{row.monthFrom === row.monthTo ? monthLabel(row.monthFrom) : `${monthLabel(row.monthFrom)} – ${monthLabel(row.monthTo)}`}</td><td className="py-2 pr-3">{row.nopFrom === row.nopTo ? row.nopFrom : `${row.nopFrom}–${row.nopTo}`}</td><td className="py-2 pr-3 text-right tabular-nums">{money(row.amount)}</td><td className="py-2 pr-3 text-right tabular-nums">{money(row.runningTotal + (statement.newSale?.amount ?? 0))}</td></tr>)}
+            {statement.newSale && <tr className="border-b"><td className="py-2 pr-3">{longDate(statement.newSale.date)}</td><td className="py-2 pr-3">{statement.account.applicationNumber ? `App ${statement.account.applicationNumber}` : "—"}</td><td className="py-2 pr-3">New sale{statement.newSale.registration > 0 ? " · registration" : ""}</td><td className="py-2 pr-3">—</td><td className="py-2 pr-3 text-right tabular-nums">{formatPeso(statement.newSale.amount)}</td><td className="py-2 pr-3 text-right tabular-nums">{formatPeso(statement.newSale.amount)}</td></tr>}
+            {statement.history.map((row) => <tr key={`${row.orNumber}-${row.nopFrom}`} className="border-b last:border-0"><td className="py-2 pr-3">{longDate(row.orDate)}</td><td className="py-2 pr-3">{row.orNumber}</td><td className="py-2 pr-3">{row.monthFrom === row.monthTo ? monthLabel(row.monthFrom) : `${monthLabel(row.monthFrom)} – ${monthLabel(row.monthTo)}`}</td><td className="py-2 pr-3">{row.nopFrom === row.nopTo ? row.nopFrom : `${row.nopFrom}–${row.nopTo}`}</td><td className="py-2 pr-3 text-right tabular-nums">{formatPeso(row.amount)}</td><td className="py-2 pr-3 text-right tabular-nums">{formatPeso(row.runningTotal + (statement.newSale?.amount ?? 0))}</td></tr>)}
             {!statement.history.length && <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No collections recorded yet.</td></tr>}
           </tbody>
         </table></div>
@@ -145,15 +145,15 @@ function StatementContent() {
         <h2 className="mb-3 font-semibold">Summary</h2>
         <div className="grid gap-3 sm:grid-cols-4">
           <Figure label="Account status" value={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={s.status} tone={["U", "ADV", "Fully Paid"].includes(s.status) ? "success" : s.status === "NS" ? "info" : s.status === "Forfeited" ? "neutral" : "danger"} /><span className="text-xs font-normal text-muted-foreground">{statusText[s.status] ?? s.status}</span></span>} />
-          <Figure label="Total paid" value={<span>{money(s.totalPaid)}<span className="block text-xs font-normal text-muted-foreground">{s.totalPaidBasis.startsWith("NOP") ? `${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"} × ${money(statement.account.monthlyDue)}` : "Flexible: every amount paid"}</span></span>} />
-          <Figure label="Program balance" value={s.remainingBalance === null ? "No fixed total" : money(s.remainingBalance)} />
-          <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : money(s.amountDue)} strong />
+          <Figure label="Total paid" value={<span>{formatPeso(s.totalPaid)}<span className="block text-xs font-normal text-muted-foreground">{s.totalPaidBasis.startsWith("NOP") ? `${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"} × ${formatPeso(statement.account.monthlyDue)}` : "Flexible: every amount paid"}</span></span>} />
+          <Figure label="Program balance" value={s.remainingBalance === null ? "No fixed total" : formatPeso(s.remainingBalance)} />
+          <Figure label="Amount due now" value={s.amountDue === null ? "Forfeited" : formatPeso(s.amountDue)} strong />
         </div>
         <dl className="mt-4 grid gap-x-8 gap-y-1.5 border-t pt-3 sm:grid-cols-2">
           <Row label="Paid through" value={`${monthLabel(s.lastCoveredMonth)} · ${s.monthsPaid} month${s.monthsPaid === 1 ? "" : "s"}`} />
           <Row label="Next due" value={`${monthLabel(s.nextMonth)} (NOP ${s.nextNop})`} />
           <Row label="Months behind" value={String(s.unpaidMonths)} />
-          {s.remainingBalance !== null && <Row label="Total amount payable" value={money(statement.account.payBalanceTotal)} />}
+          {s.remainingBalance !== null && <Row label="Total amount payable" value={formatPeso(statement.account.payBalanceTotal)} />}
         </dl>
         {s.temporarilySuspended && s.status !== "Forfeited" && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">This account is temporarily suspended since {longDate(s.suspendedAt)}. It will be forfeited on {longDate(s.forfeitedAt)} unless updated.</p>}
       </div>

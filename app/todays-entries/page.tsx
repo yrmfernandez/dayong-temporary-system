@@ -19,11 +19,11 @@ import { AdminDeletePanel } from "@/components/admin-delete";
 import { ReceiptPhotoUpload, ReceiptPhotoView } from "@/components/receipt-photo";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPeso } from "@/lib/money";
 
 type Totals = { count: number; amount: number; incentives: number; forfeited: number };
 type Result = { success: boolean; message?: string; date: string; today: string; mode: TodayMode; defaultMode: TodayMode; canEdit: boolean; canDelete?: boolean; employeeId: string; entries: DayEntry[]; sales: Totals; collections: Totals };
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const MODE_HELP: Record<TodayMode, string> = {
   remittance: "Cash the office received on a remittance slip that day.",
   encoded: "Entries saved in the system that day.",
@@ -128,10 +128,10 @@ export default function TodaysEntriesPage() {
 
       {data && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricTile tone="brand" label="New Sales" value={data.sales.count} detail={money(data.sales.amount)} />
-          <MetricTile tone="info" label="Collections" value={data.collections.count} detail={money(data.collections.amount)} />
-          <MetricTile tone="success" label="Incentives kept" value={money(data.sales.incentives + data.collections.incentives)} detail="MAS and Collector incentives" />
-          <MetricTile tone="danger" label="Incentives forfeited" value={money(data.sales.forfeited + data.collections.forfeited)} detail="Remitted after the deadline" />
+          <MetricTile tone="brand" label="New Sales" value={data.sales.count} detail={formatPeso(data.sales.amount)} />
+          <MetricTile tone="info" label="Collections" value={data.collections.count} detail={formatPeso(data.collections.amount)} />
+          <MetricTile tone="success" label="Incentives kept" value={formatPeso(data.sales.incentives + data.collections.incentives)} detail="MAS and Collector incentives" />
+          <MetricTile tone="danger" label="Incentives forfeited" value={formatPeso(data.sales.forfeited + data.collections.forfeited)} detail="Remitted after the deadline" />
         </div>
       )}
 
@@ -169,15 +169,15 @@ function EntryTable({ title, entries, canEdit, canDelete, me, editing, setEditin
                     <td className="p-3"><span className="block">{entry.program}</span><span className="block text-xs text-muted-foreground">{entry.branch}</span></td>
                     <td className="p-3">{entry.person}</td>
                     <td className="p-3"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span>{entry.dateRemitted && <span className="block text-xs text-muted-foreground">Remitted {showDate(entry.dateRemitted)}</span>}</td>
-                    <td className="p-3 text-right font-medium">{money(entry.amount)}</td>
+                    <td className="p-3 text-right font-medium">{formatPeso(entry.amount)}</td>
                     <td className="p-3">
                       {entry.differentIncentive && <span className="block text-xs font-medium text-primary">{entry.differentIncentiveLabel || "Different incentives"}</span>}
                       {entry.noIncentiveReason
                         ? <><StatusBadge status="No incentive" tone="danger" /><span className="block text-xs text-muted-foreground">{entry.noIncentiveReason}</span></>
                         : entry.forfeitedIncentive > 0
-                        ? <><StatusBadge status={`Forfeited ${money(entry.forfeitedIncentive)}`} tone="danger" /><span className="block text-xs text-muted-foreground">Cash came in after {formatDeadline(entry.incentiveDeadline)}</span></>
+                        ? <><StatusBadge status={`Forfeited ${formatPeso(entry.forfeitedIncentive)}`} tone="danger" /><span className="block text-xs text-muted-foreground">Cash came in after {formatDeadline(entry.incentiveDeadline)}</span></>
                         : entry.incentive > 0
-                          ? <><span className="block">{money(entry.incentive)}</span><span className="block text-xs text-muted-foreground">{entry.onRemittance ? "Kept" : `Remit by ${formatDeadline(entry.incentiveDeadline)}`}</span></>
+                          ? <><span className="block">{formatPeso(entry.incentive)}</span><span className="block text-xs text-muted-foreground">{entry.onRemittance ? "Kept" : `Remit by ${formatDeadline(entry.incentiveDeadline)}`}</span></>
                           : <span className="text-xs text-muted-foreground">None</span>}
                     </td>
                     <td className="p-3"><StatusBadge status={entry.remittanceStatus || "Not set"} />{entry.remittedAt && <span className="block text-xs text-muted-foreground">Received {entry.remittedAt}</span>}{entry.remittanceId && <span className="block font-mono text-[11px] text-muted-foreground">{entry.remittanceId}</span>}</td>

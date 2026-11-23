@@ -8,6 +8,7 @@
  */
 import { formatDateTime } from "@/lib/date-format";
 import { nextWorkingDay, type WorkCalendar } from "@/lib/working-days";
+import { validDate } from "@/lib/manila-date";
 
 export const REMITTANCE_CUTOFF = "15:00";
 /**
@@ -17,7 +18,6 @@ export const REMITTANCE_CUTOFF = "15:00";
  */
 export const INCENTIVE_GRACE_DAYS: readonly string[] = ["2026-10-13"];
 
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 export const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 /**

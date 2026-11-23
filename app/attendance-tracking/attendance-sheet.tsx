@@ -16,13 +16,13 @@ import { usePeopleFilter } from "@/components/people-filter";
 import type { GridCell, GridTone, SheetDay, SheetEmployee, SheetSummary } from "@/lib/attendance-sheet";
 import { formatDate as showDate } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { manilaToday } from "@/lib/manila-date";
 
 type AllRow = { employee: SheetEmployee; summary: SheetSummary; cells: GridCell[]; rate: string };
 type LeavePolicy = { paid: boolean; source: "payroll" | "policy" | "none"; payrollId: string };
 type AllResult = { success: boolean; message?: string; employees: SheetEmployee[]; rows: AllRow[]; showRates: boolean; totals: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean; canEdit: boolean };
 type OneResult = { success: boolean; message?: string; today: string; employees: SheetEmployee[]; employee: SheetEmployee; days: SheetDay[]; summary: SheetSummary; leavePolicy: LeavePolicy; canOpenPayroll: boolean; canEdit: boolean };
 
-const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const lastDayOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
 const previousMonth = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
 

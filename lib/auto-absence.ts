@@ -8,6 +8,7 @@ import { runAsSystem } from "@/lib/encoder-context";
 import { withWriteLock } from "@/lib/google-sheets";
 import { getActiveAttendanceEmployees } from "@/lib/google-sheets-data";
 import { getSetting, saveSetting } from "@/lib/system-settings";
+import { addDays } from "@/lib/manila-date";
 
 /**
  * End-of-day absences. Once a working day is over (after 11:59 PM, Manila), every active employee with no attendance
@@ -28,7 +29,6 @@ export const isSystemAbsence = (record: Pick<AttendanceRecord, "status" | "notes
 
 const START_KEY = "auto_absent_from";
 const CLOSED_KEY = "auto_absent_closed_through";
-const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 const MAX_DAYS_PER_RUN = 62;
 
 /**

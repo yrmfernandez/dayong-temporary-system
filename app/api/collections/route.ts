@@ -12,7 +12,7 @@ import { currentEncoder, withEncoder } from "@/lib/encoder-context";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { loadAccountData, commitCollections, type NewCollection } from "@/lib/account-data";
-import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, validDate, type AccountPayment } from "@/lib/account-rules";
+import { accountState, COLLECTION_CHANNELS, incentiveRoleFor, validatePayment, type AccountPayment } from "@/lib/account-rules";
 import { findActivePaymentMethod } from "@/lib/remittance-methods";
 import { calculateRemittance, differentRateOf, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { getEmployees } from "@/lib/employees";
@@ -20,12 +20,13 @@ import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
 import { markCollectionSubmissionSaved, reviewableCollectionSubmission, waitingSubmissionProblem } from "@/lib/collection-submissions";
 import type { SessionUser } from "@/lib/auth";
+import { validDate } from "@/lib/manila-date";
+import { sameName } from "@/lib/match-keys";
 
 /**
  * The same branch or MAS name, ignoring case and extra spaces: accounts keep the MAS as first encoded (e.g. "Nagliba,
  * Marissa") while the employee and the Clearing pick may be spelled "NAGLIBA, MARISSA" (owner, October 13, 2026).
  */
-const sameName = (a: unknown, b: unknown) => String(a ?? "").trim().replace(/\s+/g, " ").toLowerCase() === String(b ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });

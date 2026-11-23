@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/date-format";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { monthEnd } from "@/lib/report-week";
+import { validDate } from "@/lib/manila-date";
 
 /**
  * Weekly and monthly reports the clerk submits (owner, October 30, 2026):
@@ -35,8 +36,6 @@ const TABLE: Record<PeriodKind, PeriodTable> = { weekly: schema.weekly_audits, m
 export const isPeriodKind = (kind: string): kind is PeriodKind => kind === "weekly" || kind === "monthly";
 
 const text = (value: unknown) => String(value ?? "").trim();
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (date: string) => datePattern.test(date) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
 const shift = (date: string, days: number) => { const day = new Date(`${date}T00:00:00Z`); day.setUTCDate(day.getUTCDate() + days); return day.toISOString().slice(0, 10); };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 

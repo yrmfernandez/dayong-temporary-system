@@ -7,6 +7,7 @@ import { CLEARING_COVERS, coveredKinds, DATE_REMITTED_REASON_MIN, handoverLabel,
 import { cashMethodNames, isCashMethod } from "@/lib/entry-batches";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
+import { addDays } from "@/lib/manila-date";
 
 /** Rows of a raw query: postgres.js returns them as the result itself, PGlite (tests) under .rows. */
 const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows?: T[] })?.rows ?? []) as T[];
@@ -82,7 +83,6 @@ const mine = (clearedBy: string) => (text(clearedBy) ? eq(clearings.encoded_by_e
 
 /** Days back the Clearing page looks for unfinished lines. */
 const UNFINISHED_DAYS = 60;
-const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 
 /**
  * Adds each clearing's stage from the entries it covers. An entry belongs to the clearing picked for its batch; one saved

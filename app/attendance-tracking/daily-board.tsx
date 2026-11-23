@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { manilaToday } from "@/lib/manila-date";
 
 type Category = "On time" | "Late" | "Early" | "Marked present" | "Absent" | "AWOL" | "On leave" | "Day Off" | "Not required" | "Not clocked in" | "Non-working day";
 type BoardRecord = { timeIn: string; timeOut: string; scheduledTimeIn: string; lateMinutes: number; leaveType: string; leaveApprovalStatus: string; notes: string; branch: string };
@@ -40,7 +41,6 @@ const markOptions = [
 ] as const;
 type MarkStatus = typeof markOptions[number]["value"];
 
-const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const duration = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes / 60)} hr${minutes >= 120 ? "s" : ""}${minutes % 60 ? ` ${minutes % 60} min` : ""}` : `${minutes} min`;
 
 export function DailyBoard() {

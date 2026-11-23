@@ -16,12 +16,14 @@ import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { addBeneficiaries, addMember, addMemberProgram, addSale, findMemberByNumber, findMemberProgramEnrollment, updateMemberDetails, type MemberDetails, type MemberSheetData, type MemberProgramSheetData, type SaleSheetData } from "@/lib/member-records";
 import { getEmployees } from "@/lib/employees";
 import { ageRestrictionError } from "@/lib/program-age";
-import { todayInManila } from "@/lib/account-rules";
+
 import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 import { anotherPersonProblem } from "@/lib/member-identity";
+import { manilaToday } from "@/lib/manila-date";
+import { phoneKey } from "@/lib/match-keys";
 
 
 type SalePayload = {
@@ -115,11 +117,6 @@ function nextMemberNumber() {
 }
 
 /** Compares Philippine mobile numbers regardless of spaces, dashes, or a +63 prefix; blank when no usable number. */
-function phoneKey(value: unknown) {
-  let digits = String(value ?? "").replace(/\D/g, "");
-  if (digits.startsWith("63")) digits = `0${digits.slice(2)}`;
-  return digits.length >= 10 ? digits : "";
-}
 
 export const POST = withEncoder(async function POST(request: Request) {
   // Day Off locks the day's entries (lib/day-off.ts).
@@ -334,7 +331,7 @@ async function saveSales(request: Request, user: SessionUser) {
       const memberBirthdate = sale.existingMember && !sale.birthdate?.trim()
         ? (await findMemberByNumber(sale.memberNumber?.trim() ?? ""))?.birthdate ?? ""
         : sale.birthdate;
-      const ageError = ageRestrictionError(selectedProgram, memberBirthdate, todayInManila());
+      const ageError = ageRestrictionError(selectedProgram, memberBirthdate, manilaToday());
       if (ageError) {
         return NextResponse.json(
           { success: false, message: `Sale #${saleNumber}: ${ageError}` },

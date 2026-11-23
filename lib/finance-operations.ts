@@ -3,6 +3,8 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { currentDb, encodedBy, inTransaction, schema } from "@/lib/db";
 import { createCashTransaction } from "@/lib/finance-data";
 import { createReadableId } from "@/lib/readable-id";
+import { manilaToday } from "@/lib/manila-date";
+import { roundMoney } from "@/lib/money";
 
 /*
  * Cash accounts, vendor bills and commissions, read and written directly in the database by ID (owner, October 24,
@@ -11,12 +13,9 @@ import { createReadableId } from "@/lib/readable-id";
  * already-paid check, and the payment and its cash record are saved together or not at all.
  */
 const text = (value: unknown) => String(value ?? "").trim();
-const money = (value: unknown) => Math.round(Number(value) * 100) / 100;
 const num = (value: unknown) => Number(value) || 0;
 const date = /^\d{4}-\d{2}-\d{2}$/;
 const { cash_accounts: accountsTable, vendor_payables: payablesTable, commissions: commissionsTable } = schema;
-
-const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 
 /**
  * Money paid out from a finance page also leaves the cash ledger (owner, October 24, 2026; upgrade #3): the cash account
@@ -36,7 +35,7 @@ export async function getCashAccounts() {
 }
 
 export async function saveCashAccount(input: Record<string, unknown>) {
-  const name = text(input.name), type = text(input.type), openingBalance = money(input.openingBalance), status = text(input.status) === "inactive" ? "inactive" : "active";
+  const name = text(input.name), type = text(input.type), openingBalance = roundMoney(input.openingBalance), status = text(input.status) === "inactive" ? "inactive" : "active";
   if (!name || !type || !Number.isFinite(openingBalance)) throw new Error("Account name, type, and opening balance are required.");
   const id = text(input.id);
   return inTransaction(async (tx) => {
@@ -66,7 +65,7 @@ export async function getVendorPayables() {
 }
 
 export async function createVendorPayable(input: Record<string, unknown>) {
-  const total = money(input.amount);
+  const total = roundMoney(input.amount);
   if (!date.test(text(input.invoiceDate)) || !date.test(text(input.dueDate)) || !text(input.vendor) || !text(input.description) || !text(input.branch) || !Number.isFinite(total) || total <= 0) throw new Error("Complete the vendor, dates, branch, description, and amount.");
   const id = createReadableId("PAY");
   await currentDb().insert(payablesTable).values({
@@ -78,7 +77,7 @@ export async function createVendorPayable(input: Record<string, unknown>) {
 
 /** Records a payment on a vendor bill and its cash outflow together: both are saved or neither is. */
 export async function payVendorPayable(id: string, paid: unknown, input: { account?: unknown; date?: unknown; reference?: unknown }) {
-  const payment = money(paid);
+  const payment = roundMoney(paid);
   const [preview] = await currentDb().select().from(payablesTable).where(eq(payablesTable.payable_id, text(id)));
   if (!preview) throw new Error("Record not found.");
   const cash = await cashOutDetails(input, text(preview.branch));
@@ -106,7 +105,7 @@ export async function getCommissions() {
 }
 
 export async function createCommission(input: Record<string, unknown>) {
-  const gross = money(input.grossIncentive), fidelity = money(input.fidelityDeduction), net = Math.round((gross - fidelity) * 100) / 100;
+  const gross = roundMoney(input.grossIncentive), fidelity = roundMoney(input.fidelityDeduction), net = Math.round((gross - fidelity) * 100) / 100;
   if (!text(input.employeeId) || !text(input.employeeName) || !date.test(text(input.periodFrom)) || !date.test(text(input.periodTo)) || text(input.periodFrom) > text(input.periodTo) || !Number.isFinite(gross) || gross < 0 || !Number.isFinite(fidelity) || fidelity < 0 || fidelity > gross) throw new Error("Complete the employee, period, gross incentive, and valid Fidelity deduction.");
   const id = createReadableId("COM");
   await currentDb().insert(commissionsTable).values({

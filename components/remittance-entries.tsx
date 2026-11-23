@@ -9,8 +9,7 @@ import { parseJsonResponse } from "@/lib/api-response";
 import type { RemittanceEntry } from "@/lib/remittance-workflow";
 import { formatDate as showDate } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
-
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+import { formatPeso } from "@/lib/money";
 
 /**
  * Every entry on one remittance slip (GET /api/remittances/entries), opened from the Remittances page so the approver
@@ -39,7 +38,7 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
       const result = await parseJsonResponse<{ success: boolean; message?: string; result?: { applied: string; actualMoved?: boolean; incentive?: number; slip?: { expectedChange: number; difference: number } | null } }>(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to save the decision.");
       const slip = result.result?.slip;
-      await alertDialog(result.result?.applied === "now" && slip ? `Saved. The slip's expected amount changed by ${money(slip.expectedChange)}${result.result.actualMoved ? " and its actual cash with it" : ""}; its difference is now ${money(slip.difference)}.${result.result.actualMoved && decision === "Keep" ? `\n\nIf the collector handed over the full amount, give back the incentive (${money(result.result.incentive ?? 0)}).` : ""}` : result.result?.applied === "next slip" ? "Saved. It applies when this entry is put on a slip." : "Saved.");
+      await alertDialog(result.result?.applied === "now" && slip ? `Saved. The slip's expected amount changed by ${formatPeso(slip.expectedChange)}${result.result.actualMoved ? " and its actual cash with it" : ""}; its difference is now ${formatPeso(slip.difference)}.${result.result.actualMoved && decision === "Keep" ? `\n\nIf the collector handed over the full amount, give back the incentive (${formatPeso(result.result.incentive ?? 0)}).` : ""}` : result.result?.applied === "next slip" ? "Saved. It applies when this entry is put on a slip." : "Saved.");
       setVersion((value) => value + 1);
       onChanged?.();
     } catch (caught) {
@@ -76,8 +75,8 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
             <td className="p-2">{entry.program || "—"}</td>
             <td className="p-2">{entry.orNumber || "—"}<span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span>{entry.dateRemittedReason && <span className="block text-xs text-amber-800">Remitted {showDate(entry.dateRemitted)}: {entry.dateRemittedReason}</span>}</td>
             <td className="p-2 text-xs">{entry.paymentMethod}{entry.paymentReference && <span className="block text-muted-foreground">ref {entry.paymentReference}</span>}</td>
-            <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
-            <td className="p-2 text-right tabular-nums">{money(entry.remittanceAmount)}{entry.differentIncentive && <span className="block text-xs text-primary">{entry.differentIncentiveLabel || "Different incentives"}</span>}{entry.noIncentiveReason ? <span className="block text-xs text-red-700">No incentive: {entry.noIncentiveReason}</span> : entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {money(entry.forfeitedIncentive)}</span>}
+            <td className="p-2 text-right tabular-nums">{formatPeso(entry.amount)}</td>
+            <td className="p-2 text-right tabular-nums">{formatPeso(entry.remittanceAmount)}{entry.differentIncentive && <span className="block text-xs text-primary">{entry.differentIncentiveLabel || "Different incentives"}</span>}{entry.noIncentiveReason ? <span className="block text-xs text-red-700">No incentive: {entry.noIncentiveReason}</span> : entry.forfeitedIncentive > 0 && <span className="block text-xs text-red-700">incentive forfeited {formatPeso(entry.forfeitedIncentive)}</span>}
               {entry.incentiveDecision && <span className="block text-xs text-primary" title={entry.incentiveDecisionNote}>{entry.incentiveDecision === "Keep" ? "Kept" : "Forfeited"} by Administrator{entry.incentiveDecisionNote ? `: ${entry.incentiveDecisionNote}` : ""}</span>}
               {canDecideIncentive && !entry.noIncentiveReason && entry.remittanceStatus !== "Remitted" && (entry.forfeitedIncentive > 0 || entry.amount > entry.remittanceAmount) && <span className="mt-1 flex flex-wrap justify-end gap-1 print:hidden">
                 {entry.incentiveDecision !== "Keep" && <button type="button" disabled={deciding === entry.id} className="text-xs text-primary underline" onClick={() => void decide(entry, "Keep")}>Keep</button>}
@@ -89,7 +88,7 @@ export function RemittanceEntries({ remittanceId, canDecideIncentive = false, on
           </tr>)}
           {!data.entries.length && <tr><td colSpan={9} className="p-4 text-center text-muted-foreground">No entries are linked to this remittance.</td></tr>}
         </tbody>
-        {data.entries.length > 1 && <tfoot className="border-t bg-muted/30 font-medium"><tr><td className="p-2" colSpan={5}>{data.entries.length} entries</td><td className="p-2 text-right tabular-nums">{money(total)}</td><td className="p-2 text-right tabular-nums">{money(share)}</td><td colSpan={2} /></tr></tfoot>}
+        {data.entries.length > 1 && <tfoot className="border-t bg-muted/30 font-medium"><tr><td className="p-2" colSpan={5}>{data.entries.length} entries</td><td className="p-2 text-right tabular-nums">{formatPeso(total)}</td><td className="p-2 text-right tabular-nums">{formatPeso(share)}</td><td colSpan={2} /></tr></tfoot>}
       </table>
     </div>
     {data.missing.length > 0 && <p className="text-xs text-amber-800">Linked but no longer found: {data.missing.join(", ")}.</p>}

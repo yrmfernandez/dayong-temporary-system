@@ -14,11 +14,10 @@ import { declaredNonWorkingDays } from "@/lib/work-calendar";
 import { dateWarnings } from "@/lib/date-checks";
 import { formatDate as showDate } from "@/lib/date-format";
 import { openVariances, varianceLabel } from "@/lib/turnover-variance";
+import { formatPeso, toCents } from "@/lib/money";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const number = (value: unknown) => Number(value ?? 0) || 0;
-const cents = (value: number) => Math.round(value * 100);
-const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
 const validDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 // Imported rows carry -LEG- in their IDs; they are hidden unless asked for, so new mistakes stand out.
 const isLegacy = (id: string) => id.includes("-LEG-");
@@ -167,19 +166,19 @@ export async function findExceptions({ includeLegacy = false } = {}) {
     let paid = 0;
     for (const row of [...rows].sort((a, b) => number(a[13]) - number(b[13]))) {
       const program = programById.get(text(row[5])), amount = number(row[10]);
-      paid += cents(amount);
+      paid += toCents(amount);
       if (!program?.basePay || !/^\d{4}-\d{2}$/.test(text(row[11])) || !/^\d{4}-\d{2}$/.test(text(row[12]))) continue;
-      const months = monthCount(text(row[11]), text(row[12])), expected = cents(program.basePay) * months;
+      const months = monthCount(text(row[11]), text(row[12])), expected = toCents(program.basePay) * months;
       if (months < 1) continue;
-      const payoff = Boolean(program.payBalanceTotal && paid === cents(program.payBalanceTotal));
+      const payoff = Boolean(program.payBalanceTotal && paid === toCents(program.payBalanceTotal));
       if (program.flexible) {
-        const maximum = program.maxMonthly ? cents(program.maxMonthly) * months : 0;
-        const below = cents(amount) < expected, above = maximum > 0 && cents(amount) > maximum && !payoff;
-        if (below || above) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${peso(amount)} for ${months} month${months === 1 ? "" : "s"}; this flexible program takes ${below ? `at least ${peso(expected / 100)}` : `at most ${peso(maximum / 100)}`}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
+        const maximum = program.maxMonthly ? toCents(program.maxMonthly) * months : 0;
+        const below = toCents(amount) < expected, above = maximum > 0 && toCents(amount) > maximum && !payoff;
+        if (below || above) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${formatPeso(amount)} for ${months} month${months === 1 ? "" : "s"}; this flexible program takes ${below ? `at least ${formatPeso(expected / 100)}` : `at most ${formatPeso(maximum / 100)}`}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
         continue;
       }
-      const short = cents(amount) < expected, overButNotPayoff = cents(amount) > expected && !payoff;
-      if (short || overButNotPayoff) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${peso(amount)} for ${months} month${months === 1 ? "" : "s"}; the program expects ${peso(expected / 100)}${overButNotPayoff ? " (more is allowed only when it pays the program off exactly)" : ""}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
+      const short = toCents(amount) < expected, overButNotPayoff = toCents(amount) > expected && !payoff;
+      if (short || overButNotPayoff) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${formatPeso(amount)} for ${months} month${months === 1 ? "" : "s"}; the program expects ${formatPeso(expected / 100)}${overButNotPayoff ? " (more is allowed only when it pays the program off exactly)" : ""}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
     }
   }
   // A New Sale on a program with a locked amount must be its fixed amount.
@@ -187,7 +186,7 @@ export async function findExceptions({ includeLegacy = false } = {}) {
     const program = programById.get(text(row[21]));
     if (!program || program.newSaleAmountEditable || program.flexible) continue;
     const fixed = fixedNewSaleAmount(program);
-    if (fixed > 0 && cents(number(row[26])) !== cents(fixed)) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Amount paid ${peso(number(row[26]))}; ${program.name} is fixed at ${peso(fixed)}.`, date: manilaDateOf(text(row[1])), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
+    if (fixed > 0 && toCents(number(row[26])) !== toCents(fixed)) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Amount paid ${formatPeso(number(row[26]))}; ${program.name} is fixed at ${formatPeso(fixed)}.`, date: manilaDateOf(text(row[1])), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
   }
 
   // Duplicates: one OR number per posted collection, one application number per sale, one record per person.
@@ -212,11 +211,11 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   const offDays = await declaredNonWorkingDays();
   for (const row of posted.filter((item) => text(item[28]) === "Outstanding")) {
     const deadline = incentiveDeadline(text(row[9]), { days: offDays, branch: text(row[6]) });
-    if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${collectionTitle(row)} · ${text(row[31]) || text(row[7])}`, problem: `${peso(number(row[10]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
+    if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${collectionTitle(row)} · ${text(row[31]) || text(row[7])}`, problem: `${formatPeso(number(row[10]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
   }
   for (const row of sales.slice(1).filter((item) => text(item[0]) && text(item[35]) === "Outstanding")) {
     const deadline = incentiveDeadline(text(row[30]) || manilaDateOf(text(row[1])), { days: offDays, branch: text(row[2]) });
-    if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${saleTitle(row)} · ${text(row[3])}`, problem: `${peso(number(row[26]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
+    if (deadline && deadline < nowStamp) add({ category: "overdue", key: `overdue-${text(row[0])}`, recordId: text(row[0]), title: `${saleTitle(row)} · ${text(row[3])}`, problem: `${formatPeso(number(row[26]))} not remitted; the incentive deadline was ${deadline}.`, date: text(row[30]).slice(0, 10), legacy: isLegacy(text(row[0])), href: "/remittances" });
   }
 
   // Imported entries whose number another entry already had (always listed, old data included).
@@ -230,7 +229,7 @@ export async function findExceptions({ includeLegacy = false } = {}) {
   // Batches saved with the turnover sheet short or over, until their slip is approved with how it was settled.
   for (const variance of await openVariances(LIMIT)) add({
     category: "turnover", key: `turnover-${variance.id}`, recordId: variance.id, title: `${variance.kind} · ${variance.branch} · ${variance.mas} · ${variance.dateRemitted ? showDate(variance.dateRemitted) : "no date"}`,
-    problem: `${varianceLabel(variance.difference)}: the turnover sheet says ${peso(variance.controlTotal)}, the ${variance.entryIds.length} entr${variance.entryIds.length === 1 ? "y" : "ies"} ${peso(variance.systemTotal)}. Encoded by ${variance.encodedByName || "?"}${variance.note ? `. Note: ${variance.note}` : ""}. ${variance.remittanceId ? `Slip ${variance.remittanceId} is waiting in Remittances (Discrepancy).` : "No slip yet: the batch waits for its receipt photo, or was returned."}`,
+    problem: `${varianceLabel(variance.difference)}: the turnover sheet says ${formatPeso(variance.controlTotal)}, the ${variance.entryIds.length} entr${variance.entryIds.length === 1 ? "y" : "ies"} ${formatPeso(variance.systemTotal)}. Encoded by ${variance.encodedByName || "?"}${variance.note ? `. Note: ${variance.note}` : ""}. ${variance.remittanceId ? `Slip ${variance.remittanceId} is waiting in Remittances (Discrepancy).` : "No slip yet: the batch waits for its receipt photo, or was returned."}`,
     date: variance.dateRemitted, legacy: false, href: "/remittances",
   });
 

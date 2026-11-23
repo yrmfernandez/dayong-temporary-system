@@ -9,8 +9,8 @@ import { getEmployees } from "@/lib/employees";
 import { getEncoder } from "@/lib/encoder-context";
 import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
-import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
-import { loadWorkCalendar } from "@/lib/work-calendar";
+import { manilaNow } from "@/lib/remittance-deadline";
+import { submissionDeadlines } from "@/lib/work-calendar";
 import { anotherPersonProblem } from "@/lib/member-identity";
 import { recordCorrection } from "@/lib/record-corrections";
 import { savedSales, notAllSaved, type AlreadySaved } from "@/lib/submission-already-saved";
@@ -89,15 +89,9 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Sale
 });
 
 /** Adds each submission's incentive deadline, from its earliest application date and its branch's working days. */
-async function withDeadlines(rows: Array<typeof submissions.$inferSelect>) {
-  const calendars = new Map<string, Awaited<ReturnType<typeof loadWorkCalendar>>>();
-  const result: SaleSubmission[] = [];
-  for (const row of rows) {
-    if (!calendars.has(row.branch)) calendars.set(row.branch, await loadWorkCalendar(row.branch));
-    const first = toSubmission(row).sales.map((sale) => text(sale.orDate)).filter(Boolean).sort()[0] ?? "";
-    result.push(toSubmission(row, first ? incentiveDeadline(first, calendars.get(row.branch)) : ""));
-  }
-  return result;
+async function withDeadlines(rows: Array<typeof submissions.$inferSelect>): Promise<SaleSubmission[]> {
+  const deadlines = await submissionDeadlines(rows, (row) => toSubmission(row).sales.map((sale) => text(sale.orDate)));
+  return rows.map((row, index) => toSubmission(row, deadlines[index]));
 }
 
 /** The signed-in MAS: their employee record and the active branches they work in as MAS. */

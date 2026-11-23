@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatPesoWhole } from "@/lib/money";
 
 type Progress = { key: string; label: string; achieved: number; accounts: number; target: number; accountsTarget: number; notes: string; elapsed: number; projected: number };
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 
 /** Gross Sales against the quarter and year targets, with pace, and an inline form to set them. */
 export function CompanyTargets({ targets, className = "" }: { targets: Progress[]; className?: string }) {
@@ -50,9 +50,9 @@ export function CompanyTargets({ targets, className = "" }: { targets: Progress[
               <span className="block h-full rounded-full" style={{ width: `${Math.min(100, percent)}%`, background: "var(--viz-1)" }} />
               <span className="absolute inset-y-0 w-0.5 bg-foreground/70" style={{ left: `${item.elapsed}%` }} title="Where sales should be today to stay on pace" />
             </div>
-            <p className="flex flex-wrap justify-between gap-x-3 text-xs text-muted-foreground"><span><strong className="text-foreground tabular-nums">{peso(item.achieved)}</strong> of {peso(item.target)} · {percent.toFixed(0)}%</span><span className={onPace ? "font-semibold text-emerald-700 dark:text-emerald-400" : "font-semibold text-amber-700"}>{onPace ? "On pace" : "Behind pace"}: projected {peso(item.projected)}</span></p>
+            <p className="flex flex-wrap justify-between gap-x-3 text-xs text-muted-foreground"><span><strong className="text-foreground tabular-nums">{formatPesoWhole(item.achieved)}</strong> of {formatPesoWhole(item.target)} · {percent.toFixed(0)}%</span><span className={onPace ? "font-semibold text-emerald-700 dark:text-emerald-400" : "font-semibold text-amber-700"}>{onPace ? "On pace" : "Behind pace"}: projected {formatPesoWhole(item.projected)}</span></p>
             {item.accountsTarget > 0 && <p className="text-xs text-muted-foreground">New accounts: <strong className="text-foreground tabular-nums">{item.accounts}</strong> of {item.accountsTarget}</p>}
-          </> : <p className="text-xs text-muted-foreground">No target set. {peso(item.achieved)} so far, projected {peso(item.projected)} at the current pace.</p>}
+          </> : <p className="text-xs text-muted-foreground">No target set. {formatPesoWhole(item.achieved)} so far, projected {formatPesoWhole(item.projected)} at the current pace.</p>}
           {editing === item.key && <form onSubmit={save} className="space-y-3 rounded-xl border p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label htmlFor={`gross-${item.key}`}>Gross Sales target (₱)</Label><Input id={`gross-${item.key}`} type="number" min="1" step="0.01" required value={form.grossSales} onChange={(event) => setForm({ ...form, grossSales: event.target.value })} /></div>

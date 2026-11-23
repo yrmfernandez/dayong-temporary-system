@@ -18,6 +18,8 @@ import type { RejectRequest } from "@/lib/entry-reject-requests";
 import type { DayEntry } from "@/lib/todays-entries";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Totals = { count: number; amount: number };
 type Result = { success: boolean; message?: string; from: string; to: string; today: string; employeeId: string; isAdmin: boolean; clerks: Array<{ employeeId: string; name: string }>; entries: DayEntry[]; sales: Totals; collections: Totals; withPhoto: number;
@@ -27,8 +29,6 @@ type Result = { success: boolean; message?: string; from: string; to: string; to
   rejectRequests?: Record<string, RejectRequest> };
 type Period = "today" | "week" | "month" | "custom";
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
-const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 function rangeFor(period: Period, today: string): [string, string] {
   if (period === "week") { const { start, end } = reportWeek(today); return [start, end]; }
   if (period === "month") return [`${today.slice(0, 7)}-01`, new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10)];
@@ -37,7 +37,7 @@ function rangeFor(period: Period, today: string): [string, string] {
 
 export default function MyEntriesPage() {
   const [period, setPeriod] = useState<Period>("today");
-  const [[from, to], setRange] = useState<[string, string]>(() => rangeFor("today", todayInManila()));
+  const [[from, to], setRange] = useState<[string, string]>(() => rangeFor("today", manilaToday()));
   const [employeeId, setEmployeeId] = useState("");
   const [data, setData] = useState<Result | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +68,7 @@ export default function MyEntriesPage() {
   // Live updates: reload when another user saves (lib/use-live-refresh.ts).
   useLiveRefresh(["sales", "collections", "remittances", "entry_reject_requests"], () => load(from, to, employeeId));
 
-  const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, todayInManila())); };
+  const choose = (next: Period) => { setPeriod(next); if (next !== "custom") setRange(rangeFor(next, manilaToday())); };
   const saved = (text: string) => { setMessage(text); void load(from, to, employeeId); };
   const entries = data?.entries ?? [];
   const batches = groupBatches(entries);
@@ -107,7 +107,7 @@ export default function MyEntriesPage() {
   // A mistake seen after the batch went to approval: ask the approver to reject the entry, with the reason (owner,
   // November 20, 2026). Accepted, the batch comes back Returned to fix or remove the entry.
   const requestReject = async (entry: DayEntry) => {
-    const reason = await promptDialog(`Why should ${entry.id} (${entry.memberName || entry.memberNumber || "this entry"}, ${money(entry.amount)}) be rejected? The approver reads this reason. If they accept, the whole batch comes back to you as Returned, to fix or remove the entry and resubmit.`, { required: true, title: "Request reject", confirmLabel: "Send request" });
+    const reason = await promptDialog(`Why should ${entry.id} (${entry.memberName || entry.memberNumber || "this entry"}, ${formatPeso(entry.amount)}) be rejected? The approver reads this reason. If they accept, the whole batch comes back to you as Returned, to fix or remove the entry and resubmit.`, { required: true, title: "Request reject", confirmLabel: "Send request" });
     if (!reason?.trim()) return;
     setMessage("");
     const response = await fetch("/api/entry-reject-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryId: entry.id, reason }) });
@@ -157,8 +157,8 @@ export default function MyEntriesPage() {
 
       {data && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricTile tone="brand" label="New Sales" value={data.sales.count} detail={money(data.sales.amount)} />
-          <MetricTile tone="info" label="Collections" value={data.collections.count} detail={money(data.collections.amount)} />
+          <MetricTile tone="brand" label="New Sales" value={data.sales.count} detail={formatPeso(data.sales.amount)} />
+          <MetricTile tone="info" label="Collections" value={data.collections.count} detail={formatPeso(data.collections.amount)} />
           <MetricTile tone={needPhoto.length ? "warning" : "success"} label="Batches needing a receipt" value={needPhoto.length} detail={needPhoto.length ? "Bank or e-wallet batches without their photo" : `${batches.length} batch${batches.length === 1 ? "" : "es"}; none waiting`} />
           <MetricTile tone="neutral" label="Period" value={from === to ? from : `${from} to ${to}`} detail="By date encoded" />
         </div>
@@ -190,7 +190,7 @@ export default function MyEntriesPage() {
               <section key={batch.key} className={`overflow-hidden rounded-lg border ${batch.needsPhoto ? "border-amber-300" : isReturned ? "border-red-300" : ""}`} aria-label={`${batch.kind} batch`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 bg-muted/40 p-3">
                   <div className="space-y-0.5">
-                    <p className="font-semibold">{batch.kind === "New Sale" ? "New Sales" : "Collections"} batch · {batch.entries.length} entr{batch.entries.length === 1 ? "y" : "ies"} · {money(batch.total)}</p>
+                    <p className="font-semibold">{batch.kind === "New Sale" ? "New Sales" : "Collections"} batch · {batch.entries.length} entr{batch.entries.length === 1 ? "y" : "ies"} · {formatPeso(batch.total)}</p>
                     <p className="text-xs text-muted-foreground">{first.person} · {first.branch}{first.dateRemitted ? ` · remitted ${first.dateRemitted}` : ""} · encoded {first.encodedAt}{batch.methods.length ? ` · ${batch.methods.join(", ")}` : ""}</p>
                     {first.returnReason && <p className="text-xs text-red-700">Returned: {first.returnReason}</p>}
                   </div>
@@ -218,7 +218,7 @@ export default function MyEntriesPage() {
                             <td className="p-2"><span className="block">{entry.memberName || "—"}</span><span className="block text-xs text-muted-foreground">{entry.memberNumber}</span></td>
                             <td className="p-2"><span className="block">{entry.orNumber || (entry.applicationNumber ? `App ${entry.applicationNumber}` : "—")}</span><span className="block text-xs text-muted-foreground">{showDate(entry.orDate)}</span></td>
                             <td className="p-2 text-xs">{entry.paymentMethod}</td>
-                            <td className="p-2 text-right font-medium">{money(entry.amount)}</td>
+                            <td className="p-2 text-right font-medium">{formatPeso(entry.amount)}</td>
                             <td className="p-2 text-right"><div className="flex flex-wrap justify-end gap-1">
                               <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />View</Button>
                               {entry.remittanceStatus === "Pending Remittance Approval" && requests[entry.id]?.status !== "Pending" && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => void requestReject(entry)}><Ban className="size-3.5" />Request reject</Button>}

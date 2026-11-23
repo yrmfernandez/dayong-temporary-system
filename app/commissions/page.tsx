@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CashOutFields, cashOutReady, manilaToday, type CashOut } from "@/components/cash-out-fields";
+import { CashOutFields, cashOutReady, type CashOut } from "@/components/cash-out-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,15 +8,15 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Commission = { id: string; employeeId: string; employeeName: string; periodFrom: string; periodTo: string; grossIncentive: number; fidelityDeduction: number; netCommission: number; status: string; paidAt: string; referenceNumber: string; remarks: string };
 type Earned = { employeeId: string; name: string; role: string; saleIncentives: number; collectionIncentives: number; sales: number; collections: number; grossIncentive: number; fidelity: number; netCommission: number; recorded: number };
 type Form = { employeeId: string; employeeName: string; periodFrom: string; periodTo: string; grossIncentive: string; fidelityDeduction: string; referenceNumber: string; remarks: string };
-const money = (v: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(v);
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 // Quick periods, in Manila time.
 function periodFor(preset: "this-month" | "last-month" | "this-year") {
-  const now = today(), [year, month] = now.split("-").map(Number);
+  const now = manilaToday(), [year, month] = now.split("-").map(Number);
   if (preset === "this-year") return { from: `${year}-01-01`, to: now };
   if (preset === "this-month") return { from: `${now.slice(0, 7)}-01`, to: now };
   const last = new Date(Date.UTC(year, month - 1, 0));
@@ -32,9 +32,9 @@ const blank = (from: string, to: string): Form => ({ employeeId: "", employeeNam
 
 /** Commissions for employees who earned them: incentives on New Sales and Collections. Fidelity is their own money and is not deducted. */
 export default function CommissionsPage() {
-  const [from, setFrom] = useState(`${today().slice(0, 7)}-01`), [to, setTo] = useState(today());
+  const [from, setFrom] = useState(`${manilaToday().slice(0, 7)}-01`), [to, setTo] = useState(manilaToday());
   const [rows, setRows] = useState<Commission[]>([]), [earned, setEarned] = useState<Earned[]>([]);
-  const [form, setForm] = useState<Form>(() => blank(`${today().slice(0, 7)}-01`, today())), [show, setShow] = useState(false);
+  const [form, setForm] = useState<Form>(() => blank(`${manilaToday().slice(0, 7)}-01`, manilaToday())), [show, setShow] = useState(false);
   const [busy, setBusy] = useState(true), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [filters, setFilters] = useState<Filters>(noFilters);
   // Paying one commission directly (not through payroll): reference and where the cash came from.
@@ -118,10 +118,10 @@ export default function CommissionsPage() {
       {filtered && <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>Showing {shownEarned.length} of {earned.length} earners and {register.length} register entries.</span><button type="button" className="font-medium text-primary hover:underline" onClick={() => setFilters(noFilters)}>Clear filters</button></p>}
     </CardContent></Card>
     {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}{message && <p role="status" className="rounded-xl border p-3 text-sm">{message}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[["Earned this period", totals.earned], ["Fidelity given (not deducted)", totals.fidelity], ["Recorded, not yet paid", totals.pending], ["Paid", totals.paid]].map(([label, value]) => <Card key={String(label)}><CardContent className="pt-5"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold tabular-nums">{money(Number(value))}</p></CardContent></Card>)}</div>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[["Earned this period", totals.earned], ["Fidelity given (not deducted)", totals.fidelity], ["Recorded, not yet paid", totals.pending], ["Paid", totals.paid]].map(([label, value]) => <Card key={String(label)}><CardContent className="pt-5"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold tabular-nums">{formatPeso(Number(value))}</p></CardContent></Card>)}</div>
 
     <Card><CardHeader><CardTitle>Earned Commissions</CardTitle><p className="text-xs text-muted-foreground">Every employee who earned an incentive from {from} to {to}: anyone with New Sales, plus MAS and Collectors on Collections. MAS first. Fidelity is what they added to their approved remittances from their own money; it is not deducted.</p></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr>{["Employee", "Role", "New Sales", "Collections", "Gross incentive", "Fidelity given", "Net commission", "Recorded", ""].map((h) => <th key={h} className="border-b p-3 text-left">{h}</th>)}</tr></thead><tbody>
-      {shownEarned.map((x) => { const remaining = Math.round((x.grossIncentive - x.recorded) * 100) / 100; return <tr key={x.name}><td className="border-b p-3"><b>{x.name}</b><br /><span className="text-xs text-muted-foreground">{x.employeeId || "No employee record"}</span></td><td className="border-b p-3">{x.role}</td><td className="border-b p-3 tabular-nums">{money(x.saleIncentives)}<span className="block text-xs text-muted-foreground">{x.sales} sales</span></td><td className="border-b p-3 tabular-nums">{money(x.collectionIncentives)}<span className="block text-xs text-muted-foreground">{x.collections} payments</span></td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums text-emerald-700">{x.fidelity > 0 ? `− ${money(x.fidelity)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3 text-xs">{x.recorded > 0 ? <>{money(x.recorded)}{remaining > 0 ? <span className="block text-amber-700">{money(remaining)} not recorded</span> : <span className="block text-emerald-700">Fully recorded</span>}</> : <span className="text-amber-700">Not recorded</span>}</td><td className="border-b p-3">{x.employeeId && remaining > 0 && <Button size="sm" onClick={() => prefill(x)}>Record for payroll</Button>}</td></tr>; })}
+      {shownEarned.map((x) => { const remaining = Math.round((x.grossIncentive - x.recorded) * 100) / 100; return <tr key={x.name}><td className="border-b p-3"><b>{x.name}</b><br /><span className="text-xs text-muted-foreground">{x.employeeId || "No employee record"}</span></td><td className="border-b p-3">{x.role}</td><td className="border-b p-3 tabular-nums">{formatPeso(x.saleIncentives)}<span className="block text-xs text-muted-foreground">{x.sales} sales</span></td><td className="border-b p-3 tabular-nums">{formatPeso(x.collectionIncentives)}<span className="block text-xs text-muted-foreground">{x.collections} payments</span></td><td className="border-b p-3 tabular-nums">{formatPeso(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums text-emerald-700">{x.fidelity > 0 ? `− ${formatPeso(x.fidelity)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{formatPeso(x.netCommission)}</td><td className="border-b p-3 text-xs">{x.recorded > 0 ? <>{formatPeso(x.recorded)}{remaining > 0 ? <span className="block text-amber-700">{formatPeso(remaining)} not recorded</span> : <span className="block text-emerald-700">Fully recorded</span>}</> : <span className="text-amber-700">Not recorded</span>}</td><td className="border-b p-3">{x.employeeId && remaining > 0 && <Button size="sm" onClick={() => prefill(x)}>Record for payroll</Button>}</td></tr>; })}
       {!shownEarned.length && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : earned.length ? "No earners match these filters." : "No one earned an incentive in this period."}</td></tr>}
     </tbody></table></div></CardContent></Card>
 
@@ -131,20 +131,20 @@ export default function CommissionsPage() {
       <Field label="Period to"><Input type="date" value={form.periodTo} onChange={(e) => setForm({ ...form, periodTo: e.target.value })} /></Field>
       <Field label="Gross incentive"><Input type="number" min="0" step="0.01" value={form.grossIncentive} onChange={(e) => setForm({ ...form, grossIncentive: e.target.value })} /></Field>
       <Field label="Deduction (old Fidelity rule only)"><Input type="number" min="0" step="0.01" value={form.fidelityDeduction} onChange={(e) => setForm({ ...form, fidelityDeduction: e.target.value })} /></Field>
-      <Field label="Net commission"><Input readOnly className="bg-muted/50" value={money((Number(form.grossIncentive) || 0) - (Number(form.fidelityDeduction) || 0))} /></Field>
+      <Field label="Net commission"><Input readOnly className="bg-muted/50" value={formatPeso((Number(form.grossIncentive) || 0) - (Number(form.fidelityDeduction) || 0))} /></Field>
       <Field label="Reference"><Input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} /></Field>
       <div className="md:col-span-2"><Field label="Remarks"><Input value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} /></Field></div>
       <div className="flex gap-2 md:col-span-3"><Button type="submit" disabled={busy || !form.employeeId}>Record Commission</Button><Button type="button" variant="ghost" onClick={() => setShow(false)}>Cancel</Button></div>
     </form></CardContent></Card>}
 
     <Card><CardHeader><CardTitle>Commission Register</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr>{["Period", "Employee", "Gross", "Fidelity", "Net", "Status", "Paid at", "Action"].map((x) => <th className="border-b p-3 text-left" key={x}>{x}</th>)}</tr></thead><tbody>
-      {register.map((x) => <Fragment key={x.id}><tr><td className="border-b p-3">{showDate(x.periodFrom)} – {showDate(x.periodTo)}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{money(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${money(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{money(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{showDate(x.paidAt) || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" variant={paying?.id === x.id ? "default" : "outline"} aria-expanded={paying?.id === x.id} onClick={() => startPay(x)}>{paying?.id === x.id ? "Close" : "Pay now"}</Button>}</td></tr>
+      {register.map((x) => <Fragment key={x.id}><tr><td className="border-b p-3">{showDate(x.periodFrom)} – {showDate(x.periodTo)}</td><td className="border-b p-3"><b>{x.employeeName}</b><br />{x.employeeId}</td><td className="border-b p-3 tabular-nums">{formatPeso(x.grossIncentive)}</td><td className="border-b p-3 tabular-nums">{x.fidelityDeduction > 0 ? `− ${formatPeso(x.fidelityDeduction)}` : "—"}</td><td className="border-b p-3 font-bold tabular-nums">{formatPeso(x.netCommission)}</td><td className="border-b p-3">{x.status}</td><td className="border-b p-3">{showDate(x.paidAt) || "—"}</td><td className="border-b p-3">{x.status !== "Paid" && <Button size="sm" variant={paying?.id === x.id ? "default" : "outline"} aria-expanded={paying?.id === x.id} onClick={() => startPay(x)}>{paying?.id === x.id ? "Close" : "Pay now"}</Button>}</td></tr>
         {paying?.id === x.id && <tr><td colSpan={8} className="border-b bg-muted/30 p-3">
-          <p className="mb-2 text-sm font-semibold">Pay {money(x.netCommission)} to {x.employeeName} now, outside payroll</p>
+          <p className="mb-2 text-sm font-semibold">Pay {formatPeso(x.netCommission)} to {x.employeeName} now, outside payroll</p>
           <CashOutFields value={cashOut} onChange={setCashOut} />
           <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><Field label="Payment reference (optional)"><Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. GCash ref or voucher number" /></Field>
             <Button type="button" disabled={busy || !cashOutReady(cashOut)} onClick={() => void pay()}>Confirm payment</Button></div>
-          <p className="mt-2 text-xs text-muted-foreground">Marks the commission Paid and records {money(x.netCommission)} as a cash outflow from the account in the cash ledger. Commissions left Pending are paid with the next payroll instead, which records them in its own outflow.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Marks the commission Paid and records {formatPeso(x.netCommission)} as a cash outflow from the account in the cash ledger. Commissions left Pending are paid with the next payroll instead, which records them in its own outflow.</p>
         </td></tr>}</Fragment>)}
       {!register.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{filtered && rows.length ? "No recorded commissions match these filters." : "No commissions recorded yet."}</td></tr>}
     </tbody></table></div></CardContent></Card>

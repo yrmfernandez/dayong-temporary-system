@@ -2,12 +2,13 @@ import { accountScope, type MemberScope } from "@/lib/member-scope";
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { openAccountOfDeceased } from "@/lib/account-deactivation";
-import { accountState, forfeitMonthsFor, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment, todayInManila } from "@/lib/account-rules";
+import { accountState, forfeitMonthsFor, monthIndex, monthName, paymentsByEnrollment, type Account, type AccountPayment } from "@/lib/account-rules";
 import { currentDb, inTransaction, schema, type Queryable, type Transaction } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import type { IncentiveTier } from "@/lib/remittance";
 import { buildMamReport } from "@/lib/mam-report";
 import { recordCompletedAccounts } from "@/lib/full-payments";
+import { manilaToday } from "@/lib/manila-date";
 
 const { collections, member_programs: memberPrograms, members, program_incentives: programIncentives, programs, sales } = schema;
 
@@ -134,7 +135,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
 
 export async function accountReport(scope: AccountScope = {}) {
   const data = await loadAccountData(scope);
-  const today = todayInManila();
+  const today = manilaToday();
   // Look payments and sales up per account instead of scanning every row for every account.
   const byEnrollment = paymentsByEnrollment(data.payments);
   const salesByAccount = new Map<string, (typeof data.sales)[number]>();
@@ -167,7 +168,7 @@ export async function memberStanding(memberId: string): Promise<ProgramStanding[
  * MAS's or Collector's own accounts (lib/member-scope.ts) whatever else is chosen.
  */
 export async function mamReport(from?: string, to?: string, own: MemberScope | null = null, filter: { branch?: string; mas?: string; memberId?: string } = {}) {
-  const today = todayInManila();
+  const today = manilaToday();
   const scope: AccountScope = {};
   if (filter.branch) scope.branch = filter.branch;
   if (filter.memberId) scope.memberId = filter.memberId;
@@ -185,7 +186,7 @@ export async function mamReport(from?: string, to?: string, own: MemberScope | n
 
 /** One member's MAM: each of their program accounts, month by month, from enrollment (at most the last 36 months) to today. */
 export async function memberMam(memberId: string, own: MemberScope | null = null) {
-  const today = todayInManila();
+  const today = manilaToday();
   const data = await loadAccountData(own === null ? { memberId } : { memberId, ...accountScope(own) });
   const current = monthIndex(today.slice(0, 7));
   const earliest = Math.min(current, ...data.accounts.filter((account) => account.doi).map((account) => monthIndex(account.doi.slice(0, 7))));

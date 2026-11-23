@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatDateTime } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { manilaToday } from "@/lib/manila-date";
 
 type Account = { enrollmentId: string; programId: string; programName: string; doi: string; branch: string; mas: string; accountStatus: string; pendingRequest: string };
 type Found = { id: string; number: string; name: string; deceased: boolean; accounts: Account[] };
@@ -19,7 +20,6 @@ type Request = {
   reasonType: string; reason: string; diedOn: string; status: "Pending" | "Approved" | "Rejected"; requestedAt: string; requestedBy: string; reviewedBy: string; reviewedAt: string; reviewNote: string;
 };
 const REASONS = ["Dropped out", "Deceased", "Entered by mistake", "Other"];
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const field = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
 /**
@@ -128,7 +128,7 @@ export default function DropoutsPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1"><Label htmlFor="drop-reason-type">Reason</Label>
             <select id="drop-reason-type" className={field} value={reasonType} onChange={(event) => setReasonType(event.target.value)}><option value="">Choose the reason</option>{REASONS.map((value) => <option key={value}>{value}</option>)}</select></div>
-          {reasonType === "Deceased" && <div className="space-y-1"><Label htmlFor="drop-died">Date of death</Label><Input id="drop-died" type="date" max={today()} value={diedOn} onChange={(event) => setDiedOn(event.target.value)} /></div>}
+          {reasonType === "Deceased" && <div className="space-y-1"><Label htmlFor="drop-died">Date of death</Label><Input id="drop-died" type="date" max={manilaToday()} value={diedOn} onChange={(event) => setDiedOn(event.target.value)} /></div>}
         </div>
         <div className="space-y-1"><Label htmlFor="drop-reason">Details</Label><Input id="drop-reason" maxLength={300} placeholder="e.g. Member told the MAS on Oct 30 they will stop paying" value={reason} onChange={(event) => setReason(event.target.value)} /></div>
         <Button type="button" disabled={!ready || busy} onClick={() => void submit()}>{busy ? "Sending..." : "Send for approval"}</Button>

@@ -15,9 +15,9 @@ import { readApiResponse } from "@/lib/api-response";
 import type { Clearing, ClearingCovers, ClearingStage } from "@/lib/clearing";
 import { handoverLabel } from "@/lib/clearing-kinds";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatPeso } from "@/lib/money";
 
 type PageData = { today: string; clearings: Clearing[]; branches: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string; roles: string[]; branchIds: string[] }> };
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 /** Badge tone for each stage (lib/clearing.ts withProgress). */
 const STAGE_TONE: Record<ClearingStage, "warning" | "orange" | "info" | "danger" | "success" | "neutral"> = {
   "Waiting for encoding": "warning", "Waiting for receipt": "orange", "For approval": "info", Returned: "danger", Approved: "success", Removed: "neutral",
@@ -134,7 +134,7 @@ export default function ClearingPage() {
       <td className="p-3"><strong>{item.employeeName || item.employeeId}</strong><span className="block text-xs text-muted-foreground">{item.employeeId}</span>{/* Two handovers the same day (October 29, 2026): the clerk picks the matching one when encoding. */}{(item.handovers ?? 0) > 1 && <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{handoverLabel(item.handover ?? 1)} of {item.handovers}</span>}</td>
       <td className="p-3">{item.branch}</td>
       <td className="p-3 tabular-nums">{item.clearedDate === data?.today ? time(item.clearedAt) : `${item.clearedDate} ${time(item.clearedAt)}`}<span className="block text-xs text-muted-foreground">by {item.clearedBy || "—"}</span></td>
-      <td className="p-3 tabular-nums">{item.amount != null ? money(item.amount) : "—"}</td>
+      <td className="p-3 tabular-nums">{item.amount != null ? formatPeso(item.amount) : "—"}</td>
       <td className="max-w-64 p-3 text-xs">{item.notes || "—"}{item.closedReason && <span className="block text-muted-foreground">Removed: {item.closedReason}</span>}</td>
       <td className="p-3">{item.kinds?.length
         ? <div className="space-y-2">{item.kinds.map((part) => <div key={part.kind}><span className="block text-xs font-medium">{part.kind}</span><StatusBadge status={part.stage} tone={STAGE_TONE[part.stage]} />{/* Returned entries are fixed and resubmitted from My Entries (owner, October 17, 2026). */}{part.stage === "Returned" && <Link href="/my-entries" className="block text-xs font-medium text-primary underline-offset-2 hover:underline">Fix in My Entries, then Resubmit batch</Link>}{entrySummary(part.entries) && <span className="mt-0.5 block text-xs text-muted-foreground">{entrySummary(part.entries)}</span>}{/* Who approved or returned it, for tracking (owner, October 13, 2026). */}{(part.decisions ?? []).map((decision) => <span key={`${decision.status}-${decision.by}`} className={`block text-xs ${decision.status === "Returned" ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}>{decision.status} by {decision.by}{decision.at ? ` · ${decision.at.slice(0, 10) === data?.today ? time(decision.at) : `${decision.at.slice(0, 10)} ${time(decision.at)}`}` : ""}</span>)}</div>)}</div>

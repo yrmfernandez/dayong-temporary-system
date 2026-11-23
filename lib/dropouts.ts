@@ -9,6 +9,7 @@ import { createReadableId } from "@/lib/readable-id";
 import { recordCorrection } from "@/lib/record-corrections";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { reviewBranches } from "@/lib/sale-submissions";
+import { validDate } from "@/lib/manila-date";
 
 /**
  * Dropouts (owner, October 31, 2026). An Entry Clerk searches a member in their branches, ticks the program account(s)
@@ -28,7 +29,6 @@ export const DROPOUT_REASONS = ["Dropped out", "Deceased", "Entered by mistake",
 export type DropoutAccount = { enrollmentId: string; programId: string; programName: string; accountStatus: string };
 const MODULE = "Program account status";
 const text = (value: unknown) => String(value ?? "").trim();
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const fullName = (row: { surname: string | null; first_name: string | null; middle_name?: string | null }) => `${text(row.surname)}, ${text(row.first_name)} ${text(row.middle_name)}`.trim();
 
 function toRequest(row: typeof requests.$inferSelect) {

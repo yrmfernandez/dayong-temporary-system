@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HOLIDAY_TYPES, type HolidayType } from "@/lib/philippine-holidays";
 import { formatDate as showDate } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
 
 type Holiday = { id: string; date: string; name: string; type: HolidayType; notes: string };
 type Closure = { date: string; reason: string; allBranches: boolean; branchIds: string[]; branchNames: string[]; appliesToMe: boolean };
@@ -26,7 +27,6 @@ const holidayTone: Record<HolidayType, string> = {
 };
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
-const todayInPhilippines = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const shiftMonth = (month: string, by: number) => {
   const date = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + by, 1));
   return date.toISOString().slice(0, 7);
@@ -42,7 +42,7 @@ const closureScope = (closure: Closure) => closure.allBranches ? "All branches" 
  * HR and administrators also edit holidays and declare or reopen non-working days per branch.
  */
 export function AttendanceCalendar({ onClosuresChanged }: { onClosuresChanged?: () => void }) {
-  const today = todayInPhilippines();
+  const today = manilaToday();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [data, setData] = useState<CalendarData | null>(null);
   const [selected, setSelected] = useState(today);

@@ -374,7 +374,7 @@ On/after suspension, another payment requires `If Suspended = Waiver`. Other dro
 
 Status is calculated on reads, updated on Collection saves, and persisted by MAM's **Sync current statuses** action. There is no background status scheduler.
 
-Sources: [account rules](../lib/account-rules.ts), [Collections API](../app/api/collections/route.ts), [account loading/commit](../lib/account-data.ts). The older `getNextNOP` helper in [calculations.ts](../lib/calculations.ts) returns 1 with no collections; the active account workflow above uses `accountState` and starts Collections at 2.
+Sources: [account rules](../lib/account-rules.ts), [Collections API](../app/api/collections/route.ts), [account loading/commit](../lib/account-data.ts). Collections start at NOP 2 (`accountState`); the old unused `calculations.ts` helpers were removed on 2026-11-23.
 
 ## 6. Remittances and staff accountability
 

@@ -15,12 +15,12 @@ import { ProgramTransfer } from "@/app/programs/program-transfer";
 import { parseJsonResponse } from "@/lib/api-response";
 import type { FoundEntry, SearchKind } from "@/lib/entry-search";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPeso } from "@/lib/money";
 
 type Result = { success: boolean; message?: string; entries: FoundEntry[]; limit: number; canDelete: boolean };
 type Options = { employees: Array<{ id: string; name: string; branch: string; roles: string[]; status: string }>; programs: Array<{ id: string; name: string; code: string; rate: number; status: string }> };
 type Tab = "entries" | "mas" | "branches" | "collectors" | "programs" | "more";
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const KINDS: Array<[SearchKind, string]> = [["all", "New Sales and Collections"], ["New Sale", "New Sales"], ["Collection", "Collections"]];
 const TABS: Array<[Tab, string, typeof Pencil]> = [["entries", "Entries", Pencil], ["mas", "Move between MAS", ArrowRightLeft], ["branches", "Move between branches", Building2], ["collectors", "Assign Collector", UserCheck], ["programs", "Move between programs", Shuffle], ["more", "Other corrections", Wrench]];
 
@@ -113,7 +113,7 @@ function EntriesTab() {
                 <td className="p-2 font-medium">{entry.orNumber || "—"}</td>
                 <td className="whitespace-nowrap p-2">{showDate(entry.orDate) || "—"}</td>
                 <td className="p-2">{entry.kind === "New Sale" ? entry.applicationNumber || "—" : ""}</td>
-                <td className="p-2 text-right tabular-nums">{money(entry.amount)}</td>
+                <td className="p-2 text-right tabular-nums">{formatPeso(entry.amount)}</td>
                 <td className="p-2"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${entry.onRemittance ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300"}`}>{entry.remittanceStatus || "Outstanding"}</span>{entry.remittanceId && <span className="block font-mono text-xs text-muted-foreground">{entry.remittanceId}</span>}</td>
                 <td className="p-2 text-xs">{entry.encodedBy || <span className="text-muted-foreground">Imported</span>}<span className="block text-muted-foreground">{entry.encodedAt}</span></td>
                 <td className="p-2"><div className="flex gap-1">

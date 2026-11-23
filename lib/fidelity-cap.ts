@@ -1,3 +1,4 @@
+import { roundMoney } from "./money.ts";
 /**
  * The Fidelity base (owner, October 30, 2026): contributions have no limit and nothing is locked. The first FIDELITY_CAP
  * of an employee's approved balance is the base, withdrawn by a percentage or a fixed amount; anything above it is the
@@ -6,15 +7,13 @@
  */
 export const FIDELITY_CAP = 10000;
 
-const cents = (value: number) => Math.round(value * 100) / 100;
-
 /** Base (the first FIDELITY_CAP), excess (above it) and still-to-reach-the-base parts of an approved balance. */
 export function fidelityStanding(approved: number) {
-  const balance = Math.max(0, cents(approved));
+  const balance = Math.max(0, roundMoney(approved));
   return {
-    base: cents(Math.min(balance, FIDELITY_CAP)),
-    excess: cents(Math.max(0, balance - FIDELITY_CAP)),
-    remaining: Math.max(0, cents(FIDELITY_CAP - balance)),
+    base: roundMoney(Math.min(balance, FIDELITY_CAP)),
+    excess: roundMoney(Math.max(0, balance - FIDELITY_CAP)),
+    remaining: Math.max(0, roundMoney(FIDELITY_CAP - balance)),
   };
 }
 
@@ -24,6 +23,6 @@ export function fidelityStanding(approved: number) {
  */
 export function baseWithdrawalAmount(base: number, mode: string, value: number) {
   if (!(value > 0)) return null;
-  const paid = mode === "percent" ? (value <= 100 ? cents((base * value) / 100) : null) : mode === "fixed" ? cents(value) : null;
+  const paid = mode === "percent" ? (value <= 100 ? roundMoney((base * value) / 100) : null) : mode === "fixed" ? roundMoney(value) : null;
   return paid !== null && paid > 0 && paid <= base ? paid : null;
 }

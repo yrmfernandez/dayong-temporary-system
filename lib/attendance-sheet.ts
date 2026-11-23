@@ -2,6 +2,7 @@ import type { AttendanceRecord } from "@/lib/attendance-data";
 import { boardCategory } from "@/lib/attendance-board";
 import { withDayTotals } from "@/lib/attendance";
 import { isWorkingDay, type DeclaredDay } from "@/lib/working-days";
+import { addDays } from "@/lib/manila-date";
 
 /**
  * Attendance sheet (owner, October 14, 2026): every day of a date range for an employee, including days with no record,
@@ -71,7 +72,6 @@ export type SheetEmployee = { id: string; name: string; branch: string; roles: s
 export const PAPER_SHEET_NOTE = "From the paper attendance sheet";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const addDays = (date: string, count: number) => new Date(Date.parse(`${date}T00:00:00Z`) + count * 86400000).toISOString().slice(0, 10);
 const round = (value: number) => Math.round(value * 100) / 100;
 
 export function emptySummary(): SheetSummary {

@@ -1,12 +1,13 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { canAccessPath, canCorrectEntriesFor } from "@/lib/access-control";
-import { accountState, forfeitMonthsFor, saleNops, todayInManila, type AccountPayment } from "@/lib/account-rules";
+import { accountState, forfeitMonthsFor, saleNops, type AccountPayment } from "@/lib/account-rules";
 import { canManageUsers, getSessionUser } from "@/lib/auth-server";
 import { currentDb, inTransaction } from "@/lib/db";
 import { createReadableId } from "@/lib/readable-id";
 import { mergeAccountInto, numberingStart, receiptMonthsAt, renumber, repriceCollections, repriceSales } from "@/lib/entry-edit";
 import { getEncoder } from "@/lib/encoder-context";
+import { manilaToday } from "@/lib/manila-date";
 
 /**
  * Moving accounts between programs from the Programs page (owner, October 10, 2026): an administrator moves all of a
@@ -107,7 +108,7 @@ export async function transferProgramAccounts(input: { fromProgramId: string; to
     if (wanted && !wanted.size) throw new Error("Choose the accounts to move, or all of them.");
     const chosen = accounts.filter((account) => !wanted || wanted.has(account.enrollment_id));
     if (wanted && chosen.length !== wanted.size) throw new Error("Some of the chosen accounts are no longer in this program. Reload and try again.");
-    const today = todayInManila();
+    const today = manilaToday();
     const base = (id: string, memberId: string, doi: string) => ({ id, memberId, memberNumber: "", programId: to.program_id, doi, branch: "", mas: "", basePay: to.rate, payBalanceTotal: to.total, storedStatus: "", flexible: to.flexible, maxMonthlyPayment: to.max, forfeitMonths: forfeitMonthsFor(to.category_id), registrationFee: Boolean(to.registration_fee_required) });
     // A target that differs in registration fee numbers NOPs differently; the months stay (saleNops).
     const nopShift = saleNops({ registrationFee: to.registration_fee_required }) - saleNops({ registrationFee: from.registration_fee_required });

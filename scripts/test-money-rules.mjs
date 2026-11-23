@@ -134,3 +134,21 @@ test("Fidelity: nothing is locked; the base (first ₱10,000) by percent or fixe
   assert.equal(baseWithdrawalAmount(0, "percent", 50), null, "no base");
   assert.equal(baseWithdrawalAmount(10000, "", 50), null, "a mode is required");
 });
+
+test("shared peso helpers: shown amounts, rounding, centavos and name and phone matching (November 23, 2026)", async () => {
+  const { formatPeso, formatPesoWhole, formatPesoShort, roundMoney, toCents } = await import("../lib/money.ts");
+  const { nameKey, sameName, phoneKey } = await import("../lib/match-keys.ts");
+  assert.equal(formatPeso(1234.5), "₱1,234.50");
+  assert.equal(formatPeso(undefined), "₱0.00", "a missing amount shows as zero");
+  assert.equal(formatPesoWhole(1234.5), "₱1,235");
+  assert.equal(formatPesoShort(500), "₱500");
+  assert.equal(formatPesoShort(1234.5), "₱1,234.5");
+  assert.equal(roundMoney(0.1 + 0.2), 0.3);
+  assert.equal(roundMoney("12.345"), 12.35);
+  assert.ok(Number.isNaN(roundMoney(undefined)), "a missing amount stays NaN so validation catches it");
+  assert.equal(toCents(19.99), 1999);
+  assert.equal(nameKey("  Dela  Cruz "), "dela cruz");
+  assert.equal(sameName("JUAN  DELA CRUZ", "juan dela cruz "), true);
+  assert.equal(phoneKey("+63 917 123 4567"), "09171234567");
+  assert.equal(phoneKey("1234"), "", "too short to be a phone number");
+});

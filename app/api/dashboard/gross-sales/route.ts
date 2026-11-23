@@ -1,8 +1,8 @@
 import { executiveRoles, isAdministratorRole, isFinanceFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { filterGrossSales, getGrossSalesEntries } from "@/lib/gross-sales";
+import { validDate } from "@/lib/manila-date";
 
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const csvCell = (value: string | number) => { const text = String(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
 
 /**

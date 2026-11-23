@@ -9,9 +9,12 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchSelect } from "@/components/ui/search-select";
-import { todayInManila } from "@/lib/account-rules";
+
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { weekOfMonth } from "@/lib/report-week";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Figures = {
   accounts: number; gross: number; incentives: number; fidelity: number; penalty: number; expectedRemittance: number;
@@ -30,10 +33,8 @@ type Row = { employeeId: string; employeeName: string; branch: string; status: "
 const monthName = (label: string) => new Date(`${label}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 const periodDates = (period: SubmittedPeriod) => `${period.week && period.monthLabel ? `Week ${period.week} of ${monthName(period.monthLabel)}: ` : period.monthLabel ? `${monthName(period.monthLabel)}: ` : ""}${showDate(period.start)} – ${showDate(period.end)}`;
 // The week of the month a day is in, as the default week to audit (Week 1 runs from the 1st to the first Sunday).
-const weekOfMonth = (date: string) => Math.floor((Number(date.slice(8, 10)) - 1 + (new Date(`${date.slice(0, 7)}-01T00:00:00Z`).getUTCDay() + 6) % 7) / 7) + 1;
 const WEEKS = [1, 2, 3, 4, 5, 6];
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const when = (value: string) => (value ? showDateTime(value) : "");
 
 /** HR, Finance, and Administrators audit each Entry Clerk's report by day, week, month, or year; only an Administrator approves. */
@@ -41,9 +42,9 @@ export default function DailyAuditPage() {
   const [tab, setTab] = useState<Period | "summary">("daily");
   const period: Period = tab === "summary" ? "daily" : tab;
   const unit = PERIODS.find(([id]) => id === period)?.[2] ?? "day";
-  const [date, setDate] = useState(todayInManila());
+  const [date, setDate] = useState(manilaToday());
   // Weekly audits pick a month and its Week 1, 2... (November 12, 2026; lib/report-periods.ts numberWeeks).
-  const [week, setWeek] = useState(() => weekOfMonth(todayInManila()));
+  const [week, setWeek] = useState(() => weekOfMonth(manilaToday()));
   const [span, setSpan] = useState({ from: "", to: "" });
   const [rows, setRows] = useState<Row[]>([]);
   const [notSubmitted, setNotSubmitted] = useState<string[]>([]);
@@ -110,15 +111,15 @@ export default function DailyAuditPage() {
             <p className="mt-1 text-sm text-muted-foreground">Check each Entry Clerk&apos;s report for the day, week, month or year. HR and Finance prepare the audit; an Administrator approves it, which locks it.</p>
           </div>
         </div>
-        {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={todayInManila()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
+        {tab === "daily" && <label className="text-sm">Report date<Input type="date" className="mt-1 h-9" max={manilaToday()} value={date} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(event.target.value); } }} /></label>}
         {tab === "weekly" && <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); setWeek(1); } }} /></label>
+          <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={manilaToday().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); setWeek(1); } }} /></label>
           <label className="text-sm">Week<select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={week} onChange={(event) => { setOpen(""); setWeek(Number(event.target.value)); }}>
             {WEEKS.map((number) => <option key={number} value={number}>Week {number}</option>)}
           </select></label>
         </div>}
-        {tab === "monthly" && <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={todayInManila().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); } }} /></label>}
-        {tab === "yearly" && <label className="text-sm">Year<Input type="number" className="mt-1 h-9 w-28" min={2019} max={Number(todayInManila().slice(0, 4))} value={date.slice(0, 4)} onChange={(event) => { const year = event.target.value; if (/^\d{4}$/.test(year)) { setOpen(""); setDate(`${year}-01-01`); } }} /></label>}
+        {tab === "monthly" && <label className="text-sm">Month<Input type="month" className="mt-1 h-9" max={manilaToday().slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => { if (event.target.value) { setOpen(""); setDate(`${event.target.value}-01`); } }} /></label>}
+        {tab === "yearly" && <label className="text-sm">Year<Input type="number" className="mt-1 h-9 w-28" min={2019} max={Number(manilaToday().slice(0, 4))} value={date.slice(0, 4)} onChange={(event) => { const year = event.target.value; if (/^\d{4}$/.test(year)) { setOpen(""); setDate(`${year}-01-01`); } }} /></label>}
       </div>
     </header>
 
@@ -151,7 +152,7 @@ export default function DailyAuditPage() {
             {row.period && <p className="text-xs font-medium">{periodDates(row.period)}</p>}
           </div>
           <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-sm">
-            {[["Accounts", String(row.figures.accounts)], ["Collected", money(row.figures.gross)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
+            {[["Accounts", String(row.figures.accounts)], ["Collected", formatPeso(row.figures.gross)], ["Expected remittance", formatPeso(row.figures.expectedRemittance)]].map(([label, value]) =>
               <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></div>)}
           </dl>
           <div className="min-w-28"><StatusBadge status={row.period?.submission === "Returned" && row.status !== "Approved" ? "Returned to clerk" : row.status} tone={row.status === "Approved" ? "success" : row.period?.submission === "Returned" ? "warning" : row.status === "Draft" ? "info" : "warning"} />{row.audit?.result && <span className="mt-1 block text-xs text-muted-foreground">{row.audit.result}</span>}{row.status === "Approved" && row.audit?.editAllowedAt && <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">Clerk may edit</span>}</div>
@@ -161,7 +162,7 @@ export default function DailyAuditPage() {
           <section className="space-y-2">
             <h3 className="text-sm font-semibold">Figures{(row.figures.byBranch?.length ?? 0) > 1 ? " · all branches" : row.figures.byBranch?.[0] ? ` · ${row.figures.byBranch[0].branch}` : ""}</h3>
                 <div className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
-                  {[["Accounts", String(row.figures.accounts)], ["Amount collected", money(row.figures.gross)], ["Incentives", money(row.figures.incentives)], ["Fidelity", money(row.figures.fidelity)], ["Penalties", money(row.figures.penalty)], ["Expected remittance", money(row.figures.expectedRemittance)]].map(([label, value]) =>
+                  {[["Accounts", String(row.figures.accounts)], ["Amount collected", formatPeso(row.figures.gross)], ["Incentives", formatPeso(row.figures.incentives)], ["Fidelity", formatPeso(row.figures.fidelity)], ["Penalties", formatPeso(row.figures.penalty)], ["Expected remittance", formatPeso(row.figures.expectedRemittance)]].map(([label, value]) =>
                     <div key={label} className="rounded-lg border bg-background p-2"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}
                 </div>
           </section>
@@ -172,8 +173,8 @@ export default function DailyAuditPage() {
               <table className="w-full table-auto text-left text-xs sm:text-sm">
                 <thead className="bg-muted/50"><tr>{["Branch", "Accounts", "Collected", "Incentives", "Fidelity", "Penalties", "Expected remittance"].map((label) => <th key={label} className="p-2 font-medium">{label}</th>)}</tr></thead>
                 <tbody>
-                  {row.figures.byBranch!.map((line) => <tr key={line.branch} className="border-t"><td className="p-2 font-medium">{line.branch}</td>{[String(line.accounts), money(line.gross), money(line.incentives), money(line.fidelity), money(line.penalty), money(line.net)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>)}
-                  <tr className="border-t bg-muted/30 font-semibold"><td className="p-2">All branches</td>{[String(row.figures.accounts), money(row.figures.gross), money(row.figures.incentives), money(row.figures.fidelity), money(row.figures.penalty), money(row.figures.expectedRemittance)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>
+                  {row.figures.byBranch!.map((line) => <tr key={line.branch} className="border-t"><td className="p-2 font-medium">{line.branch}</td>{[String(line.accounts), formatPeso(line.gross), formatPeso(line.incentives), formatPeso(line.fidelity), formatPeso(line.penalty), formatPeso(line.net)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>)}
+                  <tr className="border-t bg-muted/30 font-semibold"><td className="p-2">All branches</td>{[String(row.figures.accounts), formatPeso(row.figures.gross), formatPeso(row.figures.incentives), formatPeso(row.figures.fidelity), formatPeso(row.figures.penalty), formatPeso(row.figures.expectedRemittance)].map((value, index) => <td key={index} className="p-2 tabular-nums">{value}</td>)}</tr>
                 </tbody>
               </table>
             </div>
@@ -190,10 +191,10 @@ export default function DailyAuditPage() {
             <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold"><ChevronDown className="size-4 transition-transform group-open:rotate-180" />Entries by program</summary>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div><p className="mb-1 text-sm font-semibold">New Sales ({row.figures.sales.length})</p>
-                    {row.figures.sales.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
+                    {row.figures.sales.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.sales.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s)</span></span><span className="tabular-nums">{formatPeso(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No new sales encoded.</p>}</div>
                   <div><p className="mb-1 text-sm font-semibold">Collections ({row.figures.collections.length})</p>
-                    {row.figures.collections.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {money(line.expectedRemittance)}</span></span><span className="tabular-nums">{money(line.gross)}</span></li>)}</ul>
+                    {row.figures.collections.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border bg-background text-sm">{row.figures.collections.map((line, index) => <li key={index} className="flex justify-between gap-2 p-2"><span>{line.program}<span className="block text-xs text-muted-foreground">{line.branch} · {line.accounts} account(s) · remit {formatPeso(line.expectedRemittance)}</span></span><span className="tabular-nums">{formatPeso(line.gross)}</span></li>)}</ul>
                       : <p className="text-sm text-muted-foreground">No collections encoded.</p>}</div>
                 </div>
           </details>
@@ -256,7 +257,7 @@ type Summary = {
 
 /** Approved audits for a period, branch (any branch the clerk is assigned to), and Entry Clerk. */
 function AuditSummary() {
-  const today = todayInManila();
+  const today = manilaToday();
   const [filters, setFilters] = useState({ from: `${today.slice(0, 7)}-01`, to: today, branch: "", employeeId: "" });
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState("");
@@ -271,7 +272,7 @@ function AuditSummary() {
     return () => controller.abort();
   }, [filters]);
   const set = (patch: Partial<typeof filters>) => { setBusy(true); setFilters((current) => ({ ...current, ...patch })); };
-  const figureCells = (totals: Totals) => [String(totals.accounts), money(totals.gross), money(totals.incentives), money(totals.fidelity), money(totals.penalty), money(totals.expectedRemittance)];
+  const figureCells = (totals: Totals) => [String(totals.accounts), formatPeso(totals.gross), formatPeso(totals.incentives), formatPeso(totals.fidelity), formatPeso(totals.penalty), formatPeso(totals.expectedRemittance)];
   const figureHeaders = ["Accounts", "Collected", "Incentives", "Fidelity", "Penalties", "Expected remittance"];
   return <div className="space-y-6">
     <div className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-5 print:hidden">
@@ -309,7 +310,7 @@ function AuditSummary() {
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-muted"><tr>{["Date", "Entry Clerk", "Branch", "Result", "Collected", "Expected remittance", "Findings", "Approved by"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
           <tbody>
-            {summary.audits.map((audit) => <tr key={`${audit.date}-${audit.employeeId}`} className="border-t align-top"><td className="p-3 whitespace-nowrap">{showDate(audit.date)}</td><td className="p-3">{audit.employeeName}</td><td className="p-3">{audit.branch || "—"}</td><td className="p-3"><StatusBadge status={audit.result} tone={audit.result === "Balanced" ? "success" : "danger"} /></td><td className="p-3 tabular-nums">{money(audit.figures?.gross ?? 0)}</td><td className="p-3 tabular-nums">{money(audit.figures?.expectedRemittance ?? 0)}</td><td className="p-3 whitespace-pre-wrap">{audit.findings || "—"}</td><td className="p-3">{audit.approvedByName}<span className="block text-xs text-muted-foreground">{when(audit.approvedAt)}</span></td></tr>)}
+            {summary.audits.map((audit) => <tr key={`${audit.date}-${audit.employeeId}`} className="border-t align-top"><td className="p-3 whitespace-nowrap">{showDate(audit.date)}</td><td className="p-3">{audit.employeeName}</td><td className="p-3">{audit.branch || "—"}</td><td className="p-3"><StatusBadge status={audit.result} tone={audit.result === "Balanced" ? "success" : "danger"} /></td><td className="p-3 tabular-nums">{formatPeso(audit.figures?.gross ?? 0)}</td><td className="p-3 tabular-nums">{formatPeso(audit.figures?.expectedRemittance ?? 0)}</td><td className="p-3 whitespace-pre-wrap">{audit.findings || "—"}</td><td className="p-3">{audit.approvedByName}<span className="block text-xs text-muted-foreground">{when(audit.approvedAt)}</span></td></tr>)}
             {!summary.audits.length && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{busy ? "Loading..." : "No approved audits in this period."}</td></tr>}
           </tbody>
         </table>

@@ -14,6 +14,7 @@ import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { HOLIDAY_TYPES, philippineHolidays, type HolidayType } from "@/lib/philippine-holidays";
 import { createReadableId } from "@/lib/readable-id";
+import { validDate } from "@/lib/manila-date";
 
 const { holidays: holidaysTable } = schema;
 const text = (value: unknown) => String(value ?? "").trim();
@@ -29,7 +30,6 @@ export type Closure = {
   date: string; reason: string; allBranches: boolean; branchIds: string[]; branchNames: string[]; updatedAt: string;
 };
 
-export const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const isSunday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
 
 const holidayType = (value: unknown): HolidayType => HOLIDAY_TYPES.find((type) => type === text(value)) ?? "Special non-working day";

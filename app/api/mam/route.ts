@@ -3,10 +3,11 @@ import { ownMembersScope } from "@/lib/member-scope";
 import { withEncoder } from "@/lib/encoder-context";
 import { mamReport, syncAccountStatuses } from "@/lib/account-data";
 import { monitoringMonths } from "@/lib/mam-report";
-import { todayInManila } from "@/lib/account-rules";
+
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { listMembersInBranch } from "@/lib/member-records";
+import { manilaToday } from "@/lib/manila-date";
 
 /**
  * MAM, chosen in order: branch, then a MAS or employee assigned to it, then a member. Only the chosen accounts are
@@ -31,8 +32,8 @@ export async function GET(request: Request) {
     if (params.get("members") === "1") {
       return Response.json({ success: true, members: await listMembersInBranch(value("branch"), own ? own.mas ?? "" : value("mas"), own?.collectorId) });
     }
-    const from = value("from") || todayInManila().slice(0, 7);
-    const to = value("to") || todayInManila().slice(0, 7);
+    const from = value("from") || manilaToday().slice(0, 7);
+    const to = value("to") || manilaToday().slice(0, 7);
     try { monitoringMonths(from, to); } catch (error) { return Response.json({ success: false, message: error instanceof Error ? error.message : "Invalid range." }, { status: 400 }); }
     // Everyone except a MAS chooses a branch first, so a report never loads every account in the company.
     if (own === null && !value("branch")) return Response.json({ success: false, needsBranch: true, message: "Choose a branch to load MAM." }, { status: 400 });

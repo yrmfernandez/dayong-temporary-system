@@ -1,6 +1,6 @@
 "use client";
 
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
+import { formatPeso } from "@/lib/money";
 
 /**
  * The batch calculation shown on Collections and New Sales:
@@ -17,19 +17,19 @@ export function RemittanceSummary({ collected, remittance, fidelity = 0, penalty
   const total = ready ? Math.round((remittance + fidelity) * 100) / 100 : 0;
   const row = "flex items-baseline justify-between gap-3";
   return <section aria-label="Remittance calculation" className="space-y-2 rounded-xl border bg-primary/5 p-4 text-sm">
-    <div className={row}><span className="font-medium">Total amount collected</span><strong className="tabular-nums">{peso(collected)}</strong></div>
+    <div className={row}><span className="font-medium">Total amount collected</span><strong className="tabular-nums">{formatPeso(collected)}</strong></div>
     <div className={row}>
       <span className="font-medium">Total incentives{incentiveNote && <span className="block text-xs font-normal text-muted-foreground">{incentiveNote}</span>}</span>
-      <strong className="tabular-nums">{ready ? peso(incentives) : "Pending"}</strong>
+      <strong className="tabular-nums">{ready ? formatPeso(incentives) : "Pending"}</strong>
     </div>
     {ready && fidelity > 0 && <div className="ml-3 space-y-0.5 border-l-2 pl-3 text-xs text-muted-foreground">
-      <div className={row}><span>Company remittance</span><span className="tabular-nums">{peso(remittance)}</span></div>
-      <div className={`${row} text-emerald-700`}><span>+ Fidelity (employee&apos;s own money)</span><span className="tabular-nums">{peso(fidelity)}</span></div>
+      <div className={row}><span>Company remittance</span><span className="tabular-nums">{formatPeso(remittance)}</span></div>
+      <div className={`${row} text-emerald-700`}><span>+ Fidelity (employee&apos;s own money)</span><span className="tabular-nums">{formatPeso(fidelity)}</span></div>
     </div>}
-    <div className={`${row} border-t pt-2 text-base`}><span className="font-semibold">Total remittance</span><strong className="tabular-nums">{ready ? peso(total) : "Complete the entries"}</strong></div>
+    <div className={`${row} border-t pt-2 text-base`}><span className="font-semibold">Total remittance</span><strong className="tabular-nums">{ready ? formatPeso(total) : "Complete the entries"}</strong></div>
     {penalty > 0 && <div className="space-y-1 border-t border-dashed pt-2 text-xs">
       <p className="text-muted-foreground">Separate from the remittance</p>
-      <div className={`${row} text-red-700`}><span>Penalty (MAS&apos;s own money){penaltyNote && <span className="block">{penaltyNote}</span>}</span><strong className="tabular-nums">{peso(penalty)}</strong></div>
+      <div className={`${row} text-red-700`}><span>Penalty (MAS&apos;s own money){penaltyNote && <span className="block">{penaltyNote}</span>}</span><strong className="tabular-nums">{formatPeso(penalty)}</strong></div>
     </div>}
   </section>;
 }

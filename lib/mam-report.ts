@@ -1,12 +1,11 @@
 import { accountState, dateInMonth, monthCount, monthIndex, monthName, paymentsByEnrollment, validMonth, type Account, type AccountPayment } from "@/lib/account-rules";
+import { toCents } from "@/lib/money";
 
 export type MamAccount = Account & { memberName: string; programName: string; deactivatedOn?: string };
 export function monitoringMonths(from: string, to: string) {
   if (!validMonth(from) || !validMonth(to) || from > to || monthCount(from, to) > 120) throw new Error("Choose a valid month range of up to 120 months.");
   return Array.from({ length: monthCount(from, to) }, (_, i) => monthName(monthIndex(from) + i));
 }
-
-const cents = (value: number) => Math.round(value * 100);
 
 /**
  * The month's fixed quota for one account (owner, November 5, 2026): the last month's closing total, so October's quota
@@ -39,17 +38,17 @@ type QuotaPeriod = { quota: number; quotaCollected: number; ended: boolean; stat
  */
 export function mamQuotaTotals(rows: Array<{ periods: QuotaPeriod[] }>) {
   const months = rows[0]?.periods.map((_, index) => {
-    const sum = (pick: (period: QuotaPeriod) => number) => rows.reduce((total, row) => total + cents(pick(row.periods[index])), 0) / 100;
+    const sum = (pick: (period: QuotaPeriod) => number) => rows.reduce((total, row) => total + toCents(pick(row.periods[index])), 0) / 100;
     const quota = sum((period) => period.quota), counted = sum((period) => period.quotaCollected);
     const collected = sum((period) => period.collected);
     return { quota, counted, remaining: Math.round((quota - counted) * 100) / 100, collected, aboveQuota: Math.round((collected - counted) * 100) / 100 };
   }) ?? [];
   const remaining = rows.reduce((total, row) => {
     const last = row.periods.findLast((period) => period.state && !period.ended);
-    return total + (last ? cents(last.quota) - cents(last.quotaCollected) : 0);
+    return total + (last ? toCents(last.quota) - toCents(last.quotaCollected) : 0);
   }, 0) / 100;
-  const counted = months.reduce((total, month) => total + cents(month.counted), 0) / 100;
-  const collected = months.reduce((total, month) => total + cents(month.collected), 0) / 100;
+  const counted = months.reduce((total, month) => total + toCents(month.counted), 0) / 100;
+  const collected = months.reduce((total, month) => total + toCents(month.collected), 0) / 100;
   return { months, last: months.at(-1) ?? null, quota: Math.round((counted + remaining) * 100) / 100, counted, remaining, collected, aboveQuota: Math.round((collected - counted) * 100) / 100 };
 }
 
@@ -77,7 +76,7 @@ export function buildMamReport(data: { accounts: MamAccount[]; payments: Account
         const asOfMonth = { ...account, forfeitHeld: month < today.slice(0, 7) ? false : account.forfeitHeld };
         const state = accountState(asOfMonth, history.filter((p) => p.orDate <= today), end);
         const quota = monthQuota(asOfMonth, history.filter((p) => p.orDate.slice(0, 7) < month && p.orDate <= today), month);
-        const quotaCollected = Math.min(quota, receipts.reduce((sum, receipt) => sum + cents(paidUpTo(receipt, month)), 0) / 100);
+        const quotaCollected = Math.min(quota, receipts.reduce((sum, receipt) => sum + toCents(paidUpTo(receipt, month)), 0) / 100);
         return { month, projected, state, error: "", receipts, collected, quota, quotaCollected,
           coveredAmount: state.allocations.find((a) => a.month === month)?.amount ?? 0, ended: false };
       } catch (error) { return { month, projected, state: null, error: error instanceof Error ? error.message : "Review account data.", receipts, collected, coveredAmount: 0, quota: 0, quotaCollected: 0, ended: false }; }

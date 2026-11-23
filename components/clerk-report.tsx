@@ -18,13 +18,13 @@ import type { ClerkPeriod, PeriodView } from "@/lib/report-periods";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
 type Result = { success: boolean; message?: string; report: Report; period: PeriodView | null; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
-const todayInManila = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 // The period input's value and the date sent to the server (any day inside the period).
 const inputType = (kind: Kind) => (kind === "monthly" ? "month" : kind === "yearly" ? "number" : "date");
 const toInput = (kind: Kind, date: string) => (kind === "monthly" ? date.slice(0, 7) : kind === "yearly" ? date.slice(0, 4) : date);
@@ -41,7 +41,7 @@ const tone = {
  * on it; with `review` (Report Review and Audits) the reviewer chooses the clerk and gets the entry checklist and remarks.
  */
 export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, date: fixedDate, to: fixedTo, branch: sharedBranch, onBranchChange, hideEmptyBranches = false }: { kind: Kind; review?: boolean; employeeId?: string; date?: string; to?: string; branch?: string; onBranchChange?: (branch: string) => void; hideEmptyBranches?: boolean }) {
-  const [date, setDate] = useState(fixedDate ?? todayInManila());
+  const [date, setDate] = useState(fixedDate ?? manilaToday());
   // Weekly and monthly reports the clerk submits (owner, October 30, 2026; lib/report-periods.ts): `to` is the last day
   // of a new weekly, or the last weekly a new monthly covers; "" shows the report containing `date`.
   const [to, setTo] = useState(fixedTo ?? "");
@@ -339,7 +339,7 @@ const weekLabel = (period: { week: number; monthLabel: string }) => (period.week
  * Week N of its month it will be; a new monthly gathers the next month's weeklies, Week 1 to the last (November 12, 2026).
  */
 function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodView | null; fixed: boolean; onPick: (start: string, end: string) => void }) {
-  const today = todayInManila();
+  const today = manilaToday();
   const selected = view?.current ? `${view.current.start}|${view.current.end}` : "new";
   const draft = view?.draft;
   return <>
@@ -402,7 +402,7 @@ function PeriodNotice({ kind, view, own, saving, onSubmit, onResubmit, onChangeD
  */
 function ReturnedDates({ start, end, dates, saving, onSave, onResubmit }: { start: string; end: string; dates: NonNullable<PeriodView["dates"]>; saving: boolean; onSave: (from: string, to: string) => void; onResubmit: (from?: string, to?: string) => void }) {
   const [from, setFrom] = useState(start), [to, setTo] = useState(end);
-  const today = todayInManila(), changed = from !== start || to !== end;
+  const today = manilaToday(), changed = from !== start || to !== end;
   return <div className="flex flex-wrap items-end gap-2 rounded-md border border-amber-300/70 bg-background/60 p-2 text-xs dark:border-amber-800">
     <label>From
       {dates.canFrom ? <Input className="mt-1 h-8 w-40" type="date" max={to || today} value={from} onChange={(event) => event.target.value && setFrom(event.target.value)} />
@@ -616,7 +616,7 @@ function expenseForm(item: Report["expenses"][number]) {
 function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; saved: { ok: boolean; text: string } | null; saving: boolean; editing: Report["deposits"][number] | null; onEditDone: () => void;
   editingExpense: Report["expenses"][number] | null; onExpenseDone: () => void;
   masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
-  const today = todayInManila();
+  const today = manilaToday();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
   const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", payee: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
   // Photos of the expense's receipt, sent with it: at least one, unless an expense being edited already has one.
@@ -704,7 +704,7 @@ function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoic
           <Field label="MAS *" wide><select className={field} value={fidelity.masEmployeeId} onChange={(event) => setFidelity({ ...fidelity, masEmployeeId: event.target.value })}>
             <option value="">Choose the MAS</option>{masChoices.map((mas) => <option key={mas.id} value={mas.id}>{mas.name}</option>)}
           </select></Field>
-          <Field label="Date received"><Input type="date" max={todayInManila()} value={fidelity.date} onChange={(event) => setFidelity({ ...fidelity, date: event.target.value })} /></Field>
+          <Field label="Date received"><Input type="date" max={manilaToday()} value={fidelity.date} onChange={(event) => setFidelity({ ...fidelity, date: event.target.value })} /></Field>
           <Field label="Amount *"><Input type="number" min="0" step="0.01" placeholder="0.00" value={fidelity.amount} onChange={(event) => setFidelity({ ...fidelity, amount: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input maxLength={300} placeholder="e.g. Fidelity for the Oct 12 collections" value={fidelity.remarks} onChange={(event) => setFidelity({ ...fidelity, remarks: event.target.value })} /></Field>
         </div>

@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
+import { manilaToday } from "@/lib/manila-date";
 
 export type CashOut = { account: string; branch: string; date: string };
 type Options = { accounts: Array<{ id: string; name: string; status: string }>; branches: Array<{ name: string; territory: string }> };
 
-export const manilaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 export const cashOutReady = (value: CashOut) => Boolean(value.account && value.branch && value.date);
 
 /**

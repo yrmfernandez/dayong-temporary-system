@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { formatPesoWhole } from "@/lib/money";
 
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 const compact = (value: number) => new Intl.NumberFormat("en-PH", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 
 /** Round an axis maximum up to a readable step so gridlines land on clean numbers. */
@@ -49,7 +49,7 @@ export function RevenueTrend({ points }: { points: TrendPoint[] }) {
         </g>;
       })}
     </svg>
-    {point && active !== null && <Tooltip x={((left + slot * (active + 0.5)) / width) * 100}><p className="mb-1 font-semibold text-foreground">{new Date(`${point.month}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</p><Key color="var(--viz-1)" label="New Sales" value={peso(point.sales)} /><Key color="var(--viz-2)" label="Collections" value={peso(point.collections)} /><div className="mt-1 border-t pt-1"><Key color="transparent" label="Total" value={peso(point.sales + point.collections)} /><Key color="transparent" label="New accounts" value={String(point.accounts)} /></div></Tooltip>}
+    {point && active !== null && <Tooltip x={((left + slot * (active + 0.5)) / width) * 100}><p className="mb-1 font-semibold text-foreground">{new Date(`${point.month}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</p><Key color="var(--viz-1)" label="New Sales" value={formatPesoWhole(point.sales)} /><Key color="var(--viz-2)" label="Collections" value={formatPesoWhole(point.collections)} /><div className="mt-1 border-t pt-1"><Key color="transparent" label="Total" value={formatPesoWhole(point.sales + point.collections)} /><Key color="transparent" label="New accounts" value={String(point.accounts)} /></div></Tooltip>}
   </div>;
 }
 
@@ -86,7 +86,7 @@ export function RankBars({ rows, format = "money", empty = "No activity in this 
     {rows.map((row, index) => <li key={row.label} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
       <span className="row-span-2 text-xs font-semibold tabular-nums text-muted-foreground">{index + 1}</span>
       <span className="truncate text-sm font-medium text-foreground" title={row.label}>{row.label}</span>
-      <span className="text-right text-sm font-semibold tabular-nums">{format === "money" ? peso(row.value) : row.value.toLocaleString("en-PH")}</span>
+      <span className="text-right text-sm font-semibold tabular-nums">{format === "money" ? formatPesoWhole(row.value) : row.value.toLocaleString("en-PH")}</span>
       <span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full" style={{ width: `${(row.value / max) * 100}%`, background: index === 0 ? "var(--viz-1)" : "color-mix(in oklab, var(--viz-1) 60%, transparent)" }} /></span>
       <span className="flex items-center justify-end gap-2 text-xs text-muted-foreground">{row.secondary}{row.change !== undefined && <Change value={row.change} />}</span>
     </li>)}

@@ -14,10 +14,12 @@ import { getEncoder } from "@/lib/encoder-context";
 import { masCollectionQuote, MAX_SUBMISSION_ENTRIES, quoteChannel } from "@/lib/mas-collection-quote";
 import { createReadableId } from "@/lib/readable-id";
 import { tiersForBranch } from "@/lib/remittance";
-import { incentiveDeadline, manilaNow } from "@/lib/remittance-deadline";
+import { manilaNow } from "@/lib/remittance-deadline";
 import { masProfile, reviewBranches } from "@/lib/sale-submissions";
 import { shortCached } from "@/lib/short-cache";
-import { loadWorkCalendar } from "@/lib/work-calendar";
+import { submissionDeadlines } from "@/lib/work-calendar";
+import { roundMoney } from "@/lib/money";
+import { sameName } from "@/lib/match-keys";
 
 /**
  * Collections submitted by a MAS (owner, October 31, 2026), as New Sales already are (lib/sale-submissions.ts). On
@@ -67,8 +69,6 @@ const submissions = schema.collection_submissions;
 const drafts = schema.collection_drafts;
 export { MAX_SUBMISSION_ENTRIES };
 const text = (value: unknown) => String(value ?? "").trim();
-const sameName = (a: unknown, b: unknown) => text(a).replace(/\s+/g, " ").toLowerCase() === text(b).replace(/\s+/g, " ").toLowerCase();
-const cents = (value: number) => Math.round(value * 100) / 100;
 /** The batch kept for the nightly job, all branches together: room for several full branches (MAX_SUBMISSION_ENTRIES each). */
 const MAX_DRAFT_ENTRIES = 500;
 
@@ -131,15 +131,9 @@ const toSubmission = (row: typeof submissions.$inferSelect, deadline = ""): Coll
 });
 
 /** Adds each submission's incentive deadline, from its earliest OR date and its branch's working days. */
-async function withDeadlines(rows: Array<typeof submissions.$inferSelect>) {
-  const calendars = new Map<string, Awaited<ReturnType<typeof loadWorkCalendar>>>();
-  const result: CollectionSubmission[] = [];
-  for (const row of rows) {
-    if (!calendars.has(row.branch)) calendars.set(row.branch, await loadWorkCalendar(row.branch));
-    const first = toSubmission(row).entries.map((entry) => entry.orDate).filter(Boolean).sort()[0] ?? "";
-    result.push(toSubmission(row, first ? incentiveDeadline(first, calendars.get(row.branch)) : ""));
-  }
-  return result;
+async function withDeadlines(rows: Array<typeof submissions.$inferSelect>): Promise<CollectionSubmission[]> {
+  const deadlines = await submissionDeadlines(rows, (row) => toSubmission(row).entries.map((entry) => entry.orDate));
+  return rows.map((row, index) => toSubmission(row, deadlines[index]));
 }
 
 /** Why a MAS cannot collect on this account today, or "" when they can. */
@@ -242,8 +236,8 @@ function batchRows(context: SubmitContext, entries: Array<ReturnType<typeof batc
   const asCollector = context.as === "Collector";
   return [...batches.values()].map(({ branch, owner, entries: group }) => ({
     submission_id: createReadableId("CSUB"), branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted",
-    entries: group, entry_count: group.length, total_amount: cents(group.reduce((sum, entry) => sum + entry.amount, 0)),
-    total_incentive: cents(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
+    entries: group, entry_count: group.length, total_amount: roundMoney(group.reduce((sum, entry) => sum + entry.amount, 0)),
+    total_incentive: roundMoney(group.reduce((sum, entry) => sum + entry.incentive, 0)), submitted_at: actor.encodedAt,
     collected_by: context.as, member_mas_employee_id: asCollector ? memberMas?.employeeId ?? (owner.employeeId || null) : null, member_mas: asCollector ? owner.name : null, orc, dto: asCollector && dto, auto_submitted: auto, ...encodedBy(),
   }));
 }
@@ -317,7 +311,7 @@ export async function listMyCollectionSubmissions(user: SessionUser) {
   const { collections } = schema;
   const added = await getDb().select({ id: collections.collection_id, fidelity: collections.fidelity_amount }).from(collections).where(and(inArray(collections.collection_id, ids), gt(collections.fidelity_amount, 0)));
   const fidelityOf = new Map(added.map((item) => [item.id, item.fidelity ?? 0]));
-  return list.map((item) => ({ ...item, fidelity: cents(item.collectionIds.reduce((sum, id) => sum + (fidelityOf.get(id) ?? 0), 0)) }));
+  return list.map((item) => ({ ...item, fidelity: roundMoney(item.collectionIds.reduce((sum, id) => sum + (fidelityOf.get(id) ?? 0), 0)) }));
 }
 
 /**
@@ -506,7 +500,7 @@ export async function markCollectionSubmissionRemitted(user: SessionUser, id: st
       if (!match) throw new Error(`${row.mas} has no Collections clearing today to use. Mark it remitted as a new handover.`);
       clearingId = match.id; remittedAt = match.at;
     } else {
-      const cleared = await addClearing({ branch: row.branch, employeeId: row.mas_employee_id, covers: "Collections", amount: cents(row.total_amount - row.total_incentive), notes: `MAS batch ${row.submission_id} (Submit Collections)`, newHandover: handover === "new" });
+      const cleared = await addClearing({ branch: row.branch, employeeId: row.mas_employee_id, covers: "Collections", amount: roundMoney(row.total_amount - row.total_incentive), notes: `MAS batch ${row.submission_id} (Submit Collections)`, newHandover: handover === "new" });
       clearingId = cleared.id;
     }
     const updated = await currentDb().update(submissions).set({ status: "Remitted", clearing_id: clearingId, remitted_at: remittedAt, remitted_by_name: actor.name })

@@ -8,8 +8,7 @@ import { closeFinishedAttendanceDaysQuietly } from "@/lib/auto-absence";
 import { getEmployees } from "@/lib/employees";
 import { getPayProfiles, leavePolicyFor } from "@/lib/payroll";
 import { declaredNonWorkingDays } from "@/lib/work-calendar";
-
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+import { validDate } from "@/lib/manila-date";
 
 /**
  * Attendance sheet (owner, October 14, 2026; Finance, HR, management): every employee's attendance summary for a date

@@ -4,6 +4,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { currentDb, schema, type Queryable } from "@/lib/db";
 import { formatDateTime } from "@/lib/date-format";
 import { isoDate } from "@/lib/program-age";
+import { nameKey } from "@/lib/match-keys";
 
 /**
  * Double-entry guards. Each Application Number (New Sales) and each OR Number (Collections) is used once in the whole
@@ -13,8 +14,6 @@ import { isoDate } from "@/lib/program-age";
 
 /** Compares receipt and form numbers regardless of case, spaces, or dashes: "or-001 23" matches "OR00123". */
 export const entryKey = (value: unknown) => String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-const nameKey = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 /** The same person: same surname, first name, and birthdate. Middle names are often abbreviated, so they are ignored. */
 export const personKey = (person: { surname?: unknown; firstName?: unknown; birthdate?: unknown }) => {

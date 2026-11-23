@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
 
 type AttendanceRecord = {
   status: "Present" | "Leave" | "Absent" | "AWOL" | "Non-working Day" | "Day Off" | "Not Required";
@@ -51,15 +52,9 @@ type MarkStatus = typeof MARKS[number]["value"];
 
 type NonWorkingDay = { reason: string; allBranches: boolean; branchNames: string[] };
 
-function todayInPhilippines() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-  }).format(new Date());
-}
-
 export default function AttendanceReviewsPage() {
   const [attendanceDate, setAttendanceDate] = useState(
-    todayInPhilippines(),
+    manilaToday(),
   );
   const [employees, setEmployees] = useState<EmployeeAttendance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +155,7 @@ export default function AttendanceReviewsPage() {
   /** Reverts management's mark with a reason (today: back to no record; an earlier day: Absent by system). */
   const revertMark = async (employee: EmployeeAttendance) => {
     const who = employee.fullName || employee.employeeId;
-    const outcome = attendanceDate === todayInPhilippines() ? "They go back to no record and can still clock in." : "That day becomes Absent by system, as for anyone with no record.";
+    const outcome = attendanceDate === manilaToday() ? "They go back to no record and can still clock in." : "That day becomes Absent by system, as for anyone with no record.";
     const reason = await promptDialog(`Revert the mark of ${who}? ${outcome}\n\nGive the reason:`, { required: true, confirmLabel: "Revert", danger: true, placeholder: "e.g. Marked by mistake" });
     if (!reason?.trim()) return;
     setUpdatingId(employee.employeeId);

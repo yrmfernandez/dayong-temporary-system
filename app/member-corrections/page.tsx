@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate as showDate } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Found = { id: string; number: string; name: string; birthdate: string };
 /** Details a merge can take from either member (lib/member-corrections.ts MERGE_FIELDS). */
@@ -31,9 +33,7 @@ const TOOLS: Array<[Tool, string, string]> = [
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
   ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
 ];
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const nop = (receipt: Receipt) => `NOP ${receipt.nopFrom}${receipt.nopTo > receipt.nopFrom ? `-${receipt.nopTo}` : ""} (${receipt.monthFrom}${receipt.monthTo !== receipt.monthFrom ? ` to ${receipt.monthTo}` : ""})`;
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 const field = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
 /**
@@ -97,7 +97,7 @@ function MemberSummary({ member }: { member: Member }) {
   const m = member.member;
   return <Card><CardHeader className="pb-2"><CardTitle className="text-base">{m.surname}, {[m.firstName, m.middleName, m.nameExtension].filter(Boolean).join(" ")} · {m.number}{m.birthdate ? ` · born ${showDate(m.birthdate)}` : ""}</CardTitle></CardHeader>
     <CardContent className="space-y-4">{member.accounts.length ? member.accounts.map((account) => <div key={account.id} className="space-y-1">
-      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {peso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"} · {account.newSale ? `New Sale ${account.newSale.applicationNo ? `app ${account.newSale.applicationNo}` : account.newSale.id}` : "no New Sale record"}</span></p>
+      <p className="text-sm font-semibold">{account.program} · {account.id} <span className="font-normal text-muted-foreground">· {formatPeso(account.rate)}{account.flexible ? " minimum" : ""}/month · DOI {showDate(account.doi)} · {account.branch} · {account.mas} · {account.status || "—"} · {account.newSale ? `New Sale ${account.newSale.applicationNo ? `app ${account.newSale.applicationNo}` : account.newSale.id}` : "no New Sale record"}</span></p>
       <ReceiptTable receipts={account.receipts} />
     </div>) : <p className="text-sm text-muted-foreground">No accounts.</p>}</CardContent></Card>;
 }
@@ -106,7 +106,7 @@ function ReceiptTable({ receipts, tick }: { receipts: Receipt[]; tick?: { chosen
   if (!receipts.length) return <p className="text-xs text-muted-foreground">No posted receipts.</p>;
   return <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr>{tick && <th className="w-8 p-2" />}<th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Coverage</th><th className="p-2">Remittance</th></tr></thead>
     <tbody>{receipts.map((receipt) => <tr key={receipt.id} className="border-t">{tick && <td className="p-2"><input type="checkbox" aria-label={`Select OR ${receipt.orNumber}`} checked={tick.chosen.has(receipt.id)} onChange={() => tick.toggle(receipt.id)} /></td>}
-      <td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 tabular-nums">{showDate(receipt.orDate)}</td><td className="p-2 text-right tabular-nums">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td><td className="p-2 text-xs text-muted-foreground">{receipt.remittance}</td></tr>)}</tbody></table></div>;
+      <td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 tabular-nums">{showDate(receipt.orDate)}</td><td className="p-2 text-right tabular-nums">{formatPeso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td><td className="p-2 text-xs text-muted-foreground">{receipt.remittance}</td></tr>)}</tbody></table></div>;
 }
 
 /** One tool's form, its preview and the save with a reason. The preview is cleared whenever the form changes. */
@@ -221,9 +221,9 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       {accountSelect}
       {startFields(`now ${account.start.nop} (${account.start.month})`)}
       <p className="text-xs text-muted-foreground">Blank keeps the current start: NOP {account.start.nop} in {account.start.month}. The first receipt by OR date gets the first NOP; each next receipt continues after the one before. Months below: blank keeps the receipt&apos;s months.</p>
-      <div className="space-y-1 sm:w-60"><Label htmlFor="cov-doi">DOI</Label><Input id="cov-doi" type="date" max={today()} placeholder={account.doi} value={form.doi ?? account.doi} onChange={(event) => set("doi", event.target.value)} /></div>
+      <div className="space-y-1 sm:w-60"><Label htmlFor="cov-doi">DOI</Label><Input id="cov-doi" type="date" max={manilaToday()} placeholder={account.doi} value={form.doi ?? account.doi} onChange={(event) => set("doi", event.target.value)} /></div>
       <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Now</th><th className="w-32 p-2">Months</th></tr></thead>
-        <tbody>{account.receipts.map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber}</td><td className="p-2">{showDate(receipt.orDate)}</td><td className="p-2 text-right">{peso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td>
+        <tbody>{account.receipts.map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber}</td><td className="p-2">{showDate(receipt.orDate)}</td><td className="p-2 text-right">{formatPeso(receipt.amount)}</td><td className="p-2">{nop(receipt)}</td>
           <td className="p-2"><Input type="number" min={1} max={120} aria-label={`Months for OR ${receipt.orNumber}`} placeholder={String(receipt.months)} value={months[receipt.id] ?? ""} onChange={(event) => { setMonths((current) => ({ ...current, [receipt.id]: event.target.value })); setPreview(null); }} /></td></tr>)}</tbody></table></div>
     </>}
 
@@ -238,8 +238,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       {moveTo === "new" && <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor="move-program">Program of the new account</Label>
           <select id="move-program" className={field} value={form.newProgram ?? ""} onChange={(event) => set("newProgram", event.target.value)}><option value="">Choose the program</option>
-            {programChoices.filter((item) => !accounts.some((account) => account.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {peso(item.rate)}</option>)}</select></div>
-        <div className="space-y-1"><Label htmlFor="move-doi">DOI of the new account</Label><Input id="move-doi" type="date" max={today()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>
+            {programChoices.filter((item) => !accounts.some((account) => account.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {formatPeso(item.rate)}</option>)}</select></div>
+        <div className="space-y-1"><Label htmlFor="move-doi">DOI of the new account</Label><Input id="move-doi" type="date" max={manilaToday()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>
         <p className="text-xs text-muted-foreground sm:col-span-2">The new account has the same branch and MAS as the account the receipts come from, and no New Sale; the moved receipts are numbered from the month after its DOI.</p>
       </div>}
       {moveTo === "other" && <div className="space-y-2">
@@ -251,7 +251,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       {chosen.size > 0 && <div className="space-y-1">
         <p className="text-sm font-medium">Amount on the new account</p>
         <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[480px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2 text-right">Amount now</th><th className="w-44 p-2">Corrected amount</th></tr></thead>
-          <tbody>{accounts.flatMap((item) => item.receipts).filter((receipt) => chosen.has(receipt.id)).map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 text-right tabular-nums">{peso(receipt.amount)}</td>
+          <tbody>{accounts.flatMap((item) => item.receipts).filter((receipt) => chosen.has(receipt.id)).map((receipt) => <tr key={receipt.id} className="border-t"><td className="p-2 font-medium">{receipt.orNumber || receipt.id}</td><td className="p-2 text-right tabular-nums">{formatPeso(receipt.amount)}</td>
             <td className="p-2"><Input type="number" min="0.01" step="0.01" aria-label={`Corrected amount for OR ${receipt.orNumber}`} placeholder="unchanged" value={amounts[receipt.id] ?? ""} onChange={(event) => { setAmounts((current) => ({ ...current, [receipt.id]: event.target.value })); setPreview(null); }} /></td></tr>)}</tbody></table></div>
       </div>}
       <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there). When the amount was encoded wrong (e.g. ₱190 on a ₱180 program), enter the corrected amount: the receipt is counted from it, its incentives are worked out again, and Record Corrections keeps the old amount. A receipt on a remittance slip in progress keeps its amount.</p>
@@ -268,12 +268,12 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1"><Label htmlFor="ins-or">OR number</Label><Input id="ins-or" placeholder="e.g. 12665 B" value={form.orNumber ?? ""} onChange={(event) => set("orNumber", event.target.value)} />
           <OrNoLetterCheck orNumber={form.orNumber ?? ""} checked={form.orNoLetter === "yes"} onChange={(checked) => set("orNoLetter", checked ? "yes" : "")} /></div>
-        <div className="space-y-1"><Label htmlFor="ins-date">OR date</Label><Input id="ins-date" type="date" max={today()} value={form.orDate ?? ""} onChange={(event) => set("orDate", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="ins-date">OR date</Label><Input id="ins-date" type="date" max={manilaToday()} value={form.orDate ?? ""} onChange={(event) => set("orDate", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="ins-amount">Amount</Label><Input id="ins-amount" type="number" min="0.01" step="0.01" placeholder={String(account.rate)} value={form.amount ?? ""} onChange={(event) => set("amount", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="ins-months">Months covered</Label><Input id="ins-months" type="number" min={1} max={120} value={form.months ?? "1"} onChange={(event) => set("months", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="ins-role">Collected by</Label><select id="ins-role" className={field} value={form.role ?? "MAS"} onChange={(event) => set("role", event.target.value)}>{["MAS", "Collector", "DTO"].map((role) => <option key={role}>{role}</option>)}</select></div>
         <div className="space-y-1"><Label htmlFor="ins-mas">MAS / Collector name</Label><Input id="ins-mas" placeholder={account.mas} value={form.mas ?? ""} onChange={(event) => set("mas", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="ins-remitted">Date remitted</Label><Input id="ins-remitted" type="date" max={today()} value={form.dateRemitted ?? ""} onChange={(event) => set("dateRemitted", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="ins-remitted">Date remitted</Label><Input id="ins-remitted" type="date" max={manilaToday()} value={form.dateRemitted ?? ""} onChange={(event) => set("dateRemitted", event.target.value)} /></div>
       </div>
       {startFields(`now ${account.start.nop} (${account.start.month})`)}
       <p className="text-xs text-muted-foreground">The receipt takes its place among the account&apos;s receipts by OR date. Leave the first NOP blank unless the account&apos;s numbering should start somewhere else, for example when the inserted receipt is the earliest one.</p>
@@ -288,8 +288,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       {saleToNew ? <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor="sale-program">Program</Label>
           <select id="sale-program" className={field} value={form.saleProgram ?? ""} onChange={(event) => set("saleProgram", event.target.value)}><option value="">Choose the program</option>
-            {programChoices.filter((item) => !accounts.some((existing) => existing.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {peso(item.rate)}</option>)}</select></div>
-        <div className="space-y-1"><Label htmlFor="sale-doi">DOI</Label><Input id="sale-doi" type="date" max={today()} value={form.saleDoi ?? ""} onChange={(event) => set("saleDoi", event.target.value)} /></div>
+            {programChoices.filter((item) => !accounts.some((existing) => existing.programId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name} · {formatPeso(item.rate)}</option>)}</select></div>
+        <div className="space-y-1"><Label htmlFor="sale-doi">DOI</Label><Input id="sale-doi" type="date" max={manilaToday()} value={form.saleDoi ?? ""} onChange={(event) => set("saleDoi", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sale-doi-time">DOI time (optional)</Label><Input id="sale-doi-time" type="time" value={form.saleDoiTime ?? ""} onChange={(event) => set("saleDoiTime", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sale-branch">Branch</Label>
           <select id="sale-branch" className={field} value={form.saleBranch ?? accounts[0]?.branch ?? ""} onChange={(event) => set("saleBranch", event.target.value)}><option value="">Choose the branch</option>
@@ -301,7 +301,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor="sale-app">Application number</Label><Input id="sale-app" placeholder="as on the application form" value={form.applicationNo ?? ""} onChange={(event) => set("applicationNo", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sale-amount">Amount paid</Label><Input id="sale-amount" type="number" min="0.01" step="0.01" placeholder={!saleToNew && account?.saleAmount != null ? `${account.saleAmount} (on the account)` : "the program's New Sale amount"} value={form.saleAmount ?? ""} onChange={(event) => set("saleAmount", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={saleToNew ? form.saleDoi : account?.doi} max={today()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="sale-remitted">Date remitted</Label><Input id="sale-remitted" type="date" min={saleToNew ? form.saleDoi : account?.doi} max={manilaToday()} value={form.saleRemitted ?? ""} onChange={(event) => set("saleRemitted", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sale-mas">MAS</Label><Input id="sale-mas" placeholder={(saleToNew ? accounts[0]?.mas : account?.mas) ?? "MAS name"} value={form.saleMas ?? ""} onChange={(event) => set("saleMas", event.target.value)} /></div>
       </div>
       <p className="text-xs text-muted-foreground">{saleToNew
@@ -355,8 +355,8 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
         <div className="space-y-1"><Label htmlFor="sp-first">First name</Label><Input id="sp-first" value={form.firstName ?? ""} onChange={(event) => set("firstName", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-middle">Middle name</Label><Input id="sp-middle" value={form.middleName ?? ""} onChange={(event) => set("middleName", event.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="sp-ext">Extension (Jr, Sr)</Label><Input id="sp-ext" value={form.nameExtension ?? ""} onChange={(event) => set("nameExtension", event.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="sp-birth">Birthdate</Label><Input id="sp-birth" type="date" max={today()} value={form.birthdate ?? ""} onChange={(event) => set("birthdate", event.target.value)} /></div>
-        {!splitWhole && <div className="space-y-1"><Label htmlFor="sp-doi">New member&apos;s DOI</Label><Input id="sp-doi" type="date" max={today()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>}
+        <div className="space-y-1"><Label htmlFor="sp-birth">Birthdate</Label><Input id="sp-birth" type="date" max={manilaToday()} value={form.birthdate ?? ""} onChange={(event) => set("birthdate", event.target.value)} /></div>
+        {!splitWhole && <div className="space-y-1"><Label htmlFor="sp-doi">New member&apos;s DOI</Label><Input id="sp-doi" type="date" max={manilaToday()} value={form.newDoi ?? ""} onChange={(event) => set("newDoi", event.target.value)} /></div>}
       </div>}
       {!splitWhole && startFields(`default: ${account.firstNop}, month after DOI`)}
       <div className="space-y-1 sm:w-80"><Label htmlFor="sp-keep">Correct {member.member.number}&apos;s first name (optional)</Label><Input id="sp-keep" placeholder={member.member.firstName} value={form.keepFirstName ?? ""} onChange={(event) => set("keepFirstName", event.target.value)} /></div>
@@ -369,7 +369,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
       <p className="text-sm">{preview.summary}</p>
       {preview.statuses.length > 0 && <ul className="text-sm">{preview.statuses.map((item) => <li key={item.account}>{item.program} {item.account}: status {item.before} → <strong>{item.after}</strong></li>)}</ul>}
       {preview.receipts.length > 0 && <div className="overflow-x-auto rounded-md border bg-background"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">OR</th><th className="p-2">OR date</th><th className="p-2 text-right">Amount</th><th className="p-2">Before</th><th className="p-2">After</th></tr></thead>
-        <tbody>{preview.receipts.map((item) => <tr key={item.id} className="border-t"><td className="p-2 font-medium">{item.orNumber}</td><td className="p-2">{showDate(item.orDate)}</td><td className="p-2 text-right">{peso(item.amount)}</td><td className="p-2 text-muted-foreground">{item.before}</td><td className="p-2 font-medium">{item.after}</td></tr>)}</tbody></table></div>}
+        <tbody>{preview.receipts.map((item) => <tr key={item.id} className="border-t"><td className="p-2 font-medium">{item.orNumber}</td><td className="p-2">{showDate(item.orDate)}</td><td className="p-2 text-right">{formatPeso(item.amount)}</td><td className="p-2 text-muted-foreground">{item.before}</td><td className="p-2 font-medium">{item.after}</td></tr>)}</tbody></table></div>}
       {preview.notes.map((note) => <p key={note} className="text-xs text-muted-foreground">{note}</p>)}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="space-y-1"><Label htmlFor="fix-reason">Reason (required)</Label><Input id="fix-reason" maxLength={300} placeholder="e.g. Owner confirmed from the paper record: January is NOP 31" value={reason} onChange={(event) => setReason(event.target.value)} /></div>

@@ -2,8 +2,7 @@ import { canAccessPath } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { COMPANY } from "@/lib/clerk-report";
 import { buildMasReport, reportBranches } from "@/lib/mas-report";
-
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+import { validDate } from "@/lib/manila-date";
 
 /**
  * MAS Report (owner, November 16, 2026): each MAS's New Sales and Collections in one branch for a period

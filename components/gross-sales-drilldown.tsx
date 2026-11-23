@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import type { GrossSalesBreakdown, GrossSalesEntry } from "@/lib/gross-sales";
 import { formatDate as showDate } from "@/lib/date-format";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { formatPeso } from "@/lib/money";
 
 type Page = { totals: GrossSalesBreakdown["totals"]; branches: GrossSalesBreakdown["branches"]; filtered: { count: number; total: number }; entries: GrossSalesEntry[] };
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
 const longDate = (value: string) => showDate(value);
 const shortDate = (value: string) => showDate(value);
 
@@ -70,7 +70,7 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
       <div data-slot="card" className={`tone-brand relative h-full overflow-hidden rounded-[1.25rem] p-4 transition-transform hover:-translate-y-0.5 ${open ? "ring-2 ring-primary/40" : ""}`}>
         <span className="tone-bar absolute inset-x-0 top-0 h-1 opacity-80" aria-hidden />
         <div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-muted-foreground">{label}</p><span className="tone-soft flex size-9 shrink-0 items-center justify-center rounded-xl"><PhilippinePeso className="size-4.5" /></span></div>
-        <p className="mt-1 break-words text-xl font-bold tracking-tight text-foreground tabular-nums sm:text-2xl">{money(value)}</p>
+        <p className="mt-1 break-words text-xl font-bold tracking-tight text-foreground tabular-nums sm:text-2xl">{formatPeso(value)}</p>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">{change !== undefined && <Change value={change} />}<span>{note}</span></p>
         <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary print:hidden">{open ? "Hide the entries" : "See the entries"}<ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} /></p>
       </div>
@@ -88,23 +88,23 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {data && <>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Sum label="New Sales" value={data.totals.newSales} detail={`${data.totals.newSaleCount.toLocaleString("en-PH")} sales${data.totals.penalties ? ` · incl. ${money(data.totals.penalties)} penalties` : ""}`} active={kind === "New Sale"} onClick={() => setKind(kind === "New Sale" ? "" : "New Sale")} />
+          <Sum label="New Sales" value={data.totals.newSales} detail={`${data.totals.newSaleCount.toLocaleString("en-PH")} sales${data.totals.penalties ? ` · incl. ${formatPeso(data.totals.penalties)} penalties` : ""}`} active={kind === "New Sale"} onClick={() => setKind(kind === "New Sale" ? "" : "New Sale")} />
           <Sum label="Collections" value={data.totals.collections} detail={`${data.totals.collectionCount.toLocaleString("en-PH")} posted payments`} active={kind === "Collection"} onClick={() => setKind(kind === "Collection" ? "" : "Collection")} />
-          <div className="rounded-xl border bg-primary/5 p-3"><p className="text-xs text-muted-foreground">= Gross Sales</p><p className="text-lg font-bold tabular-nums">{money(data.totals.gross)}</p><p className={`text-xs ${matches ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{matches ? "Matches the dashboard" : `Dashboard shows ${money(value)}: entries changed since it loaded; reload the page`}</p></div>
+          <div className="rounded-xl border bg-primary/5 p-3"><p className="text-xs text-muted-foreground">= Gross Sales</p><p className="text-lg font-bold tabular-nums">{formatPeso(data.totals.gross)}</p><p className={`text-xs ${matches ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{matches ? "Matches the dashboard" : `Dashboard shows ${formatPeso(value)}: entries changed since it loaded; reload the page`}</p></div>
         </div>
 
         {data.branches.length > 1 && <details className="rounded-xl border p-3">
           <summary className="cursor-pointer text-sm font-semibold">By branch ({data.branches.length})</summary>
           <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="py-1.5 pr-3">Branch</th><th className="py-1.5 pr-3 text-right">New Sales</th><th className="py-1.5 pr-3 text-right">Collections</th><th className="py-1.5 text-right">Total</th></tr></thead>
             <tbody>{data.branches.map((row) => <tr key={row.branch} className={`cursor-pointer border-b last:border-0 hover:bg-muted/50 ${branch === row.branch ? "bg-primary/5" : ""}`} onClick={() => setBranch(branch === row.branch ? "" : row.branch)}>
-              <td className="py-1.5 pr-3 font-medium">{row.branch}</td><td className="py-1.5 pr-3 text-right tabular-nums">{money(row.newSales)}</td><td className="py-1.5 pr-3 text-right tabular-nums">{money(row.collections)}</td><td className="py-1.5 text-right font-semibold tabular-nums">{money(row.total)}</td></tr>)}</tbody></table></div>
+              <td className="py-1.5 pr-3 font-medium">{row.branch}</td><td className="py-1.5 pr-3 text-right tabular-nums">{formatPeso(row.newSales)}</td><td className="py-1.5 pr-3 text-right tabular-nums">{formatPeso(row.collections)}</td><td className="py-1.5 text-right font-semibold tabular-nums">{formatPeso(row.total)}</td></tr>)}</tbody></table></div>
           <p className="mt-1 text-xs text-muted-foreground">Click a branch to list only its entries.</p>
         </details>}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[14rem] flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden /><Input type="search" aria-label="Search entries" className="pl-9" placeholder="Search OR / application no., member, program, MAS" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
           {(kind || branch || search) && <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={() => { setKind(""); setBranch(""); setSearch(""); }}>Clear filters</button>}
-          <p className="text-sm text-muted-foreground tabular-nums">{data.filtered.count.toLocaleString("en-PH")} entries · {money(data.filtered.total)}{kind ? ` · ${kind}s` : ""}{branch ? ` · ${branch}` : ""}</p>
+          <p className="text-sm text-muted-foreground tabular-nums">{data.filtered.count.toLocaleString("en-PH")} entries · {formatPeso(data.filtered.total)}{kind ? ` · ${kind}s` : ""}{branch ? ` · ${branch}` : ""}</p>
         </div>
 
         <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[860px] text-sm">
@@ -115,7 +115,7 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
             <td className={`px-3 py-2 tabular-nums ${/\((duplicated|need edit)/i.test(row.reference) ? "text-amber-700 dark:text-amber-400" : ""}`}>{row.reference || "—"}</td>
             <td className="px-3 py-2"><span className="font-medium">{row.memberName || "—"}</span>{row.memberNumber && <span className="block text-xs text-muted-foreground">{row.memberNumber}</span>}</td>
             <td className="px-3 py-2">{row.program || "—"}</td><td className="px-3 py-2">{row.branch || "—"}</td><td className="px-3 py-2">{row.person || "—"}</td>
-            <td className="px-3 py-2 text-right font-semibold tabular-nums">{money(row.amount)}{row.penalty > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. {money(row.penalty)} penalty</span>}</td>
+            <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatPeso(row.amount)}{row.penalty > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. {formatPeso(row.penalty)} penalty</span>}</td>
           </tr>)}
           {!filtered.length && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">No entries match.</td></tr>}</tbody>
         </table></div>
@@ -127,6 +127,6 @@ export function GrossSalesDrilldown({ label, value, note, change, from, to }: { 
 
 function Sum({ label, value, detail, active, onClick }: { label: string; value: number; detail: string; active: boolean; onClick: () => void }) {
   return <button type="button" onClick={onClick} aria-pressed={active} className={`rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${active ? "border-primary bg-primary/5" : ""}`}>
-    <p className="text-xs text-muted-foreground">{label}{active ? " · showing only these" : ""}</p><p className="text-lg font-bold tabular-nums">{money(value)}</p><p className="text-xs text-muted-foreground">{detail}</p>
+    <p className="text-xs text-muted-foreground">{label}{active ? " · showing only these" : ""}</p><p className="text-lg font-bold tabular-nums">{formatPeso(value)}</p><p className="text-xs text-muted-foreground">{detail}</p>
   </button>;
 }

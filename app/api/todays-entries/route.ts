@@ -8,8 +8,7 @@ import { orNoLetterConfirmed } from "@/lib/or-no-letter";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getTodayMode, isTodayMode, setTodayMode } from "@/lib/system-settings";
 import { getEntriesForDay } from "@/lib/todays-entries";
-
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+import { validDate } from "@/lib/manila-date";
 
 async function allowedUser() {
   const user = await getSessionUser();

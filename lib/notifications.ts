@@ -1,13 +1,14 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { canAccessPath, canCorrectEntriesFor, hasRole, hrRoles } from "@/lib/access-control";
-import { todayInManila } from "@/lib/account-rules";
+
 import type { SessionUser } from "@/lib/auth";
 import { systemAbsencesWaiting } from "@/lib/auto-absence";
 import { getDb } from "@/lib/db";
 import { countOpenClearings } from "@/lib/clearing";
 import { listForReview } from "@/lib/sale-submissions";
 import { listCollectionsForReview } from "@/lib/collection-submissions";
+import { manilaToday } from "@/lib/manila-date";
 
 /**
  * Numbers shown beside sidebar pages (October 8, 2026): how many things wait for this user there. Only pages the user
@@ -59,13 +60,13 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
       : countOf(sql`select count(*)::int as count from dropout_requests where requested_by_employee_id = ${me} and status = 'Rejected' and reviewed_at > now() - interval '2 days'`)]);
   }
   if (can("/clearing")) tasks.push(["/clearing", countOpenClearings(isApprover(user) ? "" : me)]);
-  const today = todayInManila();
+  const today = manilaToday();
   if (me) tasks.push(["/my-notices", countOf(sql`select count(*)::int as count from notices_to_explain
     where employee_id = ${me} and status = 'Active' and expires_on >= ${today}::date and (acknowledged_at is null or explanation is null)`)]);
   if (can("/employees") && isApprover(user)) tasks.push(["/employees", countOf(sql`select count(*)::int as count from notices_to_explain
     where status <> 'Withdrawn' and explanation is not null and reviewed_at is null`)]);
   // The same people and days Attendance Review lists as still waiting (lib/auto-absence.ts), so marking them clears it.
-  if (can("/attendance-reviews")) tasks.push(["/attendance-reviews", systemAbsencesWaiting(todayInManila()).then((days) => days.reduce((sum, day) => sum + day.count, 0))]);
+  if (can("/attendance-reviews")) tasks.push(["/attendance-reviews", systemAbsencesWaiting(manilaToday()).then((days) => days.reduce((sum, day) => sum + day.count, 0))]);
 
   const counts: NotificationCounts = {};
   const results = await Promise.allSettled(tasks.map(([, task]) => task));

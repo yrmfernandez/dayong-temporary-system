@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { readApiResponse } from "@/lib/api-response";
 import { formatDate, formatDateTime } from "@/lib/date-format";
 import { DATE_FIELDS, RECORD_KINDS } from "@/lib/record-search-options";
+import { formatPeso } from "@/lib/money";
 
 type Collection = { id: string; orNumber: string; orDate: string; amount: number; memberNumber: string; memberName: string; contact: string; program: string; coverage: string; branch: string; mas: string; collector: string; dateRemitted: string; remittanceStatus: string; status: string; encodedBy: string };
 type Sale = { id: string; orNumber: string; orDate: string; applicationNo: string; amount: number; memberNumber: string; memberName: string; contact: string; program: string; doi: string; branch: string; mas: string; dateRemitted: string; remittanceStatus: string; dateCreated: string; encodedBy: string };
@@ -18,7 +19,6 @@ type Results = { collections: Collection[]; sales: Sale[]; members: MemberHit[];
 const STATUSES = ["Outstanding", "Pending Remittance Approval", "Remitted", "Returned"];
 const empty = { kind: "all", q: "", orNumber: "", dateField: "", dateFrom: "", dateTo: "", branch: "", program: "", mas: "", remittanceStatus: "" };
 const field = "mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm";
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const memberLink = (number: string) => `/members?search=${encodeURIComponent(number)}`;
 const cell = "p-2 align-top";
 
@@ -84,7 +84,7 @@ export default function SearchRecordsPage() {
           <td className={`${cell} tabular-nums`}>{formatDate(row.orDate)}</td>
           <td className={cell}><Link className="text-primary hover:underline" href={memberLink(row.memberNumber)}>{row.memberName}</Link><span className="block text-xs text-muted-foreground">{row.memberNumber}{row.contact ? ` · ${row.contact}` : ""}</span></td>
           <td className={cell}>{row.program}<span className="block text-xs text-muted-foreground">{row.coverage}</span></td>
-          <td className={`${cell} text-right tabular-nums`}>{peso(row.amount)}</td>
+          <td className={`${cell} text-right tabular-nums`}>{formatPeso(row.amount)}</td>
           <td className={cell}>{row.branch}<span className="block text-xs text-muted-foreground">{row.mas}{row.collector ? ` · Collector ${row.collector}` : ""}</span></td>
           <td className={cell}>{row.remittanceStatus || "—"}<span className="block text-xs text-muted-foreground">{row.dateRemitted ? formatDate(row.dateRemitted) : ""}</span></td>
           <td className={`${cell} text-xs text-muted-foreground`}>{row.encodedBy}</td>
@@ -97,7 +97,7 @@ export default function SearchRecordsPage() {
           <td className={`${cell} tabular-nums`}>{formatDateTime(row.dateCreated)}</td>
           <td className={cell}><Link className="text-primary hover:underline" href={memberLink(row.memberNumber)}>{row.memberName}</Link><span className="block text-xs text-muted-foreground">{row.memberNumber}{row.contact ? ` · ${row.contact}` : ""}</span></td>
           <td className={cell}>{row.program}<span className="block text-xs text-muted-foreground">DOI {formatDate(row.doi)}</span></td>
-          <td className={`${cell} text-right tabular-nums`}>{peso(row.amount)}</td>
+          <td className={`${cell} text-right tabular-nums`}>{formatPeso(row.amount)}</td>
           <td className={cell}>{row.branch}<span className="block text-xs text-muted-foreground">{row.mas}</span></td>
           <td className={cell}>{row.remittanceStatus || "—"}<span className="block text-xs text-muted-foreground">{row.dateRemitted ? formatDate(row.dateRemitted) : ""}</span></td>
           <td className={`${cell} text-xs text-muted-foreground`}>{row.encodedBy}</td>

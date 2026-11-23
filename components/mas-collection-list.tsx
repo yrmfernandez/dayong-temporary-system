@@ -8,8 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate as showDate, formatMonth } from "@/lib/date-format";
 import { collectionList, monthsLabel } from "@/lib/mas-collection";
-
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+import { formatPeso } from "@/lib/money";
 
 type Row = Parameters<typeof collectionList>[0][number];
 
@@ -26,9 +25,9 @@ export function MasCollectionList<T extends Row>({ rows, today, onOpen }: { rows
     </CardHeader>
     <CardContent className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricTile tone="warning" icon={Wallet} label="To collect" value={money(list.toCollect)} detail={`${list.owing.length} member${list.owing.length === 1 ? "" : "s"} to visit`} />
+        <MetricTile tone="warning" icon={Wallet} label="To collect" value={formatPeso(list.toCollect)} detail={`${list.owing.length} member${list.owing.length === 1 ? "" : "s"} to visit`} />
         <MetricTile tone="danger" icon={AlertTriangle} label="Close to forfeiting" value={String(list.closeToForfeit)} detail="Forfeits within a month" />
-        <MetricTile tone="success" icon={CheckCircle2} label="Collected this month" value={money(list.collected)} detail={`${list.paidThisMonth} member${list.paidThisMonth === 1 ? "" : "s"} paid`} />
+        <MetricTile tone="success" icon={CheckCircle2} label="Collected this month" value={formatPeso(list.collected)} detail={`${list.paidThisMonth} member${list.paidThisMonth === 1 ? "" : "s"} paid`} />
         <MetricTile tone="neutral" icon={AlertTriangle} label="Forfeited" value={String(list.forfeited)} detail="Need reactivation" />
       </div>
       {list.owing.length ? <ul className="grid gap-2 md:grid-cols-2">
@@ -46,7 +45,7 @@ export function MasCollectionList<T extends Row>({ rows, today, onOpen }: { rows
                 <p>{item.months} month{item.months === 1 ? "" : "s"}: {monthsLabel(item.from, item.to)}</p>
                 <p>Last paid: {item.lastPaid ? `${showDate(item.lastPaid)}${item.lastOr ? ` (OR ${item.lastOr})` : ""}` : "no payment yet"}</p>
               </div>
-              <p className="text-lg font-bold tabular-nums">{money(item.toCollect)}</p>
+              <p className="text-lg font-bold tabular-nums">{formatPeso(item.toCollect)}</p>
             </div>
             {(item.closeToForfeit || item.waiverNeeded) && <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">
               {item.closeToForfeit ? `Forfeits ${showDate(item.forfeitsOn)}${item.daysToForfeit > 0 ? ` (in ${item.daysToForfeit} day${item.daysToForfeit === 1 ? "" : "s"})` : ""}` : ""}

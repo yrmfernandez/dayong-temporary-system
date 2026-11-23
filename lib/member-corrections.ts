@@ -14,6 +14,8 @@ import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
 import { recordCorrection } from "@/lib/record-corrections";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { formatDate as showDate } from "@/lib/date-format";
+import { validDate } from "@/lib/manila-date";
+import { formatPesoShort } from "@/lib/money";
 
 /**
  * Member Corrections (owner, October 24, 2026; upgrade #4): the four repairs that used to need a script for each case,
@@ -45,10 +47,8 @@ import { formatDate as showDate } from "@/lib/date-format";
  */
 
 const text = (value: unknown) => String(value ?? "").trim();
-const peso = (value: number) => `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 const day = (value: unknown) => text(value).slice(0, 10);
 const validMonth = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const { collections, member_programs: memberPrograms, members, programs, sales } = schema;
 
 export type ReceiptLine = { id: string; orNumber: string; orDate: string; amount: number; account: string; program: string; before: string; after: string };
@@ -288,7 +288,7 @@ export function moveReceipts(input: MoveInput, reason: string, apply: boolean) {
     const notes: string[] = [];
     for (const [id, amount] of changedAmounts) {
       await tx.update(collections).set({ amount_collected: amount }).where(eq(collections.collection_id, id));
-      notes.push(`OR ${old.get(id)?.orNumber || id}: amount ${peso(oldAmounts.get(id) ?? 0)} → ${peso(amount)}.`);
+      notes.push(`OR ${old.get(id)?.orNumber || id}: amount ${formatPesoShort(oldAmounts.get(id) ?? 0)} → ${formatPesoShort(amount)}.`);
     }
     for (const id of sourceIds) {
       const source = accountOf(id);
@@ -770,8 +770,8 @@ export function insertNewSale(input: InsertSaleInput, reason: string, apply: boo
     const typed = input.amountPaid === undefined || String(input.amountPaid) === "" ? Number(row.amount_paid ?? fixed) : Number(input.amountPaid);
     const amount = Math.round(typed * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount paid.");
-    if (program.flexible && Math.round(amount * 100) < Math.round(fixed * 100)) throw new Error(`${program.name} needs at least ${peso(fixed)} (the minimum monthly payment).`);
-    if (!program.flexible && !program.newSaleAmountEditable && Math.round(amount * 100) !== Math.round(fixed * 100)) throw new Error(`${program.name} has a fixed New Sale amount of ${peso(fixed)}. Allow editing in Programs if the paper shows another amount.`);
+    if (program.flexible && Math.round(amount * 100) < Math.round(fixed * 100)) throw new Error(`${program.name} needs at least ${formatPesoShort(fixed)} (the minimum monthly payment).`);
+    if (!program.flexible && !program.newSaleAmountEditable && Math.round(amount * 100) !== Math.round(fixed * 100)) throw new Error(`${program.name} has a fixed New Sale amount of ${formatPesoShort(fixed)}. Allow editing in Programs if the paper shows another amount.`);
     if (!account.doi || account.doi > today) throw new Error(`The account's DOI (${account.doi || "none"}) must be set and not in the future; fix it with Fix coverage first.`);
     const dateRemitted = text(input.dateRemitted) || account.doi;
     if (!validDate(dateRemitted) || dateRemitted < account.doi || dateRemitted > today) throw new Error(`The Date Remitted must be on or after the DOI (${showDate(account.doi)}) and not in the future.`);
@@ -807,14 +807,14 @@ export function insertNewSale(input: InsertSaleInput, reason: string, apply: boo
     const [saved] = await tx.select({ incentive: sales.mas_incentive, share: sales.remittance_amount }).from(sales).where(eq(sales.sale_id, id));
     return {
       summary: created
-        ? `New ${account.programName} account ${account.id} of ${account.memberNumber} (DOI ${showDate(account.doi)}, ${account.branch}, MAS ${account.mas}) with New Sale ${id} (application ${applicationNo}, ${peso(amount)}, remitted ${showDate(dateRemitted)}); status ${statuses[0].after}.`
-        : `New Sale ${id} (application ${applicationNo}, ${peso(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}${payments.length ? ` (${payments.length} receipt(s), NOPs unchanged)` : ""}${statuses.length ? `; status ${statuses[0].before} → ${statuses[0].after}` : ""}.`,
+        ? `New ${account.programName} account ${account.id} of ${account.memberNumber} (DOI ${showDate(account.doi)}, ${account.branch}, MAS ${account.mas}) with New Sale ${id} (application ${applicationNo}, ${formatPesoShort(amount)}, remitted ${showDate(dateRemitted)}); status ${statuses[0].after}.`
+        : `New Sale ${id} (application ${applicationNo}, ${formatPesoShort(amount)}, DOI ${showDate(account.doi)}, remitted ${showDate(dateRemitted)}) inserted on ${account.programName} account ${account.id} of ${account.memberNumber}${payments.length ? ` (${payments.length} receipt(s), NOPs unchanged)` : ""}${statuses.length ? `; status ${statuses[0].before} → ${statuses[0].after}` : ""}.`,
       receipts: [], statuses,
       notes: [
         created
           ? "The account and its New Sale are saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so they do not enter Clearing, Remittances or a clerk's report. Its receipts can be added with Insert missing receipt."
           : `Saved as already remitted (no slip, no encoder), like the New Sales copied from the old system, so it does not enter Clearing, Remittances or a clerk's report. The account's NOPs do not change${statuses.length ? "; what the New Sale paid changes its status" : ", nor its status"}.`,
-        priced.repriced ? `MAS incentive ${peso(Number(saved?.incentive ?? 0))}, company share ${peso(Number(saved?.share ?? 0))}, from the program.` : "No incentive was worked out (the program's New Sale incentive gives none).",
+        priced.repriced ? `MAS incentive ${formatPesoShort(Number(saved?.incentive ?? 0))}, company share ${formatPesoShort(Number(saved?.share ?? 0))}, from the program.` : "No incentive was worked out (the program's New Sale incentive gives none).",
         `Member details are copied from ${account.memberNumber}; the branch, MAS (${mas}), DOI and payment method from the account.`,
         ...(created?.note ? [created.note] : []),
       ],

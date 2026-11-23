@@ -1,5 +1,6 @@
 import { manilaNow } from "@/lib/remittance-deadline";
 import { previousWorkingDay, type WorkCalendar } from "@/lib/working-days";
+import { toCents } from "@/lib/money";
 
 /**
  * Data-entry controls shared by the New Sales and Collections forms and their saves.
@@ -40,8 +41,6 @@ export function checkBackdate(date: string, reason: string, label: string, today
   }
 }
 
-const cents = (value: number) => Math.round(value * 100);
-
 /**
  * "" when the control total is entered and the total remittance can be calculated, otherwise what is missing.
  * `totalRemittance` is null while an entry is incomplete (its remittance cannot be calculated yet). A total that does
@@ -63,7 +62,7 @@ export const varianceLabel = (difference: number) => `${difference < 0 ? "Short"
 /** Control total − total remittance, in pesos: negative is short, positive is over, 0 matches; null when not comparable. */
 export function controlTotalDifference(controlTotal: unknown, totalRemittance: number | null) {
   if (controlTotalProblem(controlTotal, totalRemittance) || totalRemittance === null) return null;
-  return (cents(Number(controlTotal)) - cents(totalRemittance)) / 100;
+  return (toCents(Number(controlTotal)) - toCents(totalRemittance)) / 100;
 }
 
 /** What the form shows beside the control total: what is missing, a match, or how much it is short or over. */

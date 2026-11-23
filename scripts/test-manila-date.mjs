@@ -24,3 +24,12 @@ test("today is the Manila date", () => {
   assert.equal(manilaToday(new Date("2026-10-23T16:05:00Z")), "2026-10-24");
   assert.equal(manilaToday(new Date("2026-10-23T15:55:00Z")), "2026-10-23");
 });
+
+test("validDate takes real calendar dates only and never throws (the one copy, November 23, 2026)", async () => {
+  const { validDate, addDays } = await import("../lib/manila-date.ts");
+  for (const good of ["2026-11-23", "2028-02-29", "2026-12-31"]) assert.equal(validDate(good), true, good);
+  for (const bad of ["2026-02-31", "2026-04-31", "2027-02-29", "2026-13-01", "2026-00-10", "2026-1-5", "", "Nov 23, 2026"]) assert.equal(validDate(bad), false, bad);
+  assert.equal(addDays("2026-02-28", 1), "2026-03-01");
+  assert.equal(addDays("2026-03-01", -1), "2026-02-28");
+  assert.equal(addDays("2026-12-31", 1), "2027-01-01");
+});

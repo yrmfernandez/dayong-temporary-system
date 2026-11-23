@@ -4,6 +4,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { currentDb, inTransaction, schema } from "@/lib/db";
 import { DATE_FIELDS, RECORD_KINDS } from "@/lib/record-search-options";
+import { validDate } from "@/lib/manila-date";
 
 /**
  * Search Records (owner, October 31, 2026): any record by OR number, dates, contact, member, program, branch or MAS,
@@ -23,7 +24,6 @@ export type RecordQuery = {
   branch: string; program: string; mas: string; remittanceStatus: string;
 };
 const text = (value: unknown) => String(value ?? "").trim();
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const like = (value: string) => `%${value.replace(/[%_\\]/g, (match) => `\\${match}`)}%`;
 const manilaDay = (column: AnyPgColumn) => sql`(${column} at time zone 'Asia/Manila')::date`;
 const between = (column: SQL, from: string, to: string) => and(from ? sql`${column} >= ${from}::date` : undefined, to ? sql`${column} <= ${to}::date` : undefined);

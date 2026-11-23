@@ -10,9 +10,9 @@ import { parseJsonResponse } from "@/lib/api-response";
 import type { EntryField } from "@/lib/exception-fix";
 import type { EditableEntry, EditKind } from "@/lib/entry-edit";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPeso } from "@/lib/money";
 
 const field = "w-full rounded-md border bg-background p-2 text-sm";
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
 /**
  * Full edit of one New Sale or Collection in Edit / Corrections (owner, October 15, 2026; lib/entry-edit.ts): the
@@ -71,7 +71,7 @@ export function EntryEditor({ kind, id, fields, onCancel, onSaved }: { kind: Edi
       <div>
         <p className="font-semibold">Edit {kind} <span className="font-mono text-xs text-muted-foreground">{entry.id}</span></p>
         <p className="text-muted-foreground">{entry.member.name || "—"} · {entry.member.number} · {entry.branch} · {entry.person}</p>
-        {kind === "Collection" && <p className="text-muted-foreground">Now: NOP {v.nopFrom}{v.nopTo > v.nopFrom ? `–${v.nopTo}` : ""} ({v.monthFrom}{v.monthTo !== v.monthFrom ? ` to ${v.monthTo}` : ""}) · {peso(v.amount)}</p>}
+        {kind === "Collection" && <p className="text-muted-foreground">Now: NOP {v.nopFrom}{v.nopTo > v.nopFrom ? `–${v.nopTo}` : ""} ({v.monthFrom}{v.monthTo !== v.monthFrom ? ` to ${v.monthTo}` : ""}) · {formatPeso(v.amount)}</p>}
       </div>
       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${entry.remittance.onSlip ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{entry.remittance.status}{entry.remittance.slipId ? ` · ${entry.remittance.slipId}` : ""}</span>
     </div>

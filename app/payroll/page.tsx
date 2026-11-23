@@ -19,16 +19,16 @@ import { COMPANY_PROGRAM_CATEGORY, dailyRateOf, defaultPayrollSettings, lineTota
 import { buildPayslip, PAYSLIP_COMPANY, payslipFileName, payslipPdf, type PayslipRow } from "@/lib/payslip";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type Run = { id: string; periodFrom: string; periodTo: string; payDate: string; status: string; settings: PayrollSettings; employeeCount: number; grossTotal: number; deductionsTotal: number; netTotal: number; preparedByUserId: string; preparedByName: string; approvedByName: string; approvedAt: string; paidAt: string; cashAccount: string; paymentReference: string; cashTransactionId: string; branch: string; voidReason: string; remarks: string };
 type ProgramDeduction = { id: string; runId: string; periodFrom: string; periodTo: string; paidAt: string; employeeId: string; employeeName: string; programId: string; program: string; amount: number; reason: string; collectionId: string; orNumber: string; linkedAt: string; linkedBy: string };
 type Overview = { policy: PayrollSettings | null; programDeductions: ProgramDeduction[]; canManage: boolean; runs: Run[]; profiles: PayProfile[]; employees: Array<{ id: string; name: string; branch: string; roles: string[] }>; employeeBranches: Record<string, string>; cashAccounts: string[]; branches: string[]; adjustmentCategories: Record<Adjustment["kind"], string[]>; programs: Array<{ id: string; code: string; name: string; basePay: number }> };
 type Detail = { canManage: boolean; isAdministrator: boolean; currentUserId: string; run: Run; lines: PayrollLine[]; adjustments: Array<Adjustment & { status: string }>; totals: { gross: number; deductions: number; net: number } };
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value || 0);
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
 function currentHalfMonth() {
-  const date = today(), [year, month, day] = date.split("-").map(Number);
+  const date = manilaToday(), [year, month, day] = date.split("-").map(Number);
   const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const pad = (value: number) => String(value).padStart(2, "0");
   return Number(day) <= 15 ? { from: `${year}-${pad(month)}-01`, to: `${year}-${pad(month)}-15` } : { from: `${year}-${pad(month)}-16`, to: `${year}-${pad(month)}-${pad(last)}` };
@@ -142,7 +142,7 @@ function ProgramDeductions({ overview, busy, onLink }: { overview: Overview; bus
         <tbody>{list.map((item) => <tr key={item.id} className="border-t align-top">
           <td className="p-2.5"><strong>{item.employeeName}</strong><div className="text-xs text-muted-foreground">{item.employeeId}</div></td>
           <td className="p-2.5">{item.program || <span className="text-amber-700">Program not recorded</span>}<div className="max-w-72 text-xs text-muted-foreground">{item.reason}</div></td>
-          <td className="p-2.5 tabular-nums">{money(item.amount)}</td>
+          <td className="p-2.5 tabular-nums">{formatPeso(item.amount)}</td>
           <td className="p-2.5 text-xs">{showDate(item.periodFrom)} to {showDate(item.periodTo)}<div className="text-muted-foreground">Paid {showDate(item.paidAt)}</div></td>
           <td className="p-2.5">{item.collectionId
             ? <div className="space-y-1"><span className="font-medium text-emerald-700">OR {item.orNumber}</span><div className="text-xs text-muted-foreground">Linked by {item.linkedBy} {showDate(item.linkedAt)}</div>{overview.canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void confirmDialog(`Remove the link to OR ${item.orNumber}? The deduction goes back on the waiting list.`).then((ok) => ok && onLink(item.id, ""))}>Unlink</Button>}</div>
@@ -209,8 +209,8 @@ function RunsList({ overview, busy, onOpen, onCreate, onSavePolicy }: { overview
     <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <MetricTile tone="brand" icon={Users} label="Employees with pay setup" value={`${setupCount} / ${overview.employees.length}`} detail="Active employees" />
       <MetricTile tone="warning" icon={FileText} label="Drafts" value={String(overview.runs.filter((run) => run.status === "Draft").length)} detail="Awaiting approval" />
-      <MetricTile tone="info" icon={Wallet} label="Approved, unpaid" value={money(unpaid.reduce((sum, run) => sum + run.netTotal, 0))} detail={`${unpaid.length} payroll run(s)`} />
-      <MetricTile tone="success" icon={Banknote} label="Paid this year" value={money(overview.runs.filter((run) => run.status === "Paid" && run.payDate.startsWith(today().slice(0, 4))).reduce((sum, run) => sum + run.netTotal, 0))} detail="Net pay released" />
+      <MetricTile tone="info" icon={Wallet} label="Approved, unpaid" value={formatPeso(unpaid.reduce((sum, run) => sum + run.netTotal, 0))} detail={`${unpaid.length} payroll run(s)`} />
+      <MetricTile tone="success" icon={Banknote} label="Paid this year" value={formatPeso(overview.runs.filter((run) => run.status === "Paid" && run.payDate.startsWith(manilaToday().slice(0, 4))).reduce((sum, run) => sum + run.netTotal, 0))} detail="Net pay released" />
     </div>
 
     <PayrollPolicy overview={overview} busy={busy} onSave={onSavePolicy} />
@@ -243,7 +243,7 @@ function RunsList({ overview, busy, onOpen, onCreate, onSavePolicy }: { overview
                 <td className="p-3">{showDate(run.periodFrom)} to {showDate(run.periodTo)}</td>
                 <td className="p-3">{showDate(run.payDate) || "—"}</td>
                 <td className="p-3">{run.employeeCount}</td>
-                <td className="p-3 font-semibold tabular-nums">{money(run.netTotal)}</td>
+                <td className="p-3 font-semibold tabular-nums">{formatPeso(run.netTotal)}</td>
                 <td className="p-3"><StatusBadge status={run.status} /></td>
                 <td className="p-3 text-right"><Button type="button" size="sm" variant="outline" onClick={() => onOpen(run.id)}>Open</Button></td>
               </tr>)}
@@ -279,7 +279,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
   const pendingAmount = Number(adjustment.amount) || 0;
   const netBefore = adjustingLine ? lineTotals(adjustingLine, adjustments).net : 0;
   const netAfter = adjustingLine ? lineTotals(adjustingLine, [...adjustments, { id: "pending", employeeId: adjustingLine.employeeId, kind: adjustment.kind, category: adjustment.category, amount: pendingAmount, reason: "" }]).net : 0;
-  const [payment, setPayment] = useState({ payDate: run.payDate || today(), cashAccount: overview.cashAccounts[0] ?? "", branch: overview.branches[0] ?? "", paymentReference: "" });
+  const [payment, setPayment] = useState({ payDate: run.payDate || manilaToday(), cashAccount: overview.cashAccounts[0] ?? "", branch: overview.branches[0] ?? "", paymentReference: "" });
   const [payslip, setPayslip] = useState<PayrollLine | null>(null);
   const settingsChanged = JSON.stringify(settings) !== JSON.stringify(run.settings);
   // The attendance sheet's filters (owner, October 20, 2026); they only narrow what is shown, the payroll stays whole.
@@ -297,9 +297,9 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
 
     <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <MetricTile tone="brand" icon={CalendarRange} label="Pay period" value={`${run.periodFrom.slice(5)} – ${run.periodTo.slice(5)}`} detail={`${run.periodFrom.slice(0, 4)} · ${lines.length} employees`} />
-      <MetricTile tone="teal" icon={PlusCircle} label="Gross earnings" value={money(totals.gross)} detail="Base, overtime, commission, additions" />
-      <MetricTile tone="danger" icon={MinusCircle} label="Deductions" value={money(totals.deductions)} detail="Late, undertime, absences, deductions" />
-      <MetricTile tone="success" icon={Banknote} label="Net pay" value={money(totals.net)} detail={run.status === "Paid" ? `Paid ${showDate(run.payDate)} from ${run.cashAccount}` : "To be released"} />
+      <MetricTile tone="teal" icon={PlusCircle} label="Gross earnings" value={formatPeso(totals.gross)} detail="Base, overtime, commission, additions" />
+      <MetricTile tone="danger" icon={MinusCircle} label="Deductions" value={formatPeso(totals.deductions)} detail="Late, undertime, absences, deductions" />
+      <MetricTile tone="success" icon={Banknote} label="Net pay" value={formatPeso(totals.net)} detail={run.status === "Paid" ? `Paid ${showDate(run.payDate)} from ${run.cashAccount}` : "To be released"} />
     </div>
 
     <Card>
@@ -326,13 +326,13 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
                 const lineTotal = lineTotals(line, adjustments);
                 return <Fragment key={line.employeeId}><tr className="border-t align-top">
                   <td className="p-3"><strong>{line.employeeName}</strong><span className="block text-xs text-muted-foreground">{line.employeeId} · {line.roles || "—"}</span></td>
-                  <td className="p-3 tabular-nums">{line.baseType === "none" ? <span className="text-muted-foreground">No base</span> : <>{money(line.basePay)}<span className="block text-xs text-muted-foreground">{line.daysPaid} day(s) × {money(line.dailyRate)}{line.leaveDays ? ` · ${line.leaveDays} leave` : ""}</span></>}</td>
-                  <td className="p-3 tabular-nums">{money(line.overtimePay)}<span className="block text-xs text-muted-foreground">{line.overtimeHours} hr</span></td>
-                  <td className="p-3 tabular-nums">−{money(line.lateDeduction + line.undertimeDeduction)}<span className="block text-xs text-muted-foreground">{line.lateMinutes} late · {line.undertimeMinutes} UT min</span></td>
-                  <td className="p-3 tabular-nums">−{money(line.absenceDeduction)}<span className="block text-xs text-muted-foreground">{line.absentDays} day(s)</span></td>
-                  <td className="p-3 tabular-nums">{money(line.commission)}{line.earnedIncentive > 0 && <span className="block text-xs text-muted-foreground" title="Incentive earned on remitted collections in this period, for reference">Earned ref. {money(line.earnedIncentive)}</span>}</td>
-                  <td className="p-3 tabular-nums"><span className="text-brand-moss">+{money(lineTotal.additions)}</span><span className="block text-brand-red">−{money(lineTotal.adjustmentDeductions)}</span></td>
-                  <td className="p-3 font-bold tabular-nums">{money(lineTotal.net)}{lineTotal.shortfall > 0 && <span className="block text-xs font-normal text-brand-red">Deductions exceed pay by {money(lineTotal.shortfall)}</span>}</td>
+                  <td className="p-3 tabular-nums">{line.baseType === "none" ? <span className="text-muted-foreground">No base</span> : <>{formatPeso(line.basePay)}<span className="block text-xs text-muted-foreground">{line.daysPaid} day(s) × {formatPeso(line.dailyRate)}{line.leaveDays ? ` · ${line.leaveDays} leave` : ""}</span></>}</td>
+                  <td className="p-3 tabular-nums">{formatPeso(line.overtimePay)}<span className="block text-xs text-muted-foreground">{line.overtimeHours} hr</span></td>
+                  <td className="p-3 tabular-nums">−{formatPeso(line.lateDeduction + line.undertimeDeduction)}<span className="block text-xs text-muted-foreground">{line.lateMinutes} late · {line.undertimeMinutes} UT min</span></td>
+                  <td className="p-3 tabular-nums">−{formatPeso(line.absenceDeduction)}<span className="block text-xs text-muted-foreground">{line.absentDays} day(s)</span></td>
+                  <td className="p-3 tabular-nums">{formatPeso(line.commission)}{line.earnedIncentive > 0 && <span className="block text-xs text-muted-foreground" title="Incentive earned on remitted collections in this period, for reference">Earned ref. {formatPeso(line.earnedIncentive)}</span>}</td>
+                  <td className="p-3 tabular-nums"><span className="text-brand-moss">+{formatPeso(lineTotal.additions)}</span><span className="block text-brand-red">−{formatPeso(lineTotal.adjustmentDeductions)}</span></td>
+                  <td className="p-3 font-bold tabular-nums">{formatPeso(lineTotal.net)}{lineTotal.shortfall > 0 && <span className="block text-xs font-normal text-brand-red">Deductions exceed pay by {formatPeso(lineTotal.shortfall)}</span>}</td>
                   <td className="p-3"><div className="flex flex-col gap-1">
                     <Button type="button" size="sm" variant="outline" onClick={() => setPayslip(line)}><Printer className="size-3.5" />Payslip</Button>
                     {draft && <Button type="button" size="sm" variant={adjusting === line.employeeId ? "default" : "ghost"} aria-expanded={adjusting === line.employeeId} onClick={() => { setAdjustNote(""); setAdjustment(emptyAdjustment("Addition")); setAdjusting((current) => current === line.employeeId ? null : line.employeeId); }}>{adjusting === line.employeeId ? "Adjusting" : "Adjust"}</Button>}
@@ -341,7 +341,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
                 {adjusting === line.employeeId && draft && <InlineRow colSpan={9}>
                   <p className="text-sm font-semibold">Adjust pay: {line.employeeName}</p>
                   <p className="mb-3 text-xs text-muted-foreground">Add to or deduct from this employee&apos;s pay. Every entry needs a reason, which prints on the payslip.</p>
-    <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, adjustment.kind === "Addition" ? "Addition added." : "Deduction added.").then((saved) => { if (saved) { setAdjustNote(`${adjustment.kind === "Addition" ? "Added" : "Deducted"} ${money(Number(adjustment.amount) || 0)} (${adjustment.category}).`); setAdjustment(emptyAdjustment(adjustment.kind)); } }); }}>
+    <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "addAdjustment", employeeId: adjusting, ...adjustment }, adjustment.kind === "Addition" ? "Addition added." : "Deduction added.").then((saved) => { if (saved) { setAdjustNote(`${adjustment.kind === "Addition" ? "Added" : "Deducted"} ${formatPeso(Number(adjustment.amount) || 0)} (${adjustment.category}).`); setAdjustment(emptyAdjustment(adjustment.kind)); } }); }}>
       <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-4" role="radiogroup" aria-label="Adjustment type">
         {(["Addition", "Deduction"] as const).map((kind) => {
           const active = adjustment.kind === kind;
@@ -354,13 +354,13 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
         })}
       </div>
       <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-category">{adjustment.kind === "Addition" ? "Addition type *" : "Deduction type *"}</Label><SearchSelect id="adjustment-category" placeholder="Search category" value={adjustment.category} onValueChange={chooseCategory} options={overview.adjustmentCategories[adjustment.kind].map((category) => ({ value: category, label: category }))} /></div>
-      {adjustment.category === COMPANY_PROGRAM_CATEGORY && <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-program">Company program *</Label><SearchSelect id="adjustment-program" placeholder="Search program code or name" value={adjustment.programId} emptyText="No active program matches." onValueChange={(programId) => { const program = overview.programs.find((item) => item.id === programId); setAdjustment((current) => ({ ...current, programId, amount: current.amount || (program?.basePay ? String(program.basePay) : "") })); }} options={overview.programs.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, description: program.basePay ? `${money(program.basePay)} monthly` : undefined }))} /></div>}
+      {adjustment.category === COMPANY_PROGRAM_CATEGORY && <div className="space-y-2 sm:col-span-2"><Label htmlFor="adjustment-program">Company program *</Label><SearchSelect id="adjustment-program" placeholder="Search program code or name" value={adjustment.programId} emptyText="No active program matches." onValueChange={(programId) => { const program = overview.programs.find((item) => item.id === programId); setAdjustment((current) => ({ ...current, programId, amount: current.amount || (program?.basePay ? String(program.basePay) : "") })); }} options={overview.programs.map((program) => ({ value: program.id, label: `${program.code} - ${program.name}`, description: program.basePay ? `${formatPeso(program.basePay)} monthly` : undefined }))} /></div>}
       <div className="space-y-2"><Label htmlFor="adjustment-amount">Amount *</Label><Input id="adjustment-amount" type="number" min="0.01" step="0.01" required value={adjustment.amount} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div>
       <div className="space-y-2 sm:col-span-2 lg:col-span-4"><Label htmlFor="adjustment-reason">Reason *</Label><Input id="adjustment-reason" required minLength={3} maxLength={300} placeholder={adjustment.kind === "Addition" ? "e.g. Sales target reached for September; approved by the owner" : "e.g. Cash advance of Sept 5, 2nd of 4 installments"} value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div>
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
         <Button type="submit" disabled={busy || !adjustment.category || (adjustment.category === COMPANY_PROGRAM_CATEGORY && !adjustment.programId)}>{adjustment.kind === "Addition" ? <PlusCircle className="size-4" /> : <MinusCircle className="size-4" />}{adjustment.kind === "Addition" ? "Add to pay" : "Deduct from pay"}</Button>
         <Button type="button" variant="ghost" onClick={() => { setAdjusting(null); setAdjustment(emptyAdjustment("Addition")); }}>Done</Button>
-        {pendingAmount > 0 && <span className="text-sm text-muted-foreground">Net pay {money(netBefore)} → <strong className="text-foreground">{money(netAfter)}</strong></span>}
+        {pendingAmount > 0 && <span className="text-sm text-muted-foreground">Net pay {formatPeso(netBefore)} → <strong className="text-foreground">{formatPeso(netAfter)}</strong></span>}
         {adjustNote && !pendingAmount && <span role="status" className="text-sm text-emerald-700">{adjustNote}</span>}
         {error && <span role="alert" className="text-sm text-destructive">{error}</span>}
       </div>
@@ -382,7 +382,7 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
         <div className="divide-y rounded-lg border">
           {shownAdjustments.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
             <span><StatusBadge status={item.kind} tone={item.kind === "Addition" ? "success" : "danger"} /> <strong className="ml-1">{lines.find((line) => line.employeeId === item.employeeId)?.employeeName ?? item.employeeId}</strong> · {item.category}<span className="block text-xs text-muted-foreground">{item.reason}</span></span>
-            <span className="flex items-center gap-3"><strong className="tabular-nums">{item.kind === "Addition" ? "+" : "−"}{money(item.amount)}</strong>{draft && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void act({ action: "removeAdjustment", adjustmentId: item.id }, "Adjustment removed.")}>Remove</Button>}</span>
+            <span className="flex items-center gap-3"><strong className="tabular-nums">{item.kind === "Addition" ? "+" : "−"}{formatPeso(item.amount)}</strong>{draft && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void act({ action: "removeAdjustment", adjustmentId: item.id }, "Adjustment removed.")}>Remove</Button>}</span>
           </div>)}
           {!adjustments.length && <p className="p-3 text-sm text-muted-foreground">No bonuses or deductions. Use Adjust on an employee to add one with a reason.</p>}
           {adjustments.length > 0 && !shownAdjustments.length && <p className="p-3 text-sm text-muted-foreground">None for the employees shown.</p>}
@@ -395,15 +395,15 @@ function RunDetail({ overview, detail, busy, error, onBack, act }: { overview: O
       <CardContent className="space-y-4">
         {run.status === "Draft" && <>
           <p className="text-sm text-muted-foreground">Prepared by {run.preparedByName}. Approving locks the amounts. {selfApproval ? "Another Finance user or an Administrator must approve a payroll you prepared." : ""}</p>
-          <Button type="button" disabled={busy || selfApproval || !lines.length} onClick={() => void act({ action: "approve" }, "Payroll approved.")}>Approve payroll ({money(totals.net)})</Button>
+          <Button type="button" disabled={busy || selfApproval || !lines.length} onClick={() => void act({ action: "approve" }, "Payroll approved.")}>Approve payroll ({formatPeso(totals.net)})</Button>
         </>}
-        {run.status === "Approved" && <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={async (event) => { event.preventDefault(); if (await confirmDialog(`Record ${money(totals.net)} paid from ${payment.cashAccount}? This posts one payroll outflow to Cash Transactions and marks included commissions Paid.`)) void act({ action: "pay", ...payment }, "Payroll paid and posted to the cash ledger."); }}>
+        {run.status === "Approved" && <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={async (event) => { event.preventDefault(); if (await confirmDialog(`Record ${formatPeso(totals.net)} paid from ${payment.cashAccount}? This posts one payroll outflow to Cash Transactions and marks included commissions Paid.`)) void act({ action: "pay", ...payment }, "Payroll paid and posted to the cash ledger."); }}>
           <p className="text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">Approved by {run.approvedByName}. Recording payment posts one cash outflow and marks the included commissions Paid.</p>
           <div className="space-y-2"><Label>Pay date *</Label><Input type="date" required value={payment.payDate} onChange={(event) => setPayment({ ...payment, payDate: event.target.value })} /></div>
           <div className="space-y-2"><Label>Paid from *</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" required value={payment.cashAccount} onChange={(event) => setPayment({ ...payment, cashAccount: event.target.value })}>{overview.cashAccounts.map((account) => <option key={account}>{account}</option>)}</select></div>
           <div className="space-y-2"><Label>Branch charged *</Label><SearchSelect aria-label="Branch charged" className="h-10" placeholder="Search branch" value={payment.branch} onValueChange={(branch) => setPayment({ ...payment, branch })} options={overview.branches.map((branch) => ({ value: branch, label: branch }))} /></div>
           <div className="space-y-2"><Label>Reference</Label><Input maxLength={100} placeholder="Bank batch / voucher no." value={payment.paymentReference} onChange={(event) => setPayment({ ...payment, paymentReference: event.target.value })} /></div>
-          <div className="sm:col-span-2 lg:col-span-4"><Button type="submit" disabled={busy}>Record payment ({money(totals.net)})</Button></div>
+          <div className="sm:col-span-2 lg:col-span-4"><Button type="submit" disabled={busy}>Record payment ({formatPeso(totals.net)})</Button></div>
         </form>}
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={async () => { const reason = await promptDialog("Reason for voiding this payroll (required):", { required: true }); if (reason?.trim()) void act({ action: "void", reason }, "Payroll voided. Its commissions are available to a new payroll."); }}>Void payroll</Button>
@@ -466,8 +466,8 @@ function Payslip({ run, line, adjustments, onClose }: { run: Run; line: PayrollL
           <PayslipSection title="Earnings" rows={slip.earnings} total={slip.gross} />
           <PayslipSection title="Deductions" rows={slip.deductions} total={slip.totalDeductions} negative />
         </div>
-        <div className="mt-6 flex items-center justify-between rounded-xl border-2 border-foreground p-4"><span className="font-bold">NET PAY</span><span className="text-2xl font-black tabular-nums">{money(slip.net)}</span></div>
-        {slip.shortfall > 0 && <p className="mt-2 text-xs text-destructive">Deductions exceed earnings by {money(slip.shortfall)}; net pay is shown as zero.</p>}
+        <div className="mt-6 flex items-center justify-between rounded-xl border-2 border-foreground p-4"><span className="font-bold">NET PAY</span><span className="text-2xl font-black tabular-nums">{formatPeso(slip.net)}</span></div>
+        {slip.shortfall > 0 && <p className="mt-2 text-xs text-destructive">Deductions exceed earnings by {formatPeso(slip.shortfall)}; net pay is shown as zero.</p>}
         <div className="mt-6 grid grid-cols-2 gap-8 pt-10 text-center text-xs text-muted-foreground"><div className="border-t border-border pt-2">Prepared by</div><div className="border-t border-border pt-2">Received by</div></div>
       </article>
     </div>
@@ -478,9 +478,9 @@ function PayslipSection({ title, rows, total, negative = false }: { title: strin
   return <section>
     <p className="mb-2 border-b border-border pb-1 text-sm font-bold uppercase tracking-wide">{title}</p>
     <div className="space-y-2 text-sm">
-      {rows.map((row, index) => <div key={`${row.label}-${index}`} className="flex justify-between gap-3"><span className="min-w-0">{row.label}{row.note && <span className="block break-words text-xs text-muted-foreground">{row.note}</span>}</span><span className="shrink-0 tabular-nums">{negative ? "−" : ""}{money(row.amount)}</span></div>)}
+      {rows.map((row, index) => <div key={`${row.label}-${index}`} className="flex justify-between gap-3"><span className="min-w-0">{row.label}{row.note && <span className="block break-words text-xs text-muted-foreground">{row.note}</span>}</span><span className="shrink-0 tabular-nums">{negative ? "−" : ""}{formatPeso(row.amount)}</span></div>)}
       {!rows.length && <p className="text-muted-foreground">None</p>}
-      <div className="flex justify-between border-t border-border pt-1.5 font-bold"><span>Total</span><span className="tabular-nums">{negative ? "−" : ""}{money(total)}</span></div>
+      <div className="flex justify-between border-t border-border pt-1.5 font-bold"><span>Total</span><span className="tabular-nums">{negative ? "−" : ""}{formatPeso(total)}</span></div>
     </div>
   </section>;
 }
@@ -515,7 +515,7 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
                 return <Fragment key={employee.id}><tr className="border-t">
                   <td className="p-3"><strong>{employee.name}</strong><span className="block text-xs text-muted-foreground">{employee.id}{employee.branch ? ` · ${employee.branch}` : ""}</span></td>
                   <td className="p-3">{employee.roles.join(", ") || "—"}</td>
-                  <td className="p-3 tabular-nums">{!profile ? "—" : profile.baseType === "none" ? "No base" : `${money(profile.baseRate)} / ${profile.baseType === "monthly" ? "month" : "day"}`}</td>
+                  <td className="p-3 tabular-nums">{!profile ? "—" : profile.baseType === "none" ? "No base" : `${formatPeso(profile.baseRate)} / ${profile.baseType === "monthly" ? "month" : "day"}`}</td>
                   <td className="p-3">{profile?.commissionEligible ? "Yes" : profile ? "No" : "—"}</td>
                   <td className="p-3">{profile ? `× ${profile.overtimeMultiplier}` : "—"}</td>
                   <td className="p-3">{profile ? <StatusBadge status={profile.status} /> : <StatusBadge status="Needs pay setup" tone="warning" />}</td>
@@ -536,7 +536,7 @@ function PayRates({ overview, busy, onSave }: { overview: Overview; busy: boolea
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-2"><Label>{editing.baseType === "monthly" ? "Monthly salary *" : "Daily rate *"}</Label><Input type="number" min="0" step="0.01" disabled={editing.baseType === "none"} required={editing.baseType !== "none"} value={editing.baseType === "none" ? "" : editing.baseRate || ""} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, baseRate: Number(event.target.value) })} />
-          {editing.baseType === "monthly" && editing.baseRate > 0 && <p className="text-xs text-muted-foreground">≈ {money(dailyRateOf(editing))} per day (× 12 ÷ 313 working days)</p>}</div>
+          {editing.baseType === "monthly" && editing.baseRate > 0 && <p className="text-xs text-muted-foreground">≈ {formatPeso(dailyRateOf(editing))} per day (× 12 ÷ 313 working days)</p>}</div>
         <div className="space-y-2"><Label>Hours per day</Label><Input type="number" min="1" max="24" step="0.5" value={editing.hoursPerDay} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, hoursPerDay: Number(event.target.value) })} /></div>
         <div className="space-y-2"><Label>Overtime multiplier</Label><Input type="number" min="1" max="5" step="0.05" value={editing.overtimeMultiplier} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => setEditing({ ...editing, overtimeMultiplier: Number(event.target.value) })} /><p className="text-xs text-muted-foreground">1.25 = regular-day overtime</p></div>
         <div className="space-y-2"><Label>Status</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value as PayProfile["status"] })}><option value="active">Active (include in payroll)</option><option value="inactive">Inactive</option></select></div>

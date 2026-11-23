@@ -8,8 +8,8 @@ import type { getRemittanceDashboard } from "@/lib/remittance-workflow";
 import type { getCommissions, getVendorPayables } from "@/lib/finance-operations";
 import { GrossSalesDrilldown } from "@/components/gross-sales-drilldown";
 import { formatDate as showDate } from "@/lib/date-format";
+import { formatPeso } from "@/lib/money";
 
-const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 type Props = { employeeName: string; today: string; analytics: ExecutiveAnalytics; remittance: Awaited<ReturnType<typeof getRemittanceDashboard>>; payables: Awaited<ReturnType<typeof getVendorPayables>>; commissions: Awaited<ReturnType<typeof getCommissions>> };
 
 /** Finance: cash position, what is owed to and by the company, and the approvals waiting on Finance. */
@@ -23,31 +23,31 @@ export function FinanceDashboard({ employeeName, today, analytics, remittance, p
     <div><p className="text-sm font-medium text-primary">Finance workspace</p><h1 className="text-2xl font-bold">Cash & Accountability</h1><p className="text-sm text-muted-foreground">Welcome, {employeeName}. Cash position, approvals waiting on you, and what the company owes this month.</p></div>
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricTile label="Cash on Hand" value={money(c.onHand)} detail={`Burn ${money(c.monthlyOutflow)}/month`} icon={Wallet} tone="teal" href="/cash-transactions" />
-      <MetricTile label="Remittances to Approve" value={r.pendingCount} detail={`${money(r.pendingAmount)} expected`} icon={Clock3} tone={r.pendingCount ? "warning" : "success"} href="/remittances" />
-      <MetricTile label="Cash Still With Staff" value={money(r.outstandingAmount)} detail={`${r.outstandingCount} collections not yet remitted`} icon={HandCoins} tone={r.outstandingAmount ? "orange" : "success"} href="/remittances" />
-      <MetricTile label="Remittance Discrepancies" value={money(r.discrepancyAmount)} detail="Awaiting reconciliation" icon={AlertTriangle} tone={r.discrepancyAmount ? "danger" : "success"} href="/remittances" />
-      <GrossSalesDrilldown label="Gross Sales (MTD)" value={f.grossSales} note={`Net ${money(f.netSales)} after commissions`} from={analytics.from} to={analytics.to} />
-      <MetricTile label="Expenses (MTD)" value={money(f.expenses)} detail={`Payroll ${money(f.payroll)} · bills ${money(f.vendorBills)}`} icon={Receipt} tone="orange" href="/expenses" />
-      <MetricTile label="Unpaid Vendor Bills" value={money(open.reduce((sum, bill) => sum + bill.balance, 0))} detail={overdue.length ? `${overdue.length} overdue` : `${open.length} open`} icon={FileText} tone={overdue.length ? "danger" : "info"} href="/vendor-payables" />
-      <MetricTile label="Pending Commissions" value={money(pendingCommissions.reduce((sum, item) => sum + item.netCommission, 0))} detail={`${pendingCommissions.length} records for payroll`} icon={Landmark} tone="info" href="/commissions" />
+      <MetricTile label="Cash on Hand" value={formatPeso(c.onHand)} detail={`Burn ${formatPeso(c.monthlyOutflow)}/month`} icon={Wallet} tone="teal" href="/cash-transactions" />
+      <MetricTile label="Remittances to Approve" value={r.pendingCount} detail={`${formatPeso(r.pendingAmount)} expected`} icon={Clock3} tone={r.pendingCount ? "warning" : "success"} href="/remittances" />
+      <MetricTile label="Cash Still With Staff" value={formatPeso(r.outstandingAmount)} detail={`${r.outstandingCount} collections not yet remitted`} icon={HandCoins} tone={r.outstandingAmount ? "orange" : "success"} href="/remittances" />
+      <MetricTile label="Remittance Discrepancies" value={formatPeso(r.discrepancyAmount)} detail="Awaiting reconciliation" icon={AlertTriangle} tone={r.discrepancyAmount ? "danger" : "success"} href="/remittances" />
+      <GrossSalesDrilldown label="Gross Sales (MTD)" value={f.grossSales} note={`Net ${formatPeso(f.netSales)} after commissions`} from={analytics.from} to={analytics.to} />
+      <MetricTile label="Expenses (MTD)" value={formatPeso(f.expenses)} detail={`Payroll ${formatPeso(f.payroll)} · bills ${formatPeso(f.vendorBills)}`} icon={Receipt} tone="orange" href="/expenses" />
+      <MetricTile label="Unpaid Vendor Bills" value={formatPeso(open.reduce((sum, bill) => sum + bill.balance, 0))} detail={overdue.length ? `${overdue.length} overdue` : `${open.length} open`} icon={FileText} tone={overdue.length ? "danger" : "info"} href="/vendor-payables" />
+      <MetricTile label="Pending Commissions" value={formatPeso(pendingCommissions.reduce((sum, item) => sum + item.netCommission, 0))} detail={`${pendingCommissions.length} records for payroll`} icon={Landmark} tone="info" href="/commissions" />
     </div>
 
     <div className="grid gap-6 xl:grid-cols-2">
       <Panel title="Remittances Requiring Action" description="Slips waiting for approval, or where the cash received differs from what was expected." action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Open Remittances</Link>}>
-        <Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={actionable.slice(0, 8).map((row) => [row.accountableName, row.branch, money(row.expectedAmount), money(row.actualAmount), money(row.difference), <StatusBadge key="s" status={row.status} />])} empty="Nothing waiting for approval." />
+        <Table headers={["Person", "Branch", "Expected", "Actual", "Difference", "Status"]} rows={actionable.slice(0, 8).map((row) => [row.accountableName, row.branch, formatPeso(row.expectedAmount), formatPeso(row.actualAmount), formatPeso(row.difference), <StatusBadge key="s" status={row.status} />])} empty="Nothing waiting for approval." />
       </Panel>
       <Panel title="Month to Date" description="Income and costs from the 1st of this month to today.">
-        <Rows rows={[["Gross Sales", money(f.grossSales)], ["Agent commissions", `– ${money(f.commissions)}`], ["Net Sales", money(f.netSales), true], ["Payroll", `– ${money(f.payroll)}`], ["Expenses", `– ${money(f.expenses)}`], ["Vendor bills", `– ${money(f.vendorBills)}`], ["Operating profit", money(f.ebitda), true], ["Expected / actual remittance", `${money(f.expectedRemittance)} / ${money(f.actualRemittance)}`], ["Remittance gap", money(f.gap), true]]} />
+        <Rows rows={[["Gross Sales", formatPeso(f.grossSales)], ["Agent commissions", `– ${formatPeso(f.commissions)}`], ["Net Sales", formatPeso(f.netSales), true], ["Payroll", `– ${formatPeso(f.payroll)}`], ["Expenses", `– ${formatPeso(f.expenses)}`], ["Vendor bills", `– ${formatPeso(f.vendorBills)}`], ["Operating profit", formatPeso(f.ebitda), true], ["Expected / actual remittance", `${formatPeso(f.expectedRemittance)} / ${formatPeso(f.actualRemittance)}`], ["Remittance gap", formatPeso(f.gap), true]]} />
       </Panel>
     </div>
 
     <div className="grid gap-6 xl:grid-cols-2">
       <Panel title="Cash With Staff" description="Collections and New Sales not yet remitted, by the person holding the cash, largest first." action={<Link href="/remittances" className="text-sm font-medium text-primary hover:underline">Collect</Link>}>
-        <Table headers={["Person", "Role", "Branch", "Collections", "Amount due"]} rows={[...remittance.accountability].sort((a, b) => b.outstandingAmount - a.outstandingAmount).slice(0, 8).map((row) => [row.name, row.role, row.branch, String(row.collectionCount), money(row.outstandingAmount)])} empty="All collected cash has been remitted." />
+        <Table headers={["Person", "Role", "Branch", "Collections", "Amount due"]} rows={[...remittance.accountability].sort((a, b) => b.outstandingAmount - a.outstandingAmount).slice(0, 8).map((row) => [row.name, row.role, row.branch, String(row.collectionCount), formatPeso(row.outstandingAmount)])} empty="All collected cash has been remitted." />
       </Panel>
       <Panel title="Vendor Bills Due" description="Unpaid supplier bills, earliest due date first." action={<Link href="/vendor-payables" className="text-sm font-medium text-primary hover:underline">Open Payables</Link>}>
-        <Table headers={["Vendor", "Due", "Balance", "Status"]} rows={[...open].sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8).map((bill) => [bill.vendor, showDate(bill.dueDate) || "—", money(bill.balance), <StatusBadge key="s" status={bill.dueDate && bill.dueDate < today ? "Overdue" : bill.status} />])} empty="No unpaid bills." />
+        <Table headers={["Vendor", "Due", "Balance", "Status"]} rows={[...open].sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8).map((bill) => [bill.vendor, showDate(bill.dueDate) || "—", formatPeso(bill.balance), <StatusBadge key="s" status={bill.dueDate && bill.dueDate < today ? "Overdue" : bill.status} />])} empty="No unpaid bills." />
       </Panel>
     </div>
   </section>;

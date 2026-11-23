@@ -11,6 +11,7 @@ import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 import { formatDate as showDate } from "@/lib/date-format";
 import { clerkTurnover } from "@/lib/turnover-variance";
+import { weekOfMonth } from "@/lib/report-week";
 
 /**
  * An Entry Clerk's own report for a day, week (Monday to Sunday within one month), month or year, in the company's report layout:
@@ -41,16 +42,6 @@ const longDate = (date: string) => `${MONTHS[parts(date).month - 1]} ${parts(dat
 const weekday = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
 // Shown dates follow the one format of the system (lib/date-format.ts, October 27, 2026).
 const shortDate = (date: string) => showDate(date);
-
-/**
- * Week of the month (owner, October 30, 2026): week 1 starts on the 1st and runs to the first Sunday, then each week
- * is Monday to Sunday, and the last ends on the month's last day (lib/daily-audit.ts periodSpan). October 2026: Oct 1-4
- * is the 1ST WEEK, Oct 12 the 3RD, Oct 26-31 the 5TH. Before, week N was the week of the Nth Monday.
- */
-export function weekOfMonth(date: string) {
-  const firstWeekday = (new Date(`${date.slice(0, 7)}-01T00:00:00Z`).getUTCDay() + 6) % 7;
-  return Math.floor((parts(date).day - 1 + firstWeekday) / 7) + 1;
-}
 
 function headings(kind: AuditPeriod, start: string, end: string, monthLabel = "", ownDates = false, weekNumber = 0) {
   const month = MONTHS[parts(start).month - 1];

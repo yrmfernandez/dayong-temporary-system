@@ -1,5 +1,5 @@
 import type { SessionUser } from "@/lib/auth";
-import { todayInManila } from "@/lib/account-rules";
+
 import { isMasFamilyRole, type DashboardKind } from "@/lib/access-control";
 import { getAttendanceRecordsForDate } from "@/lib/attendance-data";
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
@@ -12,7 +12,7 @@ import { getEntriesForDay } from "@/lib/todays-entries";
 import { PROGRAMS_RANGE } from "@/lib/sheet-ranges";
 import { countSheetRows, readSheetRows } from "@/lib/sheets-on-db";
 import { sql } from "drizzle-orm";
-import { manilaDateOf } from "@/lib/manila-date";
+import { manilaDateOf, manilaToday } from "@/lib/manila-date";
 import { accountableScope, masScope, type Person } from "@/lib/person-scope";
 import { openAccountOfDeceased } from "@/lib/account-deactivation";
 
@@ -26,7 +26,7 @@ const lateStatuses = ["60D", "90D", "120D", "150D"];
 
 /** Data for the operational dashboards (admin, HR, entry, MAS, collector). Each role reads only what it shows. */
 export async function getDashboardData(user: SessionUser, kind: DashboardKind) {
-  const today = todayInManila();
+  const today = manilaToday();
   const from = `${today.slice(0, 7)}-01`;
   const needsSales = ["admin", "entry", "mas", "collector"].includes(kind);
   // Large sheets use the shared ranges (lib/sheet-ranges.ts), so the report, remittances and today's counts below reuse

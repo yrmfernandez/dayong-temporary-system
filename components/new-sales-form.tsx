@@ -30,7 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
-import { todayInManila } from "@/lib/account-rules";
+
 import type { ProgramStanding } from "@/lib/account-data";
 import { defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
@@ -73,6 +73,8 @@ import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { DATE_REMITTED_REASON_MIN } from "@/lib/clearing-kinds";
 import { enterToNextField } from "@/lib/enter-to-next";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
+import { manilaToday } from "@/lib/manila-date";
+import { formatPeso } from "@/lib/money";
 
 type ProgramApiResponse = {
   success: boolean;
@@ -215,7 +217,7 @@ function calculateAge(
   if (!birthdate) return null;
 
   const birth = new Date(`${birthdate}T00:00:00Z`);
-  const today = new Date(`${todayInManila()}T00:00:00Z`);
+  const today = new Date(`${manilaToday()}T00:00:00Z`);
 
   let age =
     today.getUTCFullYear() -
@@ -237,7 +239,7 @@ function calculateAge(
 }
 
 function birthdateFromAge(age: number): string {
-  const [year, month, day] = todayInManila().split("-").map(Number);
+  const [year, month, day] = manilaToday().split("-").map(Number);
   const birthYear = year - age;
   // February 29 becomes February 28 when the birth year is not a leap year.
   const lastDay = new Date(Date.UTC(birthYear, month, 0)).getUTCDate();
@@ -280,7 +282,7 @@ type ReturnedEdit = { ids: string[]; branch: string; person: string; personEmplo
 export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const masMode = mode === "mas";
   // Birthdates cannot be in the future.
-  const today = todayInManila();
+  const today = manilaToday();
   const [branch, setBranch] = useState("");
   // Late dates skip Sundays and the branch's declared non-working days, as the server does (lib/working-days.ts).
   const offDays = useDeclaredNonWorkingDays();
@@ -1249,7 +1251,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    * the details can be typed later. Already cleared today: asks whether it is the same cash or a new handover.
    */
   const markRemitted = async (submission: SubmissionSummary) => {
-    if (!await confirmDialog(`Mark ${submission.mas}'s New Sales remitted now (${submission.saleCount} sale${submission.saleCount === 1 ? "" : "s"}, ${peso(submission.totalAmount)} collected)? Only once the cash is in your hands: this time decides the incentive.`)) return;
+    if (!await confirmDialog(`Mark ${submission.mas}'s New Sales remitted now (${submission.saleCount} sale${submission.saleCount === 1 ? "" : "s"}, ${formatPeso(submission.totalAmount)} collected)? Only once the cash is in your hands: this time decides the incentive.`)) return;
     const send = (handover = "") => fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remit", id: submission.id, handover }) })
       .then(async (response) => ({ response, result: await response.json() }));
     let { response, result } = await send();
@@ -1803,7 +1805,7 @@ Is this cash part of that handover?`) ? "same"
                       {!expanded && (
                         <span className="truncate text-sm max-md:w-full max-md:whitespace-normal">
                           <strong>{[sale.member.name.surname, sale.member.name.firstName].filter(Boolean).join(", ") || "No name yet"}</strong>
-                          <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {peso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}{saleQuotes[index] && !("error" in saleQuotes[index]!) ? ` · Incentive ${peso(saleQuotes[index]!.incentive)} · Remittance ${peso(saleQuotes[index]!.remittance)}` : ""}</span>
+                          <span className="text-muted-foreground"> · {programOf(sale)?.name || sale.program.programCode || "no program"} · {formatPeso(amountPaidOf(sale))} · App {sale.applicationNumber || "—"}{saleQuotes[index] && !("error" in saleQuotes[index]!) ? ` · Incentive ${formatPeso(saleQuotes[index]!.incentive)} · Remittance ${formatPeso(saleQuotes[index]!.remittance)}` : ""}</span>
                         </span>
                       )}
                     </div>
@@ -1983,9 +1985,9 @@ Is this cash part of that handover?`) ? "same"
                       </div>
                       {/* MAS: what this sale earns them and what they hand over, as soon as the program and amount are in. */}
                       {masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <dl className="grid grid-cols-3 gap-2 rounded-md bg-muted/40 p-2 text-center text-sm">
-                        <div><dt className="text-[11px] text-muted-foreground">Collect</dt><dd className="font-semibold tabular-nums">{peso(amountPaidOf(sale))}</dd></div>
-                        <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{peso(saleQuotes[index]!.incentive)}</dd></div>
-                        <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{peso(saleQuotes[index]!.remittance)}</dd></div>
+                        <div><dt className="text-[11px] text-muted-foreground">Collect</dt><dd className="font-semibold tabular-nums">{formatPeso(amountPaidOf(sale))}</dd></div>
+                        <div><dt className="text-[11px] text-muted-foreground">Your incentive</dt><dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{formatPeso(saleQuotes[index]!.incentive)}</dd></div>
+                        <div><dt className="text-[11px] text-muted-foreground">To remit</dt><dd className="font-semibold tabular-nums">{formatPeso(saleQuotes[index]!.remittance)}</dd></div>
                       </dl>}
                       {/* The clerk checks each sale on its card (owner, November 5, 2026). */}
                       {!masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <div className="rounded-md bg-muted/40 p-2"><EntryFigures account="NS" nop={selectedProgram?.registrationFeeRequired ? "Registration" : "1"} collected={amountPaidOf(sale)} incentive={saleQuotes[index]!.incentive} remittance={saleQuotes[index]!.remittance} basis={saleQuotes[index]!.basis} incentiveLabel="MAS incentive" /></div>}
@@ -3179,7 +3181,7 @@ Is this cash part of that handover?`) ? "same"
         </CardContent>
       </Card>}
 
-      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {peso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${peso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
+      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatPeso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${formatPeso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one only for a receipt that changed; a new photo sends the batch back for approval.</p>}
@@ -3192,12 +3194,12 @@ Is this cash part of that handover?`) ? "same"
           <div className="min-w-0 flex-1 text-sm">
             {/* MAS on a phone: three short columns, as on Submit Collections, so the bar leaves the form its room. */}
             {masMode ? <dl className="grid grid-cols-3 gap-2 text-center md:flex md:flex-wrap md:items-baseline md:gap-x-4 md:gap-y-1 md:text-left">
-              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Collected ({sales.length} {sales.length === 1 ? "sale" : "sales"})</dt> <dd className="font-bold tabular-nums md:inline md:text-lg">{peso(totalPaid)}</dd></div>
-              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Your incentive</dt> <dd className="font-bold tabular-nums text-emerald-700 md:inline dark:text-emerald-400">{totalSaleRemittance === null ? "—" : peso(Math.round((totalPaid - totalSaleRemittance) * 100) / 100)}</dd></div>
-              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">To remit</dt> <dd className="font-bold tabular-nums md:inline">{totalSaleRemittance === null ? "—" : peso(totalSaleRemittance)}</dd></div>
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Collected ({sales.length} {sales.length === 1 ? "sale" : "sales"})</dt> <dd className="font-bold tabular-nums md:inline md:text-lg">{formatPeso(totalPaid)}</dd></div>
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">Your incentive</dt> <dd className="font-bold tabular-nums text-emerald-700 md:inline dark:text-emerald-400">{totalSaleRemittance === null ? "—" : formatPeso(Math.round((totalPaid - totalSaleRemittance) * 100) / 100)}</dd></div>
+              <div><dt className="text-[11px] text-muted-foreground md:inline md:text-sm">To remit</dt> <dd className="font-bold tabular-nums md:inline">{totalSaleRemittance === null ? "—" : formatPeso(totalSaleRemittance)}</dd></div>
             </dl> : <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <span>Total amount collected <strong className="text-lg tabular-nums">{peso(totalPaid)}</strong></span>
-              <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : peso(saleTotalDue)}</strong></span>
+              <span>Total amount collected <strong className="text-lg tabular-nums">{formatPeso(totalPaid)}</strong></span>
+              <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{saleTotalDue === null ? "pending" : formatPeso(saleTotalDue)}</strong></span>
               <span className="text-muted-foreground">{sales.length} {sales.length === 1 ? "sale" : "sales"}</span>
             </p>}
             <p className={`truncate text-muted-foreground ${masMode ? "hidden md:block" : ""}`}>{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
@@ -3251,7 +3253,7 @@ function SubmissionList({ submissions, branchPicker, activeId, onOpen, onRemit, 
             <div key={submission.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${submission.id === activeId ? "border-primary bg-primary/5" : ""}`}>
               <div className="min-w-0 text-sm">
                 <p className="font-semibold">{submission.mas} · {submission.branch}</p>
-                <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · submitted {submittedAt(submission.submittedAt)}</p>
+                <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {formatPeso(submission.totalAmount)} · submitted {submittedAt(submission.submittedAt)}</p>
                 {submission.status === "Remitted"
                   ? <p className={`font-medium ${late ? "text-amber-700" : "text-emerald-700"}`}>Remitted {submittedAt(submission.remittedAt)}{submission.remittedByName ? ` (${submission.remittedByName})` : ""}{submission.incentiveDeadline ? (late ? " · after the deadline: incentive forfeited" : " · in time: incentive kept") : ""} · details still to save</p>
                   : submission.incentiveDeadline && <p className="text-muted-foreground">Not yet remitted · incentive kept if received by {formatDeadline(submission.incentiveDeadline)}</p>}
@@ -3281,7 +3283,7 @@ function ReturnedSubmissions({ submissions, onOpen }: { submissions: SubmissionS
         <div key={submission.id} className="flex flex-col gap-2 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="truncate font-medium">{memberNames(submission)}</p>
-            <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {peso(submission.totalAmount)} · {submission.branch}</p>
+            <p className="text-muted-foreground">{submission.saleCount} sale{submission.saleCount === 1 ? "" : "s"} · {formatPeso(submission.totalAmount)} · {submission.branch}</p>
             <p className="font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>
           </div>
           <Button type="button" className="h-11 shrink-0" onClick={() => onOpen(submission)}>Fix and resubmit</Button>
@@ -3345,7 +3347,7 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate font-semibold">{memberNames(submission)}</p>
-            <p className="text-xs text-muted-foreground">{plural(submission.saleCount, "sale")} · <span className="font-medium text-foreground tabular-nums">{peso(submission.totalAmount)}</span> · {submission.branch} · sent {submittedAt(submission.submittedAt)}</p>
+            <p className="text-xs text-muted-foreground">{plural(submission.saleCount, "sale")} · <span className="font-medium text-foreground tabular-nums">{formatPeso(submission.totalAmount)}</span> · {submission.branch} · sent {submittedAt(submission.submittedAt)}</p>
           </div>
           <Badge variant={tone[submission.status]} className="shrink-0">{label[submission.status]}</Badge>
         </div>
@@ -3356,13 +3358,13 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
         {submission.status === "Rejected" && <p className="font-medium text-destructive">Rejected{submission.reviewedByName ? ` by ${submission.reviewedByName}` : ""}: {submission.returnReason}</p>}
         {submission.status === "Returned" && <p className="font-medium text-destructive">To fix: {submission.returnReason}{submission.reviewedByName ? ` (${submission.reviewedByName})` : ""}</p>}
         {submission.status === "Saved" && submission.reviewedByName && <p className="text-xs text-muted-foreground">Checked and saved by {submission.reviewedByName}</p>}
-        {(submission.fidelity ?? 0) > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {peso(submission.fidelity ?? 0)} added with this batch: your own savings.</p>}
+        {(submission.fidelity ?? 0) > 0 && <p className="font-medium text-emerald-700 dark:text-emerald-400">Fidelity {formatPeso(submission.fidelity ?? 0)} added with this batch: your own savings.</p>}
         {submission.sales.length > 0 && <details className="rounded-md border">
           <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">See the {plural(submission.sales.length, "sale")}</summary>
           <ul className="divide-y border-t">
             {submission.sales.map((sale, index) => <li key={`${submission.id}-${index}`} className="flex items-baseline justify-between gap-2 px-3 py-2">
               <span className="min-w-0"><span className="block truncate font-medium">{saleName(sale)}</span>{sale.applicationNumber && <span className="text-xs text-muted-foreground">APP {sale.applicationNumber}</span>}</span>
-              <span className="shrink-0 font-semibold tabular-nums">{peso(Number(sale.program?.amountPaid) || 0)}</span>
+              <span className="shrink-0 font-semibold tabular-nums">{formatPeso(Number(sale.program?.amountPaid) || 0)}</span>
             </li>)}
           </ul>
         </details>}
@@ -3378,7 +3380,7 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
       {waiting.length > 0 ? <Card className={anyLate ? "border-amber-400 dark:border-amber-700" : "border-primary/40"}>
         <CardContent className="space-y-1 p-4 text-center">
           <p className="text-sm text-muted-foreground">Collected, not yet handed over to the clerk</p>
-          <p className="text-3xl font-bold tabular-nums">{peso(waitingTotal)}</p>
+          <p className="text-3xl font-bold tabular-nums">{formatPeso(waitingTotal)}</p>
           <p className="text-xs text-muted-foreground">{plural(waiting.length, "submission")} not yet remitted</p>
           {nextDeadline && <p className="text-xs text-muted-foreground">Next deadline: <strong className="text-foreground">{formatDeadline(nextDeadline)}</strong></p>}
           {anyLate && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">A deadline has passed: for that submission the whole amount is remitted, with no incentive.</p>}
@@ -3424,7 +3426,6 @@ function MySubmissions({ submissions, activeId, onOpen }: { submissions: Submiss
   );
 }
 
-const peso = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 const longDate = (value: string) => value ? showDate(value) : "";
 
 /** Warns when an existing member already has suspended or forfeited programs. It does not block the sale. */
@@ -3436,7 +3437,7 @@ function MemberStandingWarning({ standing }: { standing?: { programs: ProgramSta
     <p className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" />This member has programs that are not in good standing</p>
     <ul className="mt-2 list-disc space-y-1 pl-5">
       {standing.programs.map((program) => <li key={program.enrollmentId}>
-        <span className="font-medium">{program.programName}</span>: {program.standing.toLowerCase()}{program.since ? ` since ${longDate(program.since)}` : ""}{program.amountDue ? ` · ${peso(program.amountDue)} due` : ""}
+        <span className="font-medium">{program.programName}</span>: {program.standing.toLowerCase()}{program.since ? ` since ${longDate(program.since)}` : ""}{program.amountDue ? ` · ${formatPeso(program.amountDue)} due` : ""}
       </li>)}
     </ul>
     <p className="mt-2">Confirm with the member before adding a new program. Suspended accounts need a Waiver payment in Collections.</p>

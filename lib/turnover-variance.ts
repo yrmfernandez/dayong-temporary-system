@@ -5,6 +5,7 @@ import { createReadableId } from "@/lib/readable-id";
 import { getEncoder } from "@/lib/encoder-context";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { TURNOVER_NOTE_MAX } from "@/lib/entry-controls";
+import { toCents } from "@/lib/money";
 
 export { TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/entry-controls";
 
@@ -30,7 +31,6 @@ export { TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/entry-controls";
  * approved in Audits while one of its turnover differences is still open (lib/daily-audit.ts).
  */
 const text = (value: unknown) => String(value ?? "").trim();
-const cents = (value: number) => Math.round(value * 100);
 
 export type TurnoverVariance = {
   id: string; kind: string; entryIds: string[]; branch: string; mas: string; dateRemitted: string;
@@ -53,7 +53,7 @@ const toVariance = (row: typeof schema.turnover_variances.$inferSelect): Turnove
 
 /** Records a saved batch's short or over, inside the batch's own transaction. Nothing is recorded when it matches. */
 export async function recordTurnoverVariance(input: { kind: "New Sales" | "Collections"; entryIds: string[]; branch: string; mas: string; accountableEmployeeId: string; dateRemitted: string; controlTotal: number; systemTotal: number; note: string }) {
-  const difference = (cents(input.controlTotal) - cents(input.systemTotal)) / 100;
+  const difference = (toCents(input.controlTotal) - toCents(input.systemTotal)) / 100;
   if (!difference || !input.entryIds.length) return null;
   const actor = getEncoder();
   const id = createReadableId("TOV");
@@ -95,10 +95,10 @@ export async function variancesOfSlips(remittanceIds: string[]) {
  */
 export async function linkVarianceToSlip(tx: Queryable, variance: TurnoverVariance, remittanceId: string, offset: number) {
   const actor = getEncoder();
-  const left = cents(offset) / 100;
+  const left = toCents(offset) / 100;
   await tx.update(schema.turnover_variances).set(!left
     ? { remittance_id: remittanceId, status: "Resolved", resolution: "Entries corrected: they now match the turnover sheet.", resolved_by_name: actor.name, resolved_at: actor.encodedAt, settlement: "Entries corrected", settled_cash: 0, settled_on: manilaNow().date }
-    : { remittance_id: remittanceId, difference: left, system_total: (cents(variance.controlTotal) - cents(left)) / 100 })
+    : { remittance_id: remittanceId, difference: left, system_total: (toCents(variance.controlTotal) - toCents(left)) / 100 })
     .where(eq(schema.turnover_variances.variance_id, variance.id));
 }
 
@@ -150,8 +150,8 @@ export async function clerkTurnover(employeeId: string, from: string, to: string
   const settled = all.filter((item) => item.settledCash && item.settledOn >= from && item.settledOn <= to);
   return {
     encoded, settled,
-    shortOver: encoded.reduce((total, item) => total + cents(item.cashEffect), 0) / 100,
-    settledCash: settled.reduce((total, item) => total + cents(item.settledCash), 0) / 100,
+    shortOver: encoded.reduce((total, item) => total + toCents(item.cashEffect), 0) / 100,
+    settledCash: settled.reduce((total, item) => total + toCents(item.settledCash), 0) / 100,
     open: encoded.filter((item) => item.status === "Open"),
   };
 }
