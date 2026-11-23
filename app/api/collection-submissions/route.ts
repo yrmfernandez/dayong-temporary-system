@@ -83,7 +83,8 @@ export const PATCH = withEncoder(async (request: Request) => {
   try {
     // Every member already saved another way: the batch is closed as Saved and its Mark remitted clearing freed (November 20, 2026).
     if (body.action === "already-saved") {
-      const done = await closeCollectionSubmissionAsSaved(user, String(body.id ?? ""));
+      // Or encoded another way (on another account, other NOPs): the clerk names those collections, with the reason (November 23, 2026).
+      const done = await closeCollectionSubmissionAsSaved(user, String(body.id ?? ""), { collectionIds: body.collectionIds, reason: body.reason });
       return Response.json({ success: true, ...done, message: `${done.mas}'s batch ${done.id} closed: its members were already saved (${done.collectionIds.join(", ")}).${done.clearingRemoved ? " Its clearing line, with nothing encoded under it, was removed from Clearing." : ""}` });
     }
     if (body.action === "remit") {

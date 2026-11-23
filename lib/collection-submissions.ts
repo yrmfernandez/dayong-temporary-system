@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 
 import { isMasFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
@@ -454,7 +454,7 @@ export async function listCollectionsForReview(user: SessionUser) {
   const list = await withDeadlines(rows);
   if (!list.length) return list;
   // The clerk contacts whoever has not handed the cash over; members already saved another way are named.
-  const [employees, saved] = await Promise.all([getEmployees(), savedCollections(rows.map((row) => ({ id: row.submission_id, entries: row.entries })))]);
+  const [employees, saved] = await Promise.all([getEmployees(), savedCollections(rows.map((row) => ({ id: row.submission_id, entries: row.entries, masEmployeeId: text(row.mas_employee_id) })))]);
   return list.map((item) => ({ ...item, masContact: text(employees.find((employee) => employee.id === item.masEmployeeId)?.contact), alreadySaved: saved.get(item.id) }));
 }
 
@@ -523,19 +523,51 @@ export async function markCollectionSubmissionSaved(id: string, collectionIds: s
  * Saved with those collections, kept in Record Corrections, and its Mark remitted clearing removed when nothing is
  * encoded under it. Works on a batch marked remitted too, which cannot be rejected.
  */
-export async function closeCollectionSubmissionAsSaved(user: SessionUser, id: string) {
+export async function closeCollectionSubmissionAsSaved(user: SessionUser, id: string, encoded: { collectionIds?: unknown; reason?: unknown } = {}) {
   const [row] = await getDb().select().from(submissions).where(eq(submissions.submission_id, text(id)));
   if (!row) throw new Error("The MAS submission was not found.");
   const scope = await reviewBranches(user);
   if (scope && !scope.includes(row.branch_id)) throw new Error("This MAS submission belongs to a branch you are not assigned to.");
   if (!OPEN.includes(row.status)) throw new Error(row.status === "Saved" ? "This MAS submission was already saved." : "This MAS submission was rejected.");
-  const found = (await savedCollections([{ id: row.submission_id, entries: row.entries }])).get(row.submission_id);
-  const problem = notAllSaved(found, entriesOf(row).length, "Collections");
-  if (problem) throw new Error(problem);
-  const ids = [...new Set(found!.saved.flatMap((item) => item.entryIds))];
+  const entries = entriesOf(row);
+  const found = (await savedCollections([{ id: row.submission_id, entries: row.entries, masEmployeeId: text(row.mas_employee_id) }])).get(row.submission_id);
+  const named = Array.isArray(encoded.collectionIds) ? [...new Set(encoded.collectionIds.map((value) => text(value).toUpperCase()).filter(Boolean))] : [];
+  const autoIds = [...new Set((found?.saved ?? []).flatMap((item) => item.entryIds))];
+  let extra: string[] = [], why = "";
+  if (named.length) {
+    /*
+     * Already encoded another way (owner, November 23, 2026): the members not found on their own account were encoded on
+     * another account or with other NOPs, so the batch can be neither saved (the OR is taken) nor rejected (remitted).
+     * The clerk names those collections, with the reason; they must be posted, of this branch, not claimed by another
+     * MAS batch, and add up to exactly the amount of the members not found.
+     */
+    why = text(encoded.reason);
+    if (why.length < 5) throw new Error("Say why these collections are this batch's (at least 5 characters), e.g. encoded on the other member's account.");
+    const matchedIndexes = new Set((found?.saved ?? []).map((item) => item.index));
+    const missing = entries.filter((_, index) => !matchedIndexes.has(index));
+    if (!missing.length) throw new Error("Every member of this batch is already saved on their own account: use Already saved: close batch.");
+    extra = named.filter((value) => !autoIds.includes(value));
+    if (!extra.length) throw new Error("Those collections are already counted for this batch. Name the collections of the members not found.");
+    const rows = await getDb().select({ id: schema.collections.collection_id, status: schema.collections.status, branchId: schema.collections.branch_id, branch: schema.collections.branch, amount: schema.collections.amount_collected })
+      .from(schema.collections).where(inArray(schema.collections.collection_id, extra));
+    for (const value of extra) {
+      const saved = rows.find((item) => item.id === value);
+      if (!saved || saved.status !== "Posted") throw new Error(`${value} is not a saved collection.`);
+      if ((saved.branchId || "") !== row.branch_id && text(saved.branch).toLowerCase() !== text(row.branch).toLowerCase()) throw new Error(`${value} is of branch ${saved.branch}, not ${row.branch}.`);
+    }
+    const others = await getDb().select({ id: submissions.submission_id, ids: submissions.collection_ids }).from(submissions).where(and(eq(submissions.status, "Saved"), isNotNull(submissions.collection_ids)));
+    const taken = others.find((other) => text(other.ids).split(",").map(text).some((value) => extra.includes(value)));
+    if (taken) throw new Error(`One of those collections already belongs to MAS batch ${taken.id}.`);
+    const due = roundMoney(missing.reduce((sum, entry) => sum + Number(entry.amount || 0), 0)), given = roundMoney(rows.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+    if (due !== given) throw new Error(`Those collections add up to ${given.toFixed(2)}, but the members not found add up to ${due.toFixed(2)}. Name exactly their collections.`);
+  } else {
+    const problem = notAllSaved(found, entries.length, "Collections");
+    if (problem) throw new Error(`${problem} If they were encoded on another account or with other NOPs, use Already encoded: close batch and name those collections.`);
+  }
+  const ids = [...autoIds, ...extra];
   await inTransaction(async () => {
     await markCollectionSubmissionSaved(row.submission_id, ids);
-    const reason = `Already saved: ${found!.saved.map((item) => item.label).join("; ")}`;
+    const reason = [found?.saved.length ? `Already saved: ${found.saved.map((item) => item.label).join("; ")}` : "", extra.length ? `Encoded another way: ${extra.join(", ")} (${why})` : ""].filter(Boolean).join(". ");
     await recordCorrection("MAS collection batch closed as already saved", row.submission_id, reason, { status: row.status, clearingId: row.clearing_id }, { status: "Saved", collectionIds: ids });
   });
   // Once the batch no longer holds it: its clearing, removed when nothing is encoded under it.

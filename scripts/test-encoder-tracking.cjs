@@ -6152,6 +6152,68 @@ test('a MAS batch whose members were saved another way is named and closed as Al
   assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id })).body.message, /already saved/);
 });
 
+test('a MAS batch whose payment was encoded on another account is suggested and closed as Already encoded, with checks (November 23, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }]);
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const number of [1, 2]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: `Ana ${number}` }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  }
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts';
+  // The batch is for member 1; the clerk encodes the payment on member 2's account (the other of a pair who pay together).
+  assert.equal((await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' })).status, 201);
+  const review = async () => (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  const [batch] = await review();
+  assert.equal((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'remit', id: batch.id })).status, 200);
+  const [clearing] = await query('select clearing_id from clearings');
+  const entry = batch.entries[0];
+  const saved = await call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', {
+    branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId: clearing.clearing_id, dateRemitted: today, collectedBy: 'Collector', memberMas: 'Mas Two', paymentMethod: 'Cash', controlTotal: entry.remittance,
+    collections: [{ memberNumber: 'PH-2', programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber: '20006 B', orDate: entry.orDate }],
+  });
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  const [encoded] = await query(`select collection_id from collections where member_number = 'PH-2'`);
+
+  // Not found on member 1's account: Already saved does not close it, but the payment is suggested.
+  const [waiting] = await review();
+  assert.equal(waiting.alreadySaved.saved.length, 0);
+  assert.deepEqual(waiting.alreadySaved.possible.map((item) => item.candidates.map((candidate) => [candidate.id, candidate.memberNumber, candidate.sameMember])), [[[encoded.collection_id, 'PH-2', false]]], 'suggested, on another member');
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id })).body.message, /Nothing in this batch is saved yet.*Already encoded: close batch/);
+  // The checks: a reason, a real collection, the same total.
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id, collectionIds: [encoded.collection_id], reason: 'no' })).body.message, /Say why/);
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id, collectionIds: ['COL-NOPE'], reason: 'Encoded on the other member' })).body.message, /COL-NOPE is not a saved collection/);
+  await query(`update collections set amount_collected = amount_collected + 1 where collection_id = '${encoded.collection_id}'`);
+  assert.match((await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id, collectionIds: [encoded.collection_id], reason: 'Encoded on the other member' })).body.message, /add up to/);
+  await query(`update collections set amount_collected = amount_collected - 1 where collection_id = '${encoded.collection_id}'`);
+
+  const closed = await call(clerk, submissions, 'PATCH', '/api/collection-submissions', { action: 'already-saved', id: batch.id, collectionIds: [encoded.collection_id], reason: 'Encoded on the other member' });
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  const [row] = await query('select status, collection_ids from collection_submissions');
+  assert.deepEqual([row.status, row.collection_ids], ['Saved', encoded.collection_id]);
+  assert.equal((await review()).length, 0, 'no longer waiting');
+  const [correction] = await query(`select reason from record_corrections where module = 'MAS collection batch closed as already saved'`);
+  assert.match(correction.reason, new RegExp(`Encoded another way: ${encoded.collection_id} \\(Encoded on the other member\\)`));
+});
+
 test('New Sales: a MAS batch already saved is found by application number or member and program, and a direct save of its sales is refused (November 20, 2026)', async () => {
   const h = harness({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Administrator'], permissions: {} });
   await seedSaleLinks([['DP-1', 'Program'], ['DP-2', 'Other']]);

@@ -46,6 +46,7 @@ export default function MyEntriesPage() {
   const [open, setOpen] = useState("");
   // The returned batch being edited (its key).
   const [tab, setTab] = useState<BatchTab | "">("");
+  const [kind, setKind] = useState<DayEntry["kind"] | "">("");
 
   const load = useCallback(async (nextFrom: string, nextTo: string, nextEmployee: string) => {
     setLoading(true);
@@ -87,6 +88,9 @@ export default function MyEntriesPage() {
     : batch.entries.some((entry) => entry.remittanceStatus === "Pending Remittance Approval") ? "For approval" : "Approved";
   const tabs = BATCH_TABS.map((id) => ({ id, items: batches.filter((batch) => tabOf(batch) === id) })).filter((item) => item.id !== "Not yet sent" || item.items.length);
   const shownTab = tabs.find((item) => item.id === tab) ?? tabs.find((item) => item.items.length) ?? tabs[0];
+  // New Sales or Collections in the shown tab: the one chosen, else the first with batches.
+  const kindGroups = (["New Sale", "Collection"] as const).map((item) => ({ kind: item, list: shownTab.items.filter((batch) => batch.kind === item) }));
+  const shownKind = kind || (kindGroups.find((group) => group.list.length)?.kind ?? "New Sale");
   const post = async (body: Record<string, unknown>, fallback: string) => {
     setMessage("");
     const response = await fetch("/api/my-entries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -185,13 +189,20 @@ export default function MyEntriesPage() {
               {item.id}<span className={`rounded-full px-1.5 text-xs ${shownTab.id === item.id ? "bg-primary text-primary-foreground" : item.items.length && item.id !== "Approved" && item.id !== "For approval" ? "bg-amber-200 text-amber-950" : "bg-muted"}`}>{item.items.length}</span>
             </button>)}
           </div></div>
-          {/* New Sales first, then Collections, each under its own heading (owner, November 23, 2026). */}
-          {(["New Sale", "Collection"] as const).map((kind) => ({ kind, list: shownTab.items.filter((batch) => batch.kind === kind) })).filter((group) => group.list.length).map((group) => (
+          {/*
+            * New Sales or Collections, one at a time (owner, November 23, 2026): a switch under the status tabs, so the
+            * Collections are one press away however many New Sales there are. Each button shows its batches and total.
+            */}
+          {shownTab.items.length > 0 && <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="New Sales or Collections">
+            {kindGroups.map((group) => <button key={group.kind} type="button" aria-pressed={shownKind === group.kind} onClick={() => setKind(group.kind)}
+              className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-left text-sm ${shownKind === group.kind ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted/50"}`}>
+              <span>{group.kind === "New Sale" ? "New Sales" : "Collections"} <span className={`ml-1 rounded-full px-1.5 text-xs ${shownKind === group.kind ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{group.list.length}</span></span>
+              <span className="text-xs font-normal text-muted-foreground">{group.list.reduce((sum, batch) => sum + batch.entries.length, 0)} entries · {formatPeso(group.list.reduce((sum, batch) => sum + batch.total, 0))}</span>
+            </button>)}
+          </div>}
+          {kindGroups.filter((group) => group.kind === shownKind).map((group) => (
           <div key={group.kind} className="space-y-3">
-            <h3 className="flex flex-wrap items-baseline gap-2 border-b pb-1 text-base font-semibold">
-              {group.kind === "New Sale" ? "New Sales" : "Collections"}
-              <span className="text-sm font-normal text-muted-foreground">{group.list.length} batch{group.list.length === 1 ? "" : "es"} · {group.list.reduce((sum, batch) => sum + batch.entries.length, 0)} entries · {formatPeso(group.list.reduce((sum, batch) => sum + batch.total, 0))}</span>
-            </h3>
+          {!group.list.length && <p className="p-8 text-center text-muted-foreground">No {group.kind === "New Sale" ? "New Sales" : "Collections"} batches {shownTab.id === "Approved" ? "approved" : `in ${shownTab.id}`} in this period.</p>}
           {group.list.map((batch) => {
             const ids = batch.entries.map((entry) => entry.id);
             const first = batch.entries[0];
