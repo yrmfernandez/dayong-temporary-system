@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Submit Collections: 100 members per branch (2026-11-23)
+
+- **Asked (owner):** why Submit Collections stops at 30 members; count it per branch and raise it to 100. (The 30 was a guess made when the page was built on 2026-10-31, never an owner rule.)
+- **Done:** `MAX_SUBMISSION_ENTRIES` is 100 and counts each branch separately (`lib/mas-collection-quote.ts`). Page (`app/mas-collections/page.tsx`): when a branch reaches 100, its members' Add buttons turn off and the page names the full branch; other branches can still be added. Server (`submitCollections` in `lib/collection-submissions.ts`): refuses a branch with more than 100 members in one submit, naming it (and up front, more than 100 × the MAS's branches). The batch kept for the nightly job (`MAX_DRAFT_ENTRIES`) went from 100 to 500 so several full branches fit. The nightly auto-submit has no cap and is unchanged.
+- **Status:** done: the limit change and the docs; in progress: none; to do: owner pushes (no migration).
+- **Tested:** build passes (type check included); no test used the old 30. Not tried in a browser.
+
 ### Attendance: Mark as Present (2026-11-20)
 
 - **Asked (owner):** add Present to Mark as in attendance.

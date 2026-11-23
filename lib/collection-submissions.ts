@@ -69,8 +69,8 @@ export { MAX_SUBMISSION_ENTRIES };
 const text = (value: unknown) => String(value ?? "").trim();
 const sameName = (a: unknown, b: unknown) => text(a).replace(/\s+/g, " ").toLowerCase() === text(b).replace(/\s+/g, " ").toLowerCase();
 const cents = (value: number) => Math.round(value * 100) / 100;
-/** A batch may run past what one Submit takes (MAX_SUBMISSION_ENTRIES); the page asks to submit it in parts. */
-const MAX_DRAFT_ENTRIES = 100;
+/** The batch kept for the nightly job, all branches together: room for several full branches (MAX_SUBMISSION_ENTRIES each). */
+const MAX_DRAFT_ENTRIES = 500;
 
 /** One member's payment as the MAS submitted it, with what the system worked out. */
 export type SubmittedCollection = {
@@ -335,7 +335,8 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const orc = asCollector && !dto && input.orc === true;
   if (!profile.branches.length) throw new Error("You are not assigned to an active branch. Ask HR to assign you.");
   if (!Array.isArray(input.entries) || !input.entries.length) throw new Error("Add at least one member.");
-  if (input.entries.length > MAX_SUBMISSION_ENTRIES) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members at a time.`);
+  // Per branch (owner, November 23, 2026); checked again per branch once each member's branch is known.
+  if (input.entries.length > MAX_SUBMISSION_ENTRIES * profile.branches.length) throw new Error(`Submit at most ${MAX_SUBMISSION_ENTRIES} members per branch at a time.`);
   const chosen = (input.entries as Array<Record<string, unknown>>).map((entry) => ({ enrollmentId: text(entry?.enrollmentId), months: Number(entry?.months), amount: entry?.amount == null || entry.amount === "" ? null : Number(entry.amount), waiver: entry?.waiver === true }));
   const ids = chosen.map((entry) => entry.enrollmentId);
   if (ids.some((id) => !id)) throw new Error("A member in the batch is incomplete. Reload the page and try again.");
@@ -349,6 +350,10 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const today = manilaNow().date;
   const data = await loadAccountData({ enrollmentIds: ids });
   const entries = chosen.map((item) => batchEntry(context, data, item, today, orc, false, dto));
+  const perBranch = new Map<string, { name: string; count: number }>();
+  for (const { branch } of entries) perBranch.set(branch.id, { name: branch.name, count: (perBranch.get(branch.id)?.count ?? 0) + 1 });
+  const over = [...perBranch.values()].find((item) => item.count > MAX_SUBMISSION_ENTRIES);
+  if (over) throw new Error(`${over.name} has ${over.count} members in the batch. Submit at most ${MAX_SUBMISSION_ENTRIES} members per branch at a time.`);
 
   // All saved or none; the members sent leave the batch kept for the nightly job.
   const batches = batchRows(context, entries, orc, false, dto);

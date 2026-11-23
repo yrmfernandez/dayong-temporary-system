@@ -205,11 +205,15 @@ export default function MasCollectionsPage() {
   });
   const missingWaiver = shownRows.filter((row) => needsWaiver(row.account, row.orDate) && !row.pick.waiver);
   const problems = shownRows.filter((row) => row.problem);
-  const full = batch.length >= MAX_SUBMISSION_ENTRIES;
+  // The limit is per branch (owner, November 23, 2026): each branch is its own submission.
+  const inBranch = (id: string) => rows.filter((row) => row.account?.branchId === id).length;
+  const branchFull = (id: string) => inBranch(id) >= MAX_SUBMISSION_ENTRIES;
+  const fullBranches = [...new Set(rows.map((row) => row.account?.branchId ?? ""))].filter((id) => id && branchFull(id) && (!filterBranch || filterBranch.id === id))
+    .map((id) => branches.find((item) => item.id === id)?.name ?? rows.find((row) => row.account?.branchId === id)?.account?.branch ?? "A branch");
 
   const add = (account: Account) => {
     setMessage("");
-    if (full) { setMessage(`A batch holds at most ${MAX_SUBMISSION_ENTRIES} members. Submit these first.`); return; }
+    if (branchFull(account.branchId)) { setMessage(`A branch's batch holds at most ${MAX_SUBMISSION_ENTRIES} members. Submit ${account.branch} first.`); return; }
     // First added stays on top (owner, November 4, 2026); the effect above scrolls to the card so the MAS sees it and sets the months.
     setBatch((current) => current.some((pick) => pick.enrollmentId === account.id) ? current : [...current, { enrollmentId: account.id, months: Math.max(1, Math.min(account.unpaidMonths || 1, MAX_SUBMISSION_MONTHS)), amount: "", waiver: false }]);
     setJustAdded(account.id);
@@ -452,11 +456,11 @@ export default function MasCollectionsPage() {
               </div>
               {inBatch ? <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Added</span>
                 : waiting ? <span className="max-w-24 shrink-0 text-right text-xs text-muted-foreground">Already submitted, waiting for the clerk</span>
-                : <Button type="button" className="h-11 shrink-0 px-4" disabled={Boolean(account.blocked) || full} onClick={() => add(account)}><Plus className="mr-1 h-4 w-4" />Add</Button>}
+                : <Button type="button" className="h-11 shrink-0 px-4" disabled={Boolean(account.blocked) || branchFull(account.branchId)} onClick={() => add(account)}><Plus className="mr-1 h-4 w-4" />Add</Button>}
             </li>;
           })}
         </ul> : <p className="py-6 text-center text-sm text-muted-foreground">{assigned && !branchAccounts.length ? "No members are assigned to you. Choose whose members above, or ask HR." : query ? "No member matches your search." : showAll ? (filterBranch ? "You have no members in this branch." : "You have no members.") : "Everyone is paid through this month. Tap All to collect an advance."}</p>}
-        {full && <p className="pt-2 text-center text-xs text-muted-foreground">The batch is full ({MAX_SUBMISSION_ENTRIES} members). Submit it, then add the rest.</p>}
+        {fullBranches.length > 0 && <p className="pt-2 text-center text-xs text-muted-foreground">{fullBranches.join(", ")}: the batch is full ({MAX_SUBMISSION_ENTRIES} members per branch). Submit it, then add the rest.</p>}
       </CardContent>
     </Card>
 
