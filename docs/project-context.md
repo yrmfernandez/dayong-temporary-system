@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Checked: COL-20261123054512-TS5F has no incentive (2026-11-23)
+
+- **Asked (owner):** why collection COL-20261123054512-TS5F and its batch have no incentives.
+- **Found (read-only, production):** batch CBT-20261123054512-ZIG0 (TORIL, MAS MD-2026-0034, 5 collections, encoded Nov 23 by the clerk; slip REM-20261123071806-SDQV, Pending Approval). All five ORs are dated Thu Nov 19, so the incentive deadline was **Fri Nov 20, 3:00 PM** (no declared non-working day Nov 19–23). The batch has no clearing of its own; the slip's time received is the MAS's only clearing that day, **Nov 20, 3:32 PM** (CLR-20261120073201-WNOZ, recorded for MAS batch CSUB-20261120034201-5C0U, submitted 11:42 AM). 3:32 PM is after 3:00 PM, so every incentive was forfeited by the rule (TS5F: ₱245 of ₱700; batch ₱472.50) and the full amount is the company share. No Administrator decision and no No incentive reason. The Date Remitted was set to Nov 21 with reason DAY OFF, which is later still and does not keep the incentive.
+- **If the cash was received on time:** an Administrator opens slip REM-20261123071806-SDQV on Remittances and sets Keep the incentive with a reason on its entries; the slip is still Pending Approval, so the company share and expected amount change at once (`lib/incentive-decision.ts`).
+- **Added:** `scripts/inspect-collection-incentive.mjs` (read-only): a collection's batch with company share, forfeited incentive, decisions, tiers, clearings around the dates, declared days and the slip. Money and IDs only.
+- **Status:** done: the check, the script, docs; in progress: none; to do: owner decides Keep or leave as forfeited.
+
 ### Member information saved in capitals (2026-11-23)
 
 - **Asked (owner):** members' information should be capitals.
