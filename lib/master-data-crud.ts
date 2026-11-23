@@ -6,7 +6,7 @@ import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { generateOneTimePassword, hashOneTimePassword, oneTimePasswordExpiry } from "@/lib/passwords";
 import { loadUsers } from "@/lib/users-sheet";
 import { type StoredTier, validateIncentiveTiers, writeProgramIncentives } from "@/lib/program-incentive-store";
-import { memberContactOrClaimant } from "@/lib/member-records";
+import { capitals, memberContactOrClaimant } from "@/lib/member-records";
 import { manilaToday } from "@/lib/manila-date";
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -265,7 +265,8 @@ export async function getMemberRecord(id: string): Promise<MemberRecordInput & {
  */
 export async function updateMemberRecord(id: string, input: MemberRecordInput) {
   const t = (value: unknown) => String(value ?? "").trim();
-  const memberNumber = t(input.memberNumber), surname = t(input.surname), firstName = t(input.firstName), status = t(input.status);
+  // Member information is saved in capitals (lib/member-records.ts capitals, November 23, 2026).
+  const memberNumber = t(input.memberNumber), surname = capitals(input.surname), firstName = capitals(input.firstName), status = t(input.status);
   if (!memberNumber) throw new Error("The PH member number is required.");
   if (!surname || !firstName) throw new Error("Surname and first name are required.");
   if (!status) throw new Error("Member status is required.");
@@ -276,10 +277,10 @@ export async function updateMemberRecord(id: string, input: MemberRecordInput) {
   const [taken] = await currentDb().select({ id: schema.members.member_id }).from(schema.members).where(and(eq(schema.members.member_number, memberNumber), ne(schema.members.member_id, id)));
   if (taken) throw new Error(`PH number ${memberNumber} already belongs to another member.`);
   const updated = await currentDb().update(schema.members).set({
-    member_number: memberNumber, surname, first_name: firstName, middle_name: t(input.middleName) || null, name_extension: t(input.nameExtension) || null,
-    birthdate: birthdate || null, birthplace: t(input.birthplace) || null, gender: t(input.gender) || null, age, civil_status: t(input.civilStatus) || null,
-    member_contact: memberContactOrClaimant(input.contact, input.claimantContact) || null, address: t(input.address) || null, claimant_name: t(input.claimantName) || null, claimant_contact: t(input.claimantContact) || null,
-    claimant_same_address: Boolean(input.claimantSameAddress), claimant_address: input.claimantSameAddress ? null : t(input.claimantAddress) || null, status,
+    member_number: memberNumber, surname, first_name: firstName, middle_name: capitals(input.middleName) || null, name_extension: capitals(input.nameExtension) || null,
+    birthdate: birthdate || null, birthplace: capitals(input.birthplace) || null, gender: t(input.gender) || null, age, civil_status: t(input.civilStatus) || null,
+    member_contact: memberContactOrClaimant(input.contact, input.claimantContact) || null, address: capitals(input.address) || null, claimant_name: capitals(input.claimantName) || null, claimant_contact: t(input.claimantContact) || null,
+    claimant_same_address: Boolean(input.claimantSameAddress), claimant_address: input.claimantSameAddress ? null : capitals(input.claimantAddress) || null, status,
   }).where(eq(schema.members.member_id, id)).returning({ id: schema.members.member_id });
   if (!updated.length) throw new Error("Record not found.");
   return { id };

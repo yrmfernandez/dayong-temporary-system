@@ -1120,7 +1120,7 @@ for (const existingMember of [false, true]) {
     const [member] = await query('select * from members');
     assert.equal(await count('members'), 1, 'an existing member is never registered again');
     // An existing member's record takes the details confirmed on the sale; blanks keep what is on record.
-    assert.equal(member.address, 'Complete Address');
+    assert.equal(member.address, 'COMPLETE ADDRESS', 'member information is saved in capitals (November 23, 2026)');
     assert.deepEqual([member.surname, member.first_name], existingMember ? ['Old', 'Name'] : ['', '']);
     if (existingMember) assert.deepEqual(await query("select action, table_name, record_id, employee_id from audit_log where table_name = 'members'"), [{ action: 'update', table_name: 'members', record_id: 'MEM-1', employee_id: 'DPE-0001' }], 'the correction is in the Audit Log');
     else assert.equal(member.status, 'Active');
@@ -1138,7 +1138,7 @@ for (const existingMember of [false, true]) {
     assert.deepEqual([sale.remittance_status, sale.accountable_employee_id, sale.penalty_amount, sale.penalty_note, Number(sale.mas_incentive), Number(sale.remittance_amount), sale.fidelity_amount],
       ['Pending Remittance Approval', 'DPE-0002', null, null, 150, 200, null]);
     assert.equal((await slipOf(sale.linked_remittance_id)).expected, 200, 'the slip expects the company share');
-    assert.deepEqual([sale.address, sale.program_id, sale.application_no], ['Complete Address', 'DP-1', 'APP-1']);
+    assert.deepEqual([sale.address, sale.program_id, sale.application_no], ['COMPLETE ADDRESS', 'DP-1', 'APP-1'], 'the sale keeps its copy in capitals too');
     assert.equal((await query('select account_status from member_programs'))[0].account_status, 'NS', 'a new account starts as a New Sale');
     // The DOI time (owner, October 19, 2026): as typed, otherwise the time the sale was saved, on the sale and the account.
     const times = [sale.doi_time, (await query('select doi_time from member_programs'))[0].doi_time];
@@ -1149,7 +1149,7 @@ for (const existingMember of [false, true]) {
       assert.match(beneficiary.beneficiary_id, /^BEN-/);
       assert.match(beneficiary.member_id, /^MEM-/);
       assert.match(beneficiary.sale_id, /^SALE-/);
-      assert.deepEqual([beneficiary.surname, beneficiary.first_name, beneficiary.middle_name, beneficiary.birthdate?.toISOString().slice(0, 10), beneficiary.age, beneficiary.relationship], ['Santos', 'Ben', null, '2000-01-02', 26, 'Child']);
+      assert.deepEqual([beneficiary.surname, beneficiary.first_name, beneficiary.middle_name, beneficiary.birthdate?.toISOString().slice(0, 10), beneficiary.age, beneficiary.relationship], ['SANTOS', 'BEN', null, '2000-01-02', 26, 'CHILD']);
     }
   });
 }
@@ -1734,7 +1734,7 @@ test('a new member enrolled in two programs in one batch is registered once', as
   assert.equal(result.savedSales[0].memberNumber, result.savedSales[1].memberNumber);
   // Saved for real: the same person as a new member again is caught as a returning member.
   const again = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 200, sales: [sale('DP-1', 'APP-3')] }));
-  assert.match((await again.json()).message, /Ben Reyes with this birthdate is already member/);
+  assert.match((await again.json()).message, /BEN REYES with this birthdate is already member/);
   const other = (applicationNo) => ({ ...sale('DP-1', applicationNo), surname: 'Lim' });
   const repeat = await route.POST(request({ branch: 'BR-1', mas: 'mas', dateRemitted: '2026-09-25', controlTotal: 400, sales: [other('APP-3'), other('APP-4')] }));
   assert.match((await repeat.json()).message, /Sale #2: This member is already enrolled in this program earlier in this batch/);
@@ -4140,7 +4140,7 @@ test('a returned New Sale: every detail can be corrected and the member record f
   const loaded = await (await route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`))).json();
   assert.equal(loaded.success, true, JSON.stringify(loaded));
   const sale = loaded.batch.entries[0].sale;
-  assert.deepEqual([sale.surname, sale.birthdate, sale.contactNumber, sale.address, sale.beneficiaries.length, sale.hasCollections], ['Uno', '1980-01-02', '09171112222', 'Old Address', 0, false]);
+  assert.deepEqual([sale.surname, sale.birthdate, sale.contactNumber, sale.address, sale.beneficiaries.length, sale.hasCollections], ['UNO', '1980-01-02', '09171112222', 'OLD ADDRESS', 0, false]);
   const edit = (patch, applicationNumber = 'APP-1') => route.POST(request({ ids: [id], dateRemitted: '2026-09-25', paymentMethod: 'Cash', entries: [{ id, applicationNumber, sale: { ...sale, ...patch } }] }));
   assert.match((await (await edit({}, 'APP1')).json()).message, /with its dash/, 'an application number needs its dash');
   const { isIncompleteApplicationNumber } = h.load('lib/entry-controls.ts');
@@ -4153,10 +4153,10 @@ test('a returned New Sale: every detail can be corrected and the member record f
     beneficiaries: [{ surname: 'Unoh', firstName: 'Cara', middleName: '', birthdate: '2010-05-06', relationship: 'Daughter' }] });
   assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
   const [row] = await query('select surname, middle_name, birthdate::text as birthdate, member_contact, address, claimant_name, claimant_address, remittance_status from sales');
-  assert.deepEqual(row, { surname: 'Unoh', middle_name: 'Cruz', birthdate: '1981-03-04', member_contact: '09173334444', address: 'New Address', claimant_name: 'Ben Unoh', claimant_address: 'New Address', remittance_status: 'Returned' });
+  assert.deepEqual(row, { surname: 'UNOH', middle_name: 'CRUZ', birthdate: '1981-03-04', member_contact: '09173334444', address: 'NEW ADDRESS', claimant_name: 'BEN UNOH', claimant_address: 'NEW ADDRESS', remittance_status: 'Returned' });
   const [member] = await query('select surname, middle_name, birthdate::text as birthdate, member_contact, address from members');
-  assert.deepEqual(member, { surname: 'Unoh', middle_name: 'Cruz', birthdate: '1981-03-04', member_contact: '09173334444', address: 'New Address' }, 'the member record follows');
-  assert.deepEqual(await query('select surname, first_name, relationship, sale_id from beneficiaries'), [{ surname: 'Unoh', first_name: 'Cara', relationship: 'Daughter', sale_id: id }]);
+  assert.deepEqual(member, { surname: 'UNOH', middle_name: 'CRUZ', birthdate: '1981-03-04', member_contact: '09173334444', address: 'NEW ADDRESS' }, 'the member record follows');
+  assert.deepEqual(await query('select surname, first_name, relationship, sale_id from beneficiaries'), [{ surname: 'UNOH', first_name: 'CARA', relationship: 'DAUGHTER', sale_id: id }]);
 });
 
 test('entry deadlines skip Sundays and declared non-working days', async () => {

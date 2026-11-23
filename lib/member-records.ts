@@ -14,6 +14,13 @@ const { beneficiaries, member_programs: memberPrograms, members, sales } = schem
 const text = (value: unknown) => String(value ?? "").trim();
 /** Blank text is stored as null, as the copy from the sheets did. */
 const optional = (value: unknown) => text(value) || null;
+/**
+ * Member information is saved in capitals (owner, November 23, 2026): names, birthplace, addresses, claimant and
+ * beneficiaries, whichever way they were typed or sent. Fixed choices (sex, civil status) and contact numbers stay as
+ * given. Old records were turned to capitals on November 10, 2026 (scripts/convert-to-capitals.mjs).
+ */
+export const capitals = (value: unknown) => text(value).toUpperCase();
+const optionalCapitals = (value: unknown) => capitals(value) || null;
 const optionalDate = (value: unknown) => isoDate(value) || null;
 const optionalInteger = (value: unknown) => { const number = Number(text(value)); return text(value) && Number.isInteger(number) ? number : null; };
 const optionalMoney = (value: unknown) => { const number = Number(text(value)); return text(value) && Number.isFinite(number) ? number : null; };
@@ -57,11 +64,11 @@ export function memberContactOrClaimant(contact: unknown, claimantContact: unkno
 
 /** Member detail columns, the same on members and sales (a New Sale keeps a copy of the details it was encoded with). */
 export const memberColumns = (details: MemberDetails) => ({
-  surname: text(details.surname), first_name: text(details.firstName), middle_name: optional(details.middleName), name_extension: optional(details.nameExtension),
-  birthdate: optionalDate(details.birthdate), birthplace: optional(details.birthplace), gender: optional(details.gender), age: optionalInteger(details.age),
-  civil_status: optional(details.civilStatus), member_contact: optional(memberContactOrClaimant(details.contactNumber, details.claimantContact)), address: optional(details.addressHouse),
-  claimant_name: optional(details.claimantName), claimant_contact: optional(details.claimantContact), claimant_same_address: yes(details.claimantSameAsMember),
-  claimant_address: optional(details.claimantAddressHouse),
+  surname: capitals(details.surname), first_name: capitals(details.firstName), middle_name: optionalCapitals(details.middleName), name_extension: optionalCapitals(details.nameExtension),
+  birthdate: optionalDate(details.birthdate), birthplace: optionalCapitals(details.birthplace), gender: optional(details.gender), age: optionalInteger(details.age),
+  civil_status: optional(details.civilStatus), member_contact: optional(memberContactOrClaimant(details.contactNumber, details.claimantContact)), address: optionalCapitals(details.addressHouse),
+  claimant_name: optionalCapitals(details.claimantName), claimant_contact: optional(details.claimantContact), claimant_same_address: yes(details.claimantSameAsMember),
+  claimant_address: optionalCapitals(details.claimantAddressHouse),
 });
 
 export async function addMember(member: MemberSheetData) {
@@ -96,8 +103,8 @@ export async function addBeneficiaries(
   if (!list.length) return;
   const identity = encoded();
   await currentDb().insert(beneficiaries).values(list.map((item) => ({
-    beneficiary_id: createReadableId("BEN"), member_id: memberId, sale_id: saleId, surname: text(item.surname), first_name: text(item.firstName),
-    middle_name: optional(item.middleName), birthdate: optionalDate(item.birthdate), age: Number(item.age) || 0, relationship: text(item.relationship), ...identity,
+    beneficiary_id: createReadableId("BEN"), member_id: memberId, sale_id: saleId, surname: capitals(item.surname), first_name: capitals(item.firstName),
+    middle_name: optionalCapitals(item.middleName), birthdate: optionalDate(item.birthdate), age: Number(item.age) || 0, relationship: capitals(item.relationship), ...identity,
   })));
 }
 

@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Member information saved in capitals (2026-11-23)
+
+- **Asked (owner):** members' information should be capitals.
+- **Found:** the member fields already turn to capitals as typed (names, birthplace, address, claimant, beneficiaries, relationship), but only in the browser; apart from Member Corrections, the server saved them as sent.
+- **Done:** the server saves member information in capitals: `capitals` in `lib/member-records.ts` used by `memberColumns` (new members, a New Sale's update of an existing member, Edit batch, and the copy each sale keeps) and `addBeneficiaries` (surname, first, middle, relationship), and by the Members page edit (`updateMemberRecord` in `lib/master-data-crud.ts`): surname, first, middle, extension, birthplace, address, claimant name and address. Sex, civil status, status and contact numbers stay as given (fixed choices). Member Corrections already saved names in capitals.
+- **Status:** done: the change, tests, docs; in progress: none; to do: owner pushes (no migration); optional: `npm run prod -- node scripts/convert-to-capitals.mjs` (dry run) shows any member saved since November 10 not in capitals; `--apply` fixes them (beneficiaries' relationship is not in that script).
+- **Tested:** five New Sales tests now expect capitals (member, sale copy, beneficiary, returned sale corrected); all 355 tests pass; lint on the changed files and build pass. Not tried in the running app.
+
 ### Capitals only for names and codes (2026-11-23)
 
 - **Asked (owner):** remove the automatic capital letters, except for names or what needs capitals.
