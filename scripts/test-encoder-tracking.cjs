@@ -2501,8 +2501,9 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   assert.deepEqual([first.period.current, first.period.draft.start, first.period.draft.end, first.period.draft.chooseStart, first.report.from, first.report.to, first.report.dateLine], [null, '2026-10-05', '2026-10-11', true, '2026-10-05', '2026-10-11', 'WEEK 1 OF OCTOBER 2026 · OCTOBER 5-11, 2026']);
   assert.deepEqual([first.period.draft.monthLabel, first.period.draft.week], ['2026-10', 1], 'shown as the week of the month it will be (November 12, 2026)');
   assert.equal((await post({ action: 'submit-period', kind: 'weekly', from: '2026-10-05', to: '2026-10-11' })).success, true);
-  // The next one starts the day after: the day chosen as its first is ignored.
-  const second = await get('kind=weekly&date=2026-10-20&to=new');
+  // The next one starts the day after: the day chosen as its first is ignored. A fixed last day: with none it runs to
+  // today, and from November 20, 2026 Oct 12 to today falls mostly in November (Week 1 of November, not Week 2).
+  const second = await get('kind=weekly&date=2026-10-20&to=2026-10-18');
   assert.deepEqual([second.period.draft.start, second.period.draft.chooseStart, second.period.draft.week], ['2026-10-12', false, 2]);
   assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2026-10-11' })).message, /cannot be before/);
   assert.match((await post({ action: 'submit-period', kind: 'weekly', to: '2099-01-01' })).message, /after today/);
@@ -2578,8 +2579,9 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   assert.deepEqual([month.success, month.start, month.end, month.monthLabel], [true, '2026-10-02', '2026-11-01', '2026-10']);
   const monthly = await get('kind=monthly&date=2026-10-10');
   assert.deepEqual([monthly.period.current.monthLabel, monthly.report.from, monthly.report.to, monthly.report.weeks.length, monthly.report.dateLine], ['2026-10', '2026-10-02', '2026-11-01', 3, 'OCTOBER 2026 · OCTOBER 2 - NOVEMBER 1, 2026']);
-  // The next weekly is Week 1 of November.
-  assert.deepEqual([(await get('kind=weekly&date=2026-11-05&to=new')).period.draft.week, (await get('kind=weekly&date=2026-11-05&to=new')).period.draft.monthLabel], [1, '2026-11']);
+  // The next weekly is Week 1 of November (a fixed last day, so it does not run on to today).
+  const novemberDraft = (await get('kind=weekly&date=2026-11-05&to=2026-11-08')).period.draft;
+  assert.deepEqual([novemberDraft.start, novemberDraft.week, novemberDraft.monthLabel], ['2026-11-02', 1, '2026-11']);
   asHr();
   const monthAudits = await (await audit.GET(new Request('http://localhost/api/audit?period=monthly&date=2026-10-01'))).json();
   assert.deepEqual([monthAudits.audits.map((row) => row.period.monthLabel), monthAudits.notSubmitted], [['2026-10'], []]);
