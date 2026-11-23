@@ -34,6 +34,8 @@ import { formatDate as showDate } from "@/lib/date-format";
  *             or old-system record that was never encoded: saved as a posted, already remitted collection with no
  *             remittance slip (a history repair, not new cash), placed among the account's receipts by OR date, which
  *             are numbered again (optionally from a chosen first NOP and Month of).
+ *   remove    Remove receipts that should not be on record (owner, November 23, 2026), as the Administrator delete takes
+ *             a collection; not one on a remittance. The receipts left are numbered again from the account's start.
  *
  * Every repair is worked out in one transaction. A preview runs it completely and then rolls it back, so what it shows is
  * exactly what saving does. Saving needs a reason; incentives and company shares follow the new NOPs
@@ -607,6 +609,84 @@ export function insertReceipt(input: InsertInput, reason: string, apply: boolean
       recordId: id,
       before: { account: account.id, status: account.storedStatus },
       after: { collection: id, orNumber, ...(confirmedNoLetter ? { orNumberNote: NO_LETTER_NOTE } : {}), orDate, amount, months, channel, mas, dateRemitted, coverage: coverage(mine), renumbered: lines.slice(1).map(({ id: receipt, before, after }) => ({ id: receipt, before, after })), status: status.after },
+    };
+  });
+}
+
+// ---------------------------------------------------------------- 5b. remove receipts
+
+export type RemoveInput = { collectionIds: string[] };
+
+/**
+ * Removes receipts of one member that should not be on record (owner, November 23, 2026: "add remove receipts in the
+ * member corrections"), for example one encoded twice or inserted by mistake. Each goes as the Administrator delete
+ * takes a collection (lib/admin-delete.ts): the row, its Fidelity rows, receipt-photo links and copy exceptions; the
+ * Audit Log keeps the whole row. A receipt that is part of a remittance is refused (that slip's totals would no longer
+ * match the cash), as is one a payroll deduction is linked to. Each account's receipts left are numbered again from
+ * where the account started, so the next receipt takes the removed one's NOPs, and its status is stored again.
+ */
+export function removeReceipts(input: RemoveInput, reason: string, apply: boolean) {
+  return run("Remove receipts", reason, apply, async (tx) => {
+    const today = manilaNow().date;
+    const ids = [...new Set((input.collectionIds ?? []).map(text).filter(Boolean))];
+    if (!ids.length) throw new Error("Tick the receipts to remove.");
+    const rows = await tx.select({ id: collections.collection_id, memberId: collections.member_id, enrollmentId: collections.enrollment_id, status: collections.status, orNumber: collections.or_number, slip: collections.linked_remittance_id })
+      .from(collections).where(inArray(collections.collection_id, ids)).for("update");
+    if (rows.length !== ids.length) throw new Error("Some receipts were not found. Reload the member.");
+    if (rows.some((row) => text(row.status) !== "Posted")) throw new Error("Only posted receipts can be removed.");
+    if (new Set(rows.map((row) => row.memberId)).size !== 1) throw new Error("The receipts must belong to one member.");
+    const label = (id: string) => `OR ${text(rows.find((row) => row.id === id)?.orNumber) || id}`;
+    const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
+    const linked = await tx.execute(sql`select collection_id, remittance_id from remittance_collections where collection_id in (${list})`);
+    const slips = new Map<string, string>(rows.filter((row) => text(row.slip)).map((row) => [row.id, text(row.slip)]));
+    for (const row of (Array.isArray(linked) ? linked : (linked as { rows?: unknown[] }).rows ?? []) as Array<{ collection_id: string; remittance_id: string }>) if (!slips.has(row.collection_id)) slips.set(row.collection_id, text(row.remittance_id));
+    if (slips.size) throw new Error(`${[...slips].map(([id, slip]) => `${label(id)} is part of remittance ${slip}`).join("; ")}. Its totals would no longer match the cash: correct it in Remittances (or delete that remittance first), then remove the receipt.`);
+    const payroll = await tx.select({ id: schema.payroll_adjustments.collection_id }).from(schema.payroll_adjustments).where(inArray(schema.payroll_adjustments.collection_id, ids));
+    if (payroll.length) throw new Error(`${payroll.map((row) => label(text(row.id))).join(", ")} ${payroll.length === 1 ? "is" : "are"} linked to a payroll deduction. Unlink it on Payroll first.`);
+
+    const sourceIds = [...new Set(rows.map((row) => text(row.enrollmentId)))];
+    const data = await loadAccountData({ enrollmentIds: sourceIds, includeDeactivated: true }, tx, { lock: true });
+    const removed = new Set(ids);
+    const old = new Map(data.payments.map((payment) => [payment.id, payment]));
+    const receipts: ReceiptLine[] = [], statuses: StatusLine[] = [], notes: string[] = [];
+    for (const id of ids) {
+      const was = old.get(id);
+      if (was) {
+        const account = data.accounts.find((item) => item.id === was.enrollmentId);
+        receipts.push({ id, orNumber: was.orNumber, orDate: was.orDate, amount: was.amount, account: was.enrollmentId, program: account?.programName ?? "", before: coverage(was), after: "(removed)" });
+      }
+    }
+    await tx.execute(sql`delete from fidelity where collection_id in (${list})`);
+    await tx.execute(sql`delete from copy_exceptions where record_id in (${list})`);
+    const photos = await tx.execute(sql`select photo_id, entry_ids from receipt_photos where string_to_array(replace(coalesce(entry_ids, ''), ' ', ''), ',') && array[${list}]::text[]`);
+    for (const photo of (Array.isArray(photos) ? photos : (photos as { rows?: unknown[] }).rows ?? []) as Array<{ photo_id: string; entry_ids: string }>) {
+      const remaining = text(photo.entry_ids).split(",").map(text).filter((entry) => entry && !removed.has(entry));
+      if (remaining.length) await tx.execute(sql`update receipt_photos set entry_ids = ${remaining.join(",")} where photo_id = ${photo.photo_id}`);
+      else await tx.execute(sql`delete from receipt_photos where photo_id = ${photo.photo_id}`);
+    }
+    await tx.delete(collections).where(inArray(collections.collection_id, ids));
+
+    const renumbered: ReceiptLine[] = [];
+    for (const id of sourceIds) {
+      const account = data.accounts.find((item) => item.id === id);
+      if (!account) continue;
+      const all = data.payments.filter((payment) => payment.enrollmentId === id);
+      const left = all.filter((payment) => !removed.has(payment.id));
+      // Where the account started, removed receipts included: removing the first receipt does not leave a gap.
+      const start = numberingStart(all.map((payment) => ({ nop: payment.nopFrom, month: payment.monthFrom })), account);
+      const plan = left.length ? renumber(start, left, span) : [];
+      statuses.push(await storeStatus(tx, account, plan, today));
+      renumbered.push(...await saveNumbers(tx, plan, old, account));
+      if (!left.length) notes.push(`${account.programName} account ${account.id} has no receipts left.`);
+    }
+    const priced = await repriceCollections(tx, renumbered.map((line) => line.id));
+    if (priced.repriced) notes.push(`${priced.repriced} receipt(s) get new incentive figures${priced.slips.length ? `; remittance slips ${priced.slips.join(", ")} follow` : ""}.`);
+    notes.push("The removed receipts are kept in full in the Audit Log; their OR numbers can be encoded again.");
+    return {
+      summary: `${ids.length} receipt(s) removed (${ids.map(label).join(", ")}); ${renumbered.length} other receipt(s) renumbered.`,
+      receipts: [...receipts, ...renumbered], statuses, notes, recordId: sourceIds[0] ?? ids[0],
+      before: { receipts: receipts.map(({ id, orNumber, orDate, amount, account, before }) => ({ id, orNumber, orDate, amount, account, coverage: before })) },
+      after: { removed: ids, renumbered: renumbered.map(({ id, before, after }) => ({ id, before, after })), statuses, repriced: priced.repriced, slips: priced.slips },
     };
   });
 }

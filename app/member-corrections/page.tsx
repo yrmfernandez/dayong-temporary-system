@@ -20,12 +20,13 @@ type Account = { id: string; programId: string; program: string; branch: string;
   newSale: { id: string; applicationNo: string } | null; saleAmount: number | null };
 type Member = { member: { id: string; number: string; surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string }; details?: Record<string, string>; accounts: Account[] };
 type Result = { applied: boolean; summary: string; receipts: Array<{ id: string; orNumber: string; orDate: string; amount: number; account: string; program: string; before: string; after: string }>; statuses: Array<{ account: string; program: string; before: string; after: string }>; notes: string[] };
-type Tool = "coverage" | "move" | "insert" | "sale" | "merge" | "split";
+type Tool = "coverage" | "move" | "insert" | "remove" | "sale" | "merge" | "split";
 
 const TOOLS: Array<[Tool, string, string]> = [
   ["coverage", "Fix coverage", "Set where an account's numbering starts (NOP and Month of) and each receipt's months; the receipts are numbered again in OR-date order."],
   ["move", "Move receipts", "Move several receipts to another account of this member; both accounts are numbered again."],
   ["insert", "Insert missing receipt", "Add a receipt that was never encoded. It is saved as already remitted (no slip), so it does not enter Clearing or Remittances."],
+  ["remove", "Remove receipts", "Remove receipts that should not be on record, for example one encoded twice or inserted by mistake. The receipts left are numbered again from where the account started. A receipt that is part of a remittance cannot be removed here."],
   ["sale", "Insert New Sale", "Add a New Sale that was never encoded: on an account with no New Sale record (still NS, or already with receipts), or with a new account in another program, whatever accounts the member has. It is saved as already remitted (no slip), like the New Sales from the old system, so it does not enter Clearing, Remittances or a clerk's report. The receipts and NOPs stay as they are."],
   ["merge", "Merge members", "Another member is the same person: everything of theirs moves to this member and the duplicate is removed."],
   ["split", "Split member", "Some receipts, or a whole account (even an NS one with no receipts), belong to a different person: a new member or another existing member takes them."],
@@ -173,6 +174,7 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
     }
     if (tool === "insert") return { enrollmentId: accountId, orNumber: form.orNumber ?? "", orDate: form.orDate ?? "", amount: number(form.amount), months: number(form.months ?? "1"), collectedByRole: form.role || "MAS",
       mas: form.mas || account?.mas, dateRemitted: form.dateRemitted || undefined, startNop: number(form.startNop), startMonth: form.startMonth || undefined, orNoLetter: form.orNoLetter === "yes" };
+    if (tool === "remove") return { collectionIds: [...chosen] };
     if (tool === "sale") {
       const shared = { applicationNo: form.applicationNo ?? "", amountPaid: number(form.saleAmount), dateRemitted: form.saleRemitted || undefined };
       return saleToNew
@@ -253,6 +255,12 @@ function ToolPanel({ tool, member, onSaved }: { tool: Tool; member: Member; onSa
             <td className="p-2"><Input type="number" min="0.01" step="0.01" aria-label={`Corrected amount for OR ${receipt.orNumber}`} placeholder="unchanged" value={amounts[receipt.id] ?? ""} onChange={(event) => { setAmounts((current) => ({ ...current, [receipt.id]: event.target.value })); setPreview(null); }} /></td></tr>)}</tbody></table></div>
       </div>}
       <p className="text-xs text-muted-foreground">A receipt moving to a program of another monthly pay is counted at the new pay (it must be a whole number of months there). When the amount was encoded wrong (e.g. ₱190 on a ₱180 program), enter the corrected amount: the receipt is counted from it, its incentives are worked out again, and Record Corrections keeps the old amount. A receipt on a remittance slip in progress keeps its amount.</p>
+    </>}
+
+    {tool === "remove" && <>
+      {accounts.map((item) => <div key={item.id} className="space-y-1"><p className="text-sm font-semibold">{item.program} · {item.id}</p><ReceiptTable receipts={item.receipts} tick={{ chosen, toggle }} /></div>)}
+      <p className="text-sm font-medium">{chosen.size ? `${chosen.size} receipt(s) ticked to remove` : "Tick the receipts to remove"}</p>
+      <p className="text-xs text-muted-foreground">Each ticked receipt is deleted with its Fidelity rows and receipt-photo links; the Audit Log keeps it in full and its OR number can be encoded again. The next receipts take its NOPs and their incentives are worked out again. A receipt on a remittance slip is refused (correct the slip in Remittances first), as is one linked to a payroll deduction.</p>
     </>}
 
     {tool === "insert" && account && <>

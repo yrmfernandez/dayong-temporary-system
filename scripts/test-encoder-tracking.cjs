@@ -5376,6 +5376,41 @@ test('Member Corrections: a moved receipt takes a corrected amount, counted at t
   assert.match(saved.body.result.notes.join(' '), /OR 103 A: amount ₱350 → ₱1,000/);
 });
 
+test('Member Corrections: remove receipts; the next ones take their NOPs; not one on a remittance or payroll deduction (November 23, 2026)', async () => {
+  const h = harness(correctionAdmin);
+  await seedCorrectionMember();
+  const post = correctionPost(h.load('app/api/member-corrections/route.ts'));
+  const remove = (collectionIds, apply = true) => post({ tool: 'remove', input: { collectionIds }, apply, reason: 'Encoded twice' });
+  assert.match((await remove([])).body.message, /Tick the receipts/);
+
+  // On a remittance (as a slip or through remittance_collections): refused, as the Administrator delete does.
+  await seed('remittances', [{ remittance_id: 'REM-1', status: 'Approved', mas: 'Maria', date_remitted: '2026-03-10' }]);
+  await query("update collections set linked_remittance_id = 'REM-1' where collection_id = 'C2'");
+  assert.match((await remove(['C2'])).body.message, /OR 102 A is part of remittance REM-1/);
+  await query("update collections set linked_remittance_id = null where collection_id = 'C2'");
+  await seed('remittance_collections', [{ remittance_collection_id: 'RC-1', remittance_id: 'REM-1', collection_id: 'C2' }]);
+  assert.match((await remove(['C2'])).body.message, /part of remittance REM-1/);
+  await query("delete from remittance_collections");
+
+  await seed('fidelity', [{ fidelity_id: 'F-1', collection_id: 'C2', fidelity_amount: 10 }]);
+  await seed('receipt_photos', [{ photo_id: 'P-1', entry_ids: 'C2,C3' }, { photo_id: 'P-2', entry_ids: 'C2' }]);
+  const preview = await remove(['C2'], false);
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.deepEqual(preview.body.result.receipts.map((item) => [item.id, item.after]), [['C2', '(removed)'], ['C3', 'NOP 3 (2026-03)']]);
+  assert.equal((await query("select count(*)::int as n from collections where collection_id = 'C2'"))[0].n, 1, 'a preview removes nothing');
+
+  const saved = await remove(['C2']);
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(await correctionNumbers(), [['C1', 'E1', 2, '2026-02'], ['C3', 'E1', 3, '2026-03']], 'the next receipt takes its NOP');
+  assert.equal((await query("select count(*)::int as n from fidelity where collection_id = 'C2'"))[0].n, 0, 'its Fidelity goes');
+  assert.deepEqual((await query("select photo_id, entry_ids from receipt_photos order by photo_id")).map((row) => [row.photo_id, row.entry_ids]), [['P-1', 'C3']], 'photo links trimmed; a photo left with none is removed');
+  assert.equal((await query("select count(*)::int as n from record_corrections where module = 'Member correction: Remove receipts'"))[0].n, 1, 'the reason is kept');
+
+  // Removing the first receipt keeps where the account started: no gap.
+  assert.equal((await remove(['C1'])).status, 200);
+  assert.deepEqual(await correctionNumbers(), [['C3', 'E1', 2, '2026-02']]);
+});
+
 test('corrections: an Administrator confirms an OR number really has no letter; IT cannot (October 28, 2026)', async () => {
   const h = harness(correctionAdmin);
   await seedCorrectionMember();
