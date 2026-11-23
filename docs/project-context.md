@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Capitals only for names and codes (2026-11-23)
+
+- **Asked (owner):** remove the automatic capital letters, except for names or what needs capitals.
+- **Done:** `lib/uppercase-typing.ts` turned around: a text field stays as typed unless it is a person's name (member, claimant, beneficiary, payee, MAS, Collector, approved or received by), a place (address, birthplace, branch, barangay, city, province) or a code (OR number, application number, Employee ID, PH number, certificate, reference, receipt, voucher, slip). Reason, note, remark, finding, description and purpose fields always stay as typed, also when they name an ID, and so do role, category, holiday and remittance-method names (saved as named, e.g. Entry Clerk). A field is known by its id, name, placeholder, aria-label and label: a linked or surrounding label (only the text before the field), or the `<Label>` just before it or its wrapper, as the forms are built. The word "or" counts only as an id (`or-number`) or OR in capitals. `data-caps` asks for capitals (added to Type DELETE in `components/admin-delete.tsx`, which accepts only DELETE); `data-keep-case` still keeps a field as typed. The phone keyboard opens on capitals only in capitals fields. Server-side capitals (member names, Employee IDs, OR letter, certificate prefix) are unchanged.
+- **Checked:** every text field in the app sorted by the new rule: 55 to capitals (names, addresses, branches, codes), the rest as typed (reasons, notes, remarks, searches, contact numbers).
+- **Status:** done: the change, tests, docs; in progress: none; to do: owner pushes (no migration) and tries a few forms in a browser.
+- **Tested:** `scripts/test-uppercase-typing.mjs` rewritten (names, places, codes, reasons and notes, the word or, data-caps); the real listener in headless Chrome on the label layouts the forms use (9 of 9); all 355 tests pass; type check, lint on the changed files and build pass. Not tried in the running app.
+
 ### User Accounts: a reset password shows on the account's card (2026-11-23)
 
 - **Asked (owner):** after Reset password in User Accounts, IT had to scroll back up to see the password; show it without scrolling.

@@ -76,7 +76,7 @@ export function AdminDeletePanel({ kind, id, onCancel, onDeleted }: { kind: Dele
       {plan && !blocked && chosen && (
         <div className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
           <div className="space-y-1"><Label htmlFor={`delete-reason-${id}`}>Reason *</Label><Input id={`delete-reason-${id}`} maxLength={300} placeholder="e.g. Test entry" value={reason} onChange={(event) => setReason(event.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor={`delete-confirm-${id}`}>Type DELETE</Label><Input id={`delete-confirm-${id}`} autoComplete="off" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor={`delete-confirm-${id}`}>Type DELETE</Label><Input id={`delete-confirm-${id}`} data-caps autoComplete="off" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></div>
           <Button type="button" variant="destructive" disabled={busy || reason.trim().length < 3 || confirm !== "DELETE"} onClick={() => void remove()}>{busy ? "Deleting..." : "Delete permanently"}</Button>
         </div>
       )}

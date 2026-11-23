@@ -867,7 +867,7 @@ Untick **Entry Clerk** where they only have members. Clock-in, Clearing and acco
 
 ### Typing in capitals
 
-Everything typed into a text field becomes capitals as it is typed, on every page and pop-up (November 5, 2026, [uppercase-typing.ts](../lib/uppercase-typing.ts)), so a word is always spelled the same way. Left as typed: passwords, emails, numbers, dates and contact numbers, search boxes, and the sign-in page. Records already saved stay as they are until someone edits that field.
+Since November 23, 2026 only names and codes turn to capitals as they are typed, on every page and pop-up ([uppercase-typing.ts](../lib/uppercase-typing.ts)): a person's name (member, claimant, beneficiary, payee, MAS, Collector, who approved or received), a place (address, birthplace, branch, barangay, city, province) and codes (OR number, application number, Employee ID, PH number, certificate, reference, receipt, voucher, slip). Everything else stays as typed: reasons, notes, remarks, findings, descriptions, purposes, role, category, holiday and remittance-method names, searches, passwords, emails, numbers, dates, contact numbers, and the sign-in page. A field is known by its label, placeholder or id; a reason or note wins over a name in the same words ("Reason for an ID change" stays as typed). `data-caps` on a field asks for capitals (the Type DELETE box) and `data-keep-case` keeps it as typed. A phone's keyboard opens on capitals in a capitals field and on sentence case elsewhere. From November 5 to 23, 2026 every text field was capitals; records saved then stay as they are, and the server still saves member names in capitals.
 
 ### Typing on a phone
 
