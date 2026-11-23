@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Copy, KeyRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,14 @@ const expiryText = (value: string) => showDateTime(value);
 /** A one-time password as IT sees it once: to hand over in person or by text, then dismiss. */
 export function OneTimePasswordNotice({ issued, onDone }: { issued: IssuedPassword; onDone: () => void }) {
   const [copied, setCopied] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  // Brought into view when a password is issued, wherever the notice sits, so IT does not scroll to find it.
+  useEffect(() => { box.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [issued.oneTimePassword]);
   const message = `Dayong sign-in for ${issued.fullName}: Employee ID ${issued.employeeId}, one-time password ${issued.oneTimePassword}. It expires ${expiryText(issued.expiresAt)}. You will choose your own password when you sign in.`;
   async function copy(label: string, text: string) {
     try { await navigator.clipboard.writeText(text); setCopied(label); } catch { setCopied(""); }
   }
-  return <div role="alert" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+  return <div ref={box} role="alert" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
     <p className="flex items-center gap-2 font-semibold"><KeyRound className="size-4" />One-time password for {issued.fullName} ({issued.employeeId})</p>
     <p className="select-all break-all rounded-md border border-amber-200 bg-background px-3 py-2 font-mono text-lg tracking-wider text-foreground">{issued.oneTimePassword}</p>
     <p>Give it to {issued.fullName} in person or by text. It is shown only now, works until {expiryText(issued.expiresAt)}, and they must choose their own password when they sign in.</p>

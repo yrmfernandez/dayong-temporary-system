@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### User Accounts: a reset password shows on the account's card (2026-11-23)
+
+- **Asked (owner):** after Reset password in User Accounts, IT had to scroll back up to see the password; show it without scrolling.
+- **Done:** `app/user-accounts/page.tsx` shows the one-time password on the card of the account that was reset, right under its buttons (like the Account updated message), until Done, handed over. A password for an account created from Find a person still shows at the top, next to where it was created. `components/one-time-password.tsx` (also used by Employees) scrolls itself into view when a password is issued, only if it is off screen.
+- **Status:** done: the change and docs; in progress: none; to do: owner pushes (no migration) and checks it in a browser.
+- **Tested:** type check, lint on the changed files and build pass. Not tried in a browser.
+
 ### Lint has no errors (2026-11-23)
 
 - **Found:** all 32 lint errors were one rule, `no-require-imports`, on CommonJS `.cjs` scripts: 26 in `legacy-data/` (git-ignored: the old system's private data and one-off checks) and 6 in `scripts/inspect-clerk-report.cjs`. None in the app.
