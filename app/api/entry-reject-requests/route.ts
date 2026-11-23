@@ -8,8 +8,8 @@ const noStore = { "Cache-Control": "private, no-store" };
 const failure = (error: unknown, fallback: string, status = 400) => Response.json({ success: false, message: error instanceof Error ? error.message : fallback }, { status });
 
 /**
- * Reject requests (lib/entry-reject-requests.ts). GET: the requests, for the approvers of Remittances. POST { entryId,
- * reason }: an Entry Clerk asks for one of their entries to be rejected (My Entries). PATCH { id, action: "accept" } or
+ * Reject requests (lib/entry-reject-requests.ts). GET: the requests, for the approvers of Remittances. POST { entryIds,
+ * reason } (a batch) or { entryId, reason }: an Entry Clerk asks for one of their batches to be rejected (My Entries). PATCH { id, action: "accept" } or
  * { id, action: "decline", note }: an approver decides.
  */
 export async function GET() {
@@ -26,7 +26,7 @@ export const POST = withEncoder(async (request: Request) => {
   if (!user || !canAccessPath(user, "/my-entries")) return failure(null, "You do not have access to My Entries.", 403);
   try {
     const result = await requestReject(user, await canManageUsers(), await request.json());
-    return Response.json({ success: true, ...result, message: `Reject request ${result.id} sent for ${result.entryId}. Nothing changes until an approver accepts it; then the batch comes back to you as Returned.` }, { status: 201 });
+    return Response.json({ success: true, ...result, message: `Reject request ${result.id} sent for ${result.batch ? "batch " : ""}${result.entryId}. Nothing changes until an approver accepts it; then the batch comes back to you as Returned.` }, { status: 201 });
   } catch (error) { return failure(error, "Unable to send the reject request."); }
 });
 

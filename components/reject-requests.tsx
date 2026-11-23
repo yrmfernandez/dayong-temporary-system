@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseJsonResponse } from "@/lib/api-response";
 import { formatDateTime } from "@/lib/date-format";
 import type { RejectRequest } from "@/lib/entry-reject-requests";
+import { batchOf } from "@/lib/reject-request-batch";
 import { formatPeso } from "@/lib/money";
 
 /**
@@ -20,12 +21,14 @@ export function RejectRequests({ requests, onViewSlip, onChanged }: { requests: 
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const pending = requests.filter((item) => item.status === "Pending");
+  // A request for a whole batch (November 23, 2026) names the batch; an older one names its entry and member.
+  const what = (item: RejectRequest) => { const batch = batchOf(item); return batch ? `${item.kind === "New Sale" ? "New Sales" : "Collections"} batch ${batch.batchId}` : `${item.kind} ${item.entryId}`; };
   const decided = requests.filter((item) => item.status !== "Pending");
 
   const decide = async (item: RejectRequest, action: "accept" | "decline") => {
     let note = "";
     if (action === "decline") {
-      note = (await promptDialog(`Why is the reject request for ${item.entryId} declined? The clerk sees this note; the entry stays waiting for approval.`, { required: true, title: "Decline reject request", confirmLabel: "Decline" })) ?? "";
+      note = (await promptDialog(`Why is the reject request for ${what(item)} declined? The clerk sees this note; it stays waiting for approval.`, { required: true, title: "Decline reject request", confirmLabel: "Decline" })) ?? "";
       if (!note.trim()) return;
     }
     setSaving(item.id); setError("");
@@ -51,8 +54,10 @@ export function RejectRequests({ requests, onViewSlip, onChanged }: { requests: 
           return <div key={item.id} className="rounded-lg border p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="space-y-1">
-                <p className="text-sm font-semibold">{item.kind} <span className="font-mono">{item.entryId}</span> · {item.memberName || "—"} {item.memberNumber && <span className="font-normal text-muted-foreground">({item.memberNumber})</span>}</p>
-                <p className="text-xs text-muted-foreground">{[item.reference, formatPeso(item.amount), item.branch].filter(Boolean).join(" · ")} · slip <button type="button" className="font-mono hover:underline" onClick={() => onViewSlip(item.remittanceId)}>{item.remittanceId}</button></p>
+                {batchOf(item)
+                  ? <p className="text-sm font-semibold">{item.kind === "New Sale" ? "New Sales" : "Collections"} batch <span className="font-mono">{batchOf(item)?.batchId}</span> · {batchOf(item)?.count} entr{batchOf(item)?.count === 1 ? "y" : "ies"}</p>
+                  : <p className="text-sm font-semibold">{item.kind} <span className="font-mono">{item.entryId}</span> · {item.memberName || "—"} {item.memberNumber && <span className="font-normal text-muted-foreground">({item.memberNumber})</span>}</p>}
+                <p className="text-xs text-muted-foreground">{[batchOf(item) ? "" : item.reference, formatPeso(item.amount), item.branch].filter(Boolean).join(" · ")} · slip <button type="button" className="font-mono hover:underline" onClick={() => onViewSlip(item.remittanceId)}>{item.remittanceId}</button></p>
                 <p className="text-xs text-muted-foreground">Asked by {item.requestedBy || "—"} · {formatDateTime(item.requestedAt)} · {item.id}</p>
                 <p className="rounded-md bg-muted/50 px-2 py-1 text-sm"><span className="font-semibold">Reason:</span> {item.reason}</p>
                 {stale && <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{item.entryStatus === "Returned" ? "The slip was already returned to the clerk: Accept just closes this request." : item.entryStatus === "Remitted" ? "The slip was already approved: undo the approval first, or decline this and correct the entry in Edit / Corrections." : `The entry is now ${item.entryStatus}: decline this request.`}</p>}
@@ -74,7 +79,7 @@ export function RejectRequests({ requests, onViewSlip, onChanged }: { requests: 
           <thead className="bg-muted/50 text-left"><tr>{["Request", "Entry", "Member", "Asked by", "Reason", "Decision", "Note"].map((heading) => <th key={heading} className="p-3">{heading}</th>)}</tr></thead>
           <tbody>{decided.map((item) => <tr key={item.id} className="border-t align-top">
             <td className="p-3 font-mono text-xs">{item.id}<span className="block font-sans text-muted-foreground">{formatDateTime(item.requestedAt)}</span></td>
-            <td className="p-3"><span className="font-mono text-xs">{item.entryId}</span><span className="block text-xs text-muted-foreground">{item.kind} · {formatPeso(item.amount)}</span></td>
+            <td className="p-3"><span className="font-mono text-xs">{batchOf(item) ? `Batch ${batchOf(item)?.batchId}` : item.entryId}</span><span className="block text-xs text-muted-foreground">{item.kind} · {formatPeso(item.amount)}</span></td>
             <td className="p-3">{item.memberName || "—"}<span className="block text-xs text-muted-foreground">{item.memberNumber}</span></td>
             <td className="p-3">{item.requestedBy || "—"}</td>
             <td className="p-3">{item.reason}</td>

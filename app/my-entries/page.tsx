@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { parseJsonResponse } from "@/lib/api-response";
 import { reportWeek } from "@/lib/report-week";
 import type { RejectRequest } from "@/lib/entry-reject-requests";
+import { batchOf } from "@/lib/reject-request-batch";
 import type { DayEntry } from "@/lib/todays-entries";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
@@ -104,13 +105,15 @@ export default function MyEntriesPage() {
     setMessage(text);
   }, []);
   const send = (entryIds: string[]) => post({ entryIds, action: "submit" }, "Sent for approval.");
-  // A mistake seen after the batch went to approval: ask the approver to reject the entry, with the reason (owner,
-  // November 20, 2026). Accepted, the batch comes back Returned to fix or remove the entry.
-  const requestReject = async (entry: DayEntry) => {
-    const reason = await promptDialog(`Why should ${entry.id} (${entry.memberName || entry.memberNumber || "this entry"}, ${formatPeso(entry.amount)}) be rejected? The approver reads this reason. If they accept, the whole batch comes back to you as Returned, to fix or remove the entry and resubmit.`, { required: true, title: "Request reject", confirmLabel: "Send request" });
+  // A mistake seen after the batch went to approval: ask the approver to reject the batch, with the reason (owner,
+  // November 20, 2026; on the batch, not on each entry, since November 23). Accepted, the batch comes back Returned to
+  // fix or remove the entry. Say in the reason which entry is wrong.
+  const requestReject = async (batch: Batch) => {
+    const waiting = batch.entries.filter((entry) => entry.remittanceStatus === "Pending Remittance Approval");
+    const reason = await promptDialog(`Why should ${batchLabel(batch)} (${waiting.length} entr${waiting.length === 1 ? "y" : "ies"}, ${formatPeso(waiting.reduce((sum, entry) => sum + entry.amount, 0))}) be rejected? Say which entry is wrong and what to fix (e.g. OR 12545B: wrong member). The approver reads this reason. If they accept, the whole batch comes back to you as Returned, to fix or remove the entry and resubmit.`, { required: true, title: "Request reject", confirmLabel: "Send request" });
     if (!reason?.trim()) return;
     setMessage("");
-    const response = await fetch("/api/entry-reject-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryId: entry.id, reason }) });
+    const response = await fetch("/api/entry-reject-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entryIds: waiting.map((entry) => entry.id), reason }) });
     const result = await parseJsonResponse<{ success: boolean; message?: string }>(response);
     saved(result.message ?? (response.ok ? "Reject request sent." : "Unable to send the reject request."));
   };
@@ -120,7 +123,7 @@ export default function MyEntriesPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Entries</h1>
-        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason: press Edit batch to fix the batch and its entries (or remove an entry), then Resubmit batch. Found a mistake in an entry waiting for approval? Press Request reject on it and say why.</p>
+        <p className="text-sm text-muted-foreground">The New Sales and Collections you encoded, by the date you encoded them, one card per saved batch. A batch paid in cash goes to Pending Approval as soon as it is saved (the cash was counted at Clearing). A batch paid by bank or e-wallet needs one receipt photo for the whole batch; it then goes to Pending Approval on its own. Batches the approver returns show the reason: press Edit batch to fix the batch and its entries (or remove an entry), then Resubmit batch. Found a mistake in a batch waiting for approval? Press Request reject on the batch and say which entry is wrong.</p>
       </div>
 
       <Card>
@@ -182,17 +185,30 @@ export default function MyEntriesPage() {
               {item.id}<span className={`rounded-full px-1.5 text-xs ${shownTab.id === item.id ? "bg-primary text-primary-foreground" : item.items.length && item.id !== "Approved" && item.id !== "For approval" ? "bg-amber-200 text-amber-950" : "bg-muted"}`}>{item.items.length}</span>
             </button>)}
           </div></div>
-          {shownTab.items.map((batch) => {
+          {/* New Sales first, then Collections, each under its own heading (owner, November 23, 2026). */}
+          {(["New Sale", "Collection"] as const).map((kind) => ({ kind, list: shownTab.items.filter((batch) => batch.kind === kind) })).filter((group) => group.list.length).map((group) => (
+          <div key={group.kind} className="space-y-3">
+            <h3 className="flex flex-wrap items-baseline gap-2 border-b pb-1 text-base font-semibold">
+              {group.kind === "New Sale" ? "New Sales" : "Collections"}
+              <span className="text-sm font-normal text-muted-foreground">{group.list.length} batch{group.list.length === 1 ? "" : "es"} · {group.list.reduce((sum, batch) => sum + batch.entries.length, 0)} entries · {formatPeso(group.list.reduce((sum, batch) => sum + batch.total, 0))}</span>
+            </h3>
+          {group.list.map((batch) => {
             const ids = batch.entries.map((entry) => entry.id);
             const first = batch.entries[0];
             const isReturned = batch.entries.some((entry) => entry.remittanceStatus === "Returned");
+            // The batch's reject requests (one per batch since November 23, 2026; older ones were per entry).
+            const batchRequests = [...new Map(ids.map((id) => requests[id]).filter(Boolean).map((request) => [request.id, request])).values()];
+            const canRequestReject = batch.entries.some((entry) => entry.remittanceStatus === "Pending Remittance Approval") && !batchRequests.some((request) => request.status === "Pending");
+            const slips = [...new Set(batch.entries.map((entry) => entry.remittanceId).filter(Boolean))];
             return (
               <section key={batch.key} className={`overflow-hidden rounded-lg border ${batch.needsPhoto ? "border-amber-300" : isReturned ? "border-red-300" : ""}`} aria-label={`${batch.kind} batch`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 bg-muted/40 p-3">
                   <div className="space-y-0.5">
-                    <p className="font-semibold">{batch.kind === "New Sale" ? "New Sales" : "Collections"} batch · {batch.entries.length} entr{batch.entries.length === 1 ? "y" : "ies"} · {formatPeso(batch.total)}</p>
+                    <p className="font-semibold">{batchLabel(batch)} · {batch.entries.length} entr{batch.entries.length === 1 ? "y" : "ies"} · {formatPeso(batch.total)}</p>
                     <p className="text-xs text-muted-foreground">{first.person} · {first.branch}{first.dateRemitted ? ` · remitted ${first.dateRemitted}` : ""} · encoded {first.encodedAt}{batch.methods.length ? ` · ${batch.methods.join(", ")}` : ""}</p>
+                    {slips.length > 0 && <p className="text-xs text-muted-foreground">Slip <span className="font-mono">{slips.join(", ")}</span></p>}
                     {first.returnReason && <p className="text-xs text-red-700">Returned: {first.returnReason}</p>}
+                    {batchRequests.map((request) => <RejectRequestNote key={request.id} request={request} />)}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={batch.status} tone={batch.needsPhoto ? "warning" : isReturned ? "danger" : batch.status === "Approved" ? "success" : "info"} />
@@ -205,6 +221,7 @@ export default function MyEntriesPage() {
                     {batch.readyToSend && <Button type="button" size="sm" onClick={() => void send(ids)}><Send className="size-3.5" />Send for approval</Button>}
                     {isReturned && <Button type="button" size="sm" variant="outline" onClick={() => editOnForm(batch)}><Pencil className="size-3.5" />Edit batch</Button>}
                     {isReturned && <Button type="button" size="sm" variant="outline" onClick={() => void resubmit(ids)}>Resubmit batch</Button>}
+                    {canRequestReject && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => void requestReject(batch)}><Ban className="size-3.5" />Request reject</Button>}
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -221,10 +238,8 @@ export default function MyEntriesPage() {
                             <td className="p-2 text-right font-medium">{formatPeso(entry.amount)}</td>
                             <td className="p-2 text-right"><div className="flex flex-wrap justify-end gap-1">
                               <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(open === entry.id ? "" : entry.id)}><Eye className="size-3.5" />View</Button>
-                              {entry.remittanceStatus === "Pending Remittance Approval" && requests[entry.id]?.status !== "Pending" && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => void requestReject(entry)}><Ban className="size-3.5" />Request reject</Button>}
                             </div></td>
                           </tr>
-                          {requests[entry.id] && <RejectRequestNote request={requests[entry.id]} />}
                           {open === entry.id && <tr className="border-t bg-muted/20"><td colSpan={6} className="p-3"><EntryDetails entry={entry} onClose={() => setOpen("")} /></td></tr>}
                         </Fragment>
                       ))}
@@ -234,6 +249,8 @@ export default function MyEntriesPage() {
               </section>
             );
           })}
+          </div>
+          ))}
           {!batches.length && <p className="p-8 text-center text-muted-foreground">{loading ? "Loading..." : "Nothing encoded in this period."}</p>}
           {batches.length > 0 && !shownTab.items.length && <p className="p-8 text-center text-muted-foreground">No batches {shownTab.id === "Approved" ? "approved" : `in ${shownTab.id}`} in this period.</p>}
         </CardContent>
@@ -275,12 +292,21 @@ function groupBatches(entries: DayEntry[]): Batch[] {
   });
 }
 
-/** The entry's latest reject request: waiting, accepted (the batch was returned) or declined with the approver's note. */
+/**
+ * "Collections batch CBT-…" (owner, November 23, 2026: the batch ID was missing). New Sales keep no batch ID: their batch
+ * is the sales saved together, and the header shows its slip instead.
+ */
+function batchLabel(batch: Batch) {
+  const id = batch.kind === "Collection" ? batch.entries[0].batchId : "";
+  return `${batch.kind === "New Sale" ? "New Sales" : "Collections"} batch${id ? ` ${id}` : ""}`;
+}
+
+/** The batch's reject request: waiting, accepted (the batch was returned) or declined with the approver's note. */
 function RejectRequestNote({ request }: { request: RejectRequest }) {
   const tone = request.status === "Pending" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" : request.status === "Declined" ? "bg-muted/40 text-muted-foreground" : "bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300";
-  return <tr className={tone}><td colSpan={6} className="px-3 py-1.5 text-xs">
+  return <p className={`mt-1 rounded px-2 py-1 text-xs ${tone}`}>
     <span className="font-semibold">{request.status === "Pending" ? "Reject requested, waiting for the approver" : request.status === "Accepted" ? `Reject accepted by ${request.reviewedBy || "the approver"}` : `Reject declined by ${request.reviewedBy || "the approver"}`}</span>
-    {" "}({request.id}{request.requestedAt ? `, sent ${formatDateTime(request.requestedAt)}` : ""}): {request.reason}
+    {" "}({request.id}{batchOf(request) ? "" : ` on ${request.entryId}`}{request.requestedAt ? `, sent ${formatDateTime(request.requestedAt)}` : ""}): {request.reason}
     {request.status === "Declined" && request.reviewNote && <span className="block">Approver&apos;s note: {request.reviewNote}</span>}
-  </td></tr>;
+  </p>;
 }

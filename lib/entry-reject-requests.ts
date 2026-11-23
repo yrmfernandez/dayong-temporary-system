@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/auth";
 import { currentDb, schema } from "@/lib/db";
 import { getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
+import { batchReference } from "@/lib/reject-request-batch";
 import { decideCashRemittance } from "@/lib/remittance-workflow";
 
 /**
@@ -39,19 +40,22 @@ function toRequest(row: typeof requests.$inferSelect): RejectRequest {
   };
 }
 
-type Entry = { kind: "New Sale" | "Collection"; id: string; status: string; remittanceId: string; encodedBy: string; branch: string; memberNumber: string; memberName: string; reference: string; amount: number };
+type Entry = { kind: "New Sale" | "Collection"; id: string; status: string; remittanceId: string; encodedBy: string; branch: string; memberNumber: string; memberName: string; reference: string; amount: number;
+  /** The collection batch (CBT-…); New Sales keep no batch ID, so "". */
+  batchId: string };
+
 
 /** One New Sale or collection by its ID, with what the request keeps of it. */
 async function readEntry(id: string): Promise<Entry | null> {
   const [sale] = await currentDb().select({ id: sales.sale_id, status: sales.remittance_status, remittanceId: sales.linked_remittance_id, encodedBy: sales.encoded_by_employee_id, branch: sales.branch,
     memberNumber: sales.member_number, surname: sales.surname, firstName: sales.first_name, application: sales.application_no, amount: sales.amount_paid }).from(sales).where(eq(sales.sale_id, id));
   if (sale) return { kind: "New Sale", id: sale.id, status: text(sale.status), remittanceId: text(sale.remittanceId), encodedBy: text(sale.encodedBy), branch: text(sale.branch), memberNumber: text(sale.memberNumber),
-    memberName: [text(sale.surname), text(sale.firstName)].filter(Boolean).join(", "), reference: sale.application ? `App ${text(sale.application)}` : "", amount: Number(sale.amount ?? 0) };
+    memberName: [text(sale.surname), text(sale.firstName)].filter(Boolean).join(", "), reference: sale.application ? `App ${text(sale.application)}` : "", amount: Number(sale.amount ?? 0), batchId: "" };
   const [collection] = await currentDb().select({ id: collections.collection_id, status: collections.remittance_status, remittanceId: collections.linked_remittance_id, encodedBy: collections.encoded_by_employee_id,
-    branch: collections.branch, memberNumber: collections.member_number, surname: members.surname, firstName: members.first_name, orNumber: collections.or_number, amount: collections.amount_collected })
+    branch: collections.branch, memberNumber: collections.member_number, surname: members.surname, firstName: members.first_name, orNumber: collections.or_number, amount: collections.amount_collected, batchId: collections.collection_batch_id })
     .from(collections).leftJoin(members, eq(members.member_id, collections.member_id)).where(eq(collections.collection_id, id));
   if (collection) return { kind: "Collection", id: collection.id, status: text(collection.status), remittanceId: text(collection.remittanceId), encodedBy: text(collection.encodedBy), branch: text(collection.branch),
-    memberNumber: text(collection.memberNumber), memberName: [text(collection.surname), text(collection.firstName)].filter(Boolean).join(", "), reference: collection.orNumber ? `OR ${text(collection.orNumber)}` : "", amount: Number(collection.amount ?? 0) };
+    memberNumber: text(collection.memberNumber), memberName: [text(collection.surname), text(collection.firstName)].filter(Boolean).join(", "), reference: collection.orNumber ? `OR ${text(collection.orNumber)}` : "", amount: Number(collection.amount ?? 0), batchId: text(collection.batchId) };
   return null;
 }
 
@@ -63,11 +67,54 @@ function notRejectable(entry: Entry) {
   return "Only an entry waiting for approval can be asked to be rejected. A batch not yet sent goes to approval once it is ready.";
 }
 
-/** The clerk asks for one entry to be rejected: { entryId, reason }. Only their own entries, unless an administrator. */
-export async function requestReject(user: SessionUser, isAdmin: boolean, input: { entryId?: unknown; reason?: unknown }) {
+/**
+ * The clerk asks for a whole batch to be rejected (owner, November 23, 2026: the button is on the batch, not on each
+ * entry; accepting returns the whole batch anyway): { entryIds, reason } with the batch's entries waiting for approval.
+ * One request per slip (a batch is normally one slip), kept on its first entry with "Batch CBT-… · N entries" as the
+ * reference and the batch total, so accepting it rejects that slip as before. Refused when any entry already has a
+ * request waiting.
+ */
+async function requestBatchReject(user: SessionUser, isAdmin: boolean, entryIds: string[], reason: string) {
+  const entries: Entry[] = [];
+  for (const entryId of entryIds) {
+    const entry = await readEntry(entryId);
+    if (!entry) throw new Error(`Entry ${entryId} not found.`);
+    if (!isAdmin && entry.encodedBy !== user.employeeId) throw new Error("You can ask only for batches you encoded.");
+    const why = notRejectable(entry);
+    if (why) throw new Error(`${entry.id}: ${why}`);
+    entries.push(entry);
+  }
+  // A waiting request on any of these entries, or on their slip (a batch request is kept on the batch's first entry).
+  const [open] = await currentDb().select({ id: requests.request_id }).from(requests).where(and(eq(requests.status, "Pending"),
+    or(inArray(requests.entry_id, entries.map((entry) => entry.id)), inArray(requests.remittance_id, [...new Set(entries.map((entry) => entry.remittanceId))]))));
+  if (open) throw new Error(`This batch already has reject request ${open.id}, waiting for the approver.`);
+  const bySlip = new Map<string, Entry[]>();
+  for (const entry of entries) bySlip.set(entry.remittanceId, [...(bySlip.get(entry.remittanceId) ?? []), entry]);
+  const actor = getEncoder();
+  const ids: string[] = [];
+  for (const [slip, list] of bySlip) {
+    const first = list[0], id = createReadableId("REJ");
+    await currentDb().insert(requests).values({
+      request_id: id, entry_kind: first.kind, entry_id: first.id, remittance_id: slip, branch: first.branch || null, member_number: null, member_name: null,
+      reference: batchReference(first.batchId || slip, list.length), amount: Math.round(list.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100, reason, status: "Pending",
+      requested_at: actor.encodedAt, requested_by_employee_id: actor.employeeId, requested_by_name: actor.name,
+      encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt,
+    });
+    ids.push(id);
+  }
+  return { id: ids.join(", "), entryId: entries[0].batchId || entries[0].remittanceId, batch: true };
+}
+
+/**
+ * The clerk asks for an entry to be rejected: { entryId, reason }, or a whole batch: { entryIds, reason }. Only their
+ * own entries, unless an administrator.
+ */
+export async function requestReject(user: SessionUser, isAdmin: boolean, input: { entryId?: unknown; entryIds?: unknown; reason?: unknown }) {
   const entryId = text(input.entryId), reason = text(input.reason);
+  const entryIds = Array.isArray(input.entryIds) ? [...new Set(input.entryIds.map(text).filter(Boolean))] : [];
+  if (reason.length < 5 || reason.length > 300) throw new Error(`Say why the ${entryIds.length ? "batch" : "entry"} should be rejected (5–300 characters), e.g. wrong member, wrong amount, encoded twice.`);
+  if (entryIds.length) return requestBatchReject(user, isAdmin, entryIds, reason);
   if (!entryId) throw new Error("Choose the entry.");
-  if (reason.length < 5 || reason.length > 300) throw new Error("Say why the entry should be rejected (5–300 characters), e.g. wrong member, wrong amount, encoded twice.");
   const entry = await readEntry(entryId);
   if (!entry) throw new Error("Entry not found.");
   if (!isAdmin && entry.encodedBy !== user.employeeId) throw new Error("You can ask only for entries you encoded.");
@@ -83,7 +130,7 @@ export async function requestReject(user: SessionUser, isAdmin: boolean, input: 
     requested_by_employee_id: actor.employeeId, requested_by_name: actor.name,
     encoded_by_user_id: actor.userId, encoded_by_employee_id: actor.employeeId, encoded_by_name: actor.name, encoded_at: actor.encodedAt,
   });
-  return { id, entryId: entry.id };
+  return { id, entryId: entry.id, batch: false };
 }
 
 /** Every pending request and the decided ones of the last 30 days, newest first, for the approvers. */

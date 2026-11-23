@@ -1475,6 +1475,40 @@ test('an Entry Clerk asks for an entry waiting for approval to be rejected; the 
   assert.equal(mine['COL-2'].reviewNote, 'The receipt shows it is right');
 });
 
+test('an Entry Clerk asks for a whole batch to be rejected: one request naming the batch, accepted returns the batch (November 23, 2026)', async () => {
+  const clerk = { userId: 'USR-1', employeeId: 'DPE-1', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} };
+  const h = harness(clerk);
+  const pendingCollection = (id) => { const row = Array(34).fill(''); row[0] = id; row[1] = 'CBT-1'; row[10] = 350; row[19] = 'Posted'; row[28] = 'Pending Remittance Approval'; row[29] = 'REM-1'; row[33] = 'Cash'; return row; };
+  const slip = Array(24).fill(''); slip[0] = 'REM-1'; slip[4] = 'Pending Approval'; slip[6] = 'USR-1'; slip[10] = 700; slip[11] = 700;
+  const collectionHeader = Array(33).fill(''); collectionHeader[28] = 'Remittance Status';
+  const remittanceHeader = Array(24).fill(''); remittanceHeader[12] = 'Difference';
+  h.rows.Collections = [collectionHeader, pendingCollection('COL-1'), pendingCollection('COL-2')];
+  h.rows.Remittances = [remittanceHeader, slip];
+  h.rows['Remittance Collections'] = [['Remittance Collection ID'], ['RCL-1', 'REM-1', 'COL-1', 350], ['RCL-2', 'REM-1', 'COL-2', 350]];
+  deadlineHeaders(h);
+  await h.sync();
+  await query("update collections set encoded_by_employee_id = 'DPE-1'");
+  const route = h.load('app/api/entry-reject-requests/route.ts');
+  const call = async (method, body) => { const response = await route[method](request(body)); return { status: response.status, body: await response.json() }; };
+
+  assert.match((await call('POST', { entryIds: ['COL-1', 'COL-2'], reason: 'no' })).body.message, /Say why the batch should be rejected/);
+  const sent = await call('POST', { entryIds: ['COL-1', 'COL-2'], reason: 'OR 12545B: wrong member' });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.match(sent.body.message, /sent for batch CBT-1/);
+  const rows = await query('select entry_id, remittance_id, reference, amount, member_name from entry_reject_requests');
+  assert.deepEqual(rows.map((row) => [row.entry_id, row.remittance_id, row.reference, Number(row.amount), row.member_name]), [['COL-1', 'REM-1', 'Batch CBT-1 · 2 entries', 700, null]], 'one request for the batch, with its total');
+  assert.match((await call('POST', { entryIds: ['COL-2'], reason: 'Another try for it' })).body.message, /already has reject request/, 'a batch with a request waiting cannot ask again');
+  const { batchOf } = h.load('lib/reject-request-batch.ts');
+  assert.deepEqual(batchOf({ reference: 'Batch CBT-1 · 2 entries' }), { batchId: 'CBT-1', count: 2 });
+  assert.equal(batchOf({ reference: 'OR 12545B' }), null, 'an older request names its entry');
+
+  h.setUser({ userId: 'USR-9', employeeId: 'DPE-9', name: 'approver', roleNames: ['Administrator'], permissions: { manageUsers: true } });
+  const [request1] = (await (await route.GET()).json()).requests;
+  const accepted = await call('PATCH', { id: request1.id, action: 'accept' });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.deepEqual((await query("select remittance_status from collections order by collection_id")).map((row) => row.remittance_status), ['Returned', 'Returned'], 'the whole batch comes back');
+});
+
 test('only an approver can approve cash received in full, and it does not wait for receipt photos', async () => {
   const h = harness({ userId: 'USR-7', employeeId: 'MD-2099-0102', name: 'Test Clerk', roleNames: ['Entry Clerk'], permissions: {} });
   const collection = Array(33).fill(''); collection[0] = 'COL-1'; collection[6] = 'MINTAL'; collection[10] = 350; collection[19] = 'Posted'; collection[26] = 300; collection[28] = 'Outstanding'; collection[30] = 'EMP-1'; collection[31] = 'Ana'; collection[32] = 'Collector';

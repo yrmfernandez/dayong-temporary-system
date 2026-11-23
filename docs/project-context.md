@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### My Entries: Request reject on the batch, New Sales and Collections apart, batch ID shown (2026-11-23)
+
+- **Asked (owner):** the clerk's Request reject button was on each collection, not on the batch; organize the tabs (e.g. For approval) so New Sales and Collections are apart; the batch ID was missing.
+- **Done:** `app/my-entries/page.tsx`: **Request reject** is on the batch header (when an entry waits for approval and no request is waiting); the dialog asks which entry is wrong and why. Each tab lists **New Sales** batches, then **Collections**, each under a heading with batch and entry counts and total. The batch header shows "Collections batch CBT-…" (New Sales keep no batch ID) and the slip (REM-…); the request note shows on the batch. `lib/entry-reject-requests.ts`: `requestReject` takes `{ entryIds, reason }` for a batch: every entry checked, refused when a request is waiting on any entry or on the slip; one request per slip, kept on the batch's first entry with reference "Batch CBT-… · N entries" and the batch total, so Accept rejects the slip as before (no migration). `components/reject-requests.tsx` (Remittances → Reject requests) shows a batch request as the batch. New pure `lib/reject-request-batch.ts` (`batchReference`, `batchOf`). Older per-entry requests still show as before.
+- **Status:** done: the change, test, docs; in progress: none; to do: owner pushes (no migration) and checks My Entries and Reject requests in a browser.
+- **Tested:** new test (one request for a batch with its total, refused again on the same slip, Accept returns the whole batch); all 356 tests pass; type check, lint on the changed files and build pass. Not tried in a browser.
+
 ### Checked: COL-20261123054512-TS5F has no incentive (2026-11-23)
 
 - **Asked (owner):** why collection COL-20261123054512-TS5F and its batch have no incentives.
