@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { currentDb, schema, type Queryable } from "@/lib/db";
+import { formatDateTime } from "@/lib/date-format";
 import { isoDate } from "@/lib/program-age";
 
 /**
@@ -27,11 +28,13 @@ export const personKey = (person: { surname?: unknown; firstName?: unknown; birt
  */
 export async function recordedApplicationNumbers(numbers: unknown[], db: Queryable = currentDb()) {
   const keys = [...new Set(numbers.map(entryKey).filter(Boolean))];
-  const used = new Map<string, { saleId: string; memberNumber: string }>();
+  const used = new Map<string, { saleId: string; memberNumber: string; remittanceStatus: string; branch: string; encodedBy: string; encodedAt: string }>();
   if (!keys.length) return used;
-  const rows = await db.select({ key: schema.sales.application_key, saleId: schema.sales.sale_id, memberNumber: schema.sales.member_number })
+  const rows = await db.select({ key: schema.sales.application_key, saleId: schema.sales.sale_id, memberNumber: schema.sales.member_number, remittanceStatus: schema.sales.remittance_status,
+    branch: schema.sales.branch, encodedBy: schema.sales.encoded_by_name, encodedAt: schema.sales.encoded_at })
     .from(schema.sales).where(inArray(schema.sales.application_key, keys)).orderBy(asc(schema.sales.legacy_duplicate));
-  for (const row of rows) if (row.key && !used.has(row.key)) used.set(row.key, { saleId: row.saleId, memberNumber: row.memberNumber ?? "" });
+  for (const row of rows) if (row.key && !used.has(row.key)) used.set(row.key, { saleId: row.saleId, memberNumber: row.memberNumber ?? "", remittanceStatus: String(row.remittanceStatus ?? "").trim(),
+    branch: String(row.branch ?? "").trim(), encodedBy: String(row.encodedBy ?? "").trim(), encodedAt: row.encodedAt ? formatDateTime(row.encodedAt) : "" });
   return used;
 }
 
@@ -69,6 +72,18 @@ export async function recordedMembersByPerson(people: Array<{ surname?: unknown;
   return members;
 }
 
+/**
+ * The refusal for an Application Number already on a sale, saying who encoded it and when. A sale in a Returned batch
+ * (owner, November 23, 2026: a rejected batch was typed again as a new one to change its branch) is fixed with Edit
+ * batch in My Entries (branch, MAS and details can change there), never encoded again.
+ */
+export function alreadyRecordedMessage(label: string, applicationNo: string, saved: { saleId: string; memberNumber: string; remittanceStatus?: string; branch?: string; encodedBy?: string; encodedAt?: string }) {
+  const where = `sale ${saved.saleId}${saved.memberNumber ? ` for member ${saved.memberNumber}` : ""}`;
+  const by = [saved.encodedBy ? `encoded by ${saved.encodedBy}` : "", saved.encodedAt ? `on ${saved.encodedAt}` : "", saved.branch ? `in ${saved.branch}` : ""].filter(Boolean).join(" ");
+  if (saved.remittanceStatus === "Returned") return `${label}: Application Number ${applicationNo} is already on ${where}, in a Returned batch${by ? ` ${by}` : ""}. Do not encode it again: to change its branch, MAS or details, open it in My Entries → Returned → Edit batch${saved.encodedBy ? ` (${saved.encodedBy}'s My Entries)` : ""}, save, then press Resubmit batch.`;
+  return `${label}: Application Number ${applicationNo} is already recorded (${where}${by ? `, ${by}` : ""}). This looks like a double entry.`;
+}
+
 type SaleEntry = { existingMember: boolean; memberNumber?: string; surname?: string; firstName?: string; birthdate?: string; applicationNo?: string };
 
 /**
@@ -87,7 +102,7 @@ export async function newSalesDoubleEntry(sales: SaleEntry[]) {
       const earlier = batchApplications.get(application);
       if (earlier) return `${label}: Application Number ${sale.applicationNo} is already used by Sale #${earlier} in this batch.`;
       const saved = applications.get(application);
-      if (saved) return `${label}: Application Number ${sale.applicationNo} is already recorded (sale ${saved.saleId}${saved.memberNumber ? ` for member ${saved.memberNumber}` : ""}). This looks like a double entry.`;
+      if (saved) return alreadyRecordedMessage(label, String(sale.applicationNo), saved);
       batchApplications.set(application, index + 1);
     }
     if (sale.existingMember) continue;

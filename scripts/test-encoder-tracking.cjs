@@ -1708,6 +1708,9 @@ test('New Sales blocks double entries: repeated Application Numbers and members 
   const sale = (fields) => ({ existingMember: false, surname: 'Reyes', firstName: 'Ben', birthdate: '1991-02-03', applicationNo: 'APP-200', ...fields });
   assert.equal(await newSalesDoubleEntry([sale({})]), '');
   assert.match(await newSalesDoubleEntry([sale({ applicationNo: 'app 100' })]), /Application Number app 100 is already recorded \(sale SALE-1 for member PH-7\)/);
+  // In a Returned batch (owner, November 23, 2026: typed again as a new batch to change its branch): Edit batch instead.
+  await pglite.query("update sales set remittance_status = 'Returned', encoded_by_name = 'clerk A', branch = 'North', encoded_at = '2026-11-23T00:19:08Z' where sale_id = 'SALE-1'");
+  assert.match(await newSalesDoubleEntry([sale({ applicationNo: 'APP-100' })]), /already on sale SALE-1 for member PH-7, in a Returned batch encoded by clerk A on Nov 23, 2026 8:19 AM in North\. Do not encode it again: .*My Entries → Returned → Edit batch \(clerk A's My Entries\).*Resubmit batch/);
   assert.match(await newSalesDoubleEntry([sale({}), sale({ surname: 'Lim', applicationNo: 'APP-200' })]), /Sale #2: Application Number APP-200 is already used by Sale #1/);
   assert.match(await newSalesDoubleEntry([sale({ surname: ' santos ', firstName: 'ANA', birthdate: '1990-05-01' })]), /already member PH-7\. To add another program, type the surname and select the existing member/);
   assert.equal(await newSalesDoubleEntry([sale({ existingMember: true, memberNumber: 'PH-7', surname: 'Santos', firstName: 'Ana', birthdate: '1990-05-01' })]), '', 'selecting the existing member is the right way to add a program');
