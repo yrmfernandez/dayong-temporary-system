@@ -73,7 +73,6 @@ export default function ClearingPage() {
       setData(result as unknown as PageData);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to load Clearing."); }
   }, []);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load
   useEffect(() => { void load(); }, [load]);
   // Entries saved, photos attached and approvals all move a line along, so those tables reload it too.
   useLiveRefresh(["clearings", "remittances", "collections", "sales", "receipt_photos"], load);

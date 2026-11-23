@@ -12,7 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Git-ignored: the old system's private data and one-off checks on it (never part of the app).
+    "legacy-data/**",
   ]),
+  // CommonJS scripts (.cjs) load modules with require(); that is their module system, not a style choice.
+  { files: ["**/*.cjs"], rules: { "@typescript-eslint/no-require-imports": "off" } },
 ]);
 
 export default eslintConfig;

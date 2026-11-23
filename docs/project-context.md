@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Lint has no errors (2026-11-23)
+
+- **Found:** all 32 lint errors were one rule, `no-require-imports`, on CommonJS `.cjs` scripts: 26 in `legacy-data/` (git-ignored: the old system's private data and one-off checks) and 6 in `scripts/inspect-clerk-report.cjs`. None in the app.
+- **Done:** `eslint.config.mjs` ignores `legacy-data/**` and allows `require()` in `.cjs` files (their module system); the per-file disable comment at the top of `scripts/test-encoder-tracking.cjs` is no longer needed and was removed.
+- **Status:** done: lint config and docs; in progress: none; to do: owner pushes (no migration, no app code changed). Left as warnings (25): 15 unused variables in maintenance scripts, 6 `window.location.assign` navigations and 4 hook dependency notes in pages. An unused disable comment in `app/clearing/page.tsx` was removed.
+- **Tested:** `npm run lint` reports 0 errors.
+
 ### The weekly and monthly reports test passes again (2026-11-23)
 
 - **Found:** the test failing since 2026-11-20 was not a system bug. Two of its requests asked for the next weekly with no last day (`to=new`), so the draft ran to today. Oct 12 to today was mostly October until November 20 (Oct 12 – Nov 20 is 20 days each, a tie goes to the later month), then Week 1 of November instead of Week 2. The system follows the rule (a weekly belongs to the month most of its days fall in); the test depended on the date it ran.

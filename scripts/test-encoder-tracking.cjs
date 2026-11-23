@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require('node:assert/strict');
 const { before, beforeEach, test } = require('node:test');
 const fs = require('node:fs');
