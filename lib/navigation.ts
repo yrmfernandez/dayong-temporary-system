@@ -5,7 +5,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { canAccessPath, isAdministratorRole, isFinanceFamilyRole, type AccessContext } from "@/lib/access-control";
+import { canAccessPath, canMonitorFidelity, isAdministratorRole, isFinanceFamilyRole, type AccessContext } from "@/lib/access-control";
 
 export type NavItem = { name: string; href: string; icon: LucideIcon; children?: NavItem[] };
 export type NavSection = { title: string; items: NavItem[] };
@@ -117,7 +117,8 @@ const workspaces: Record<string, NavSection[]> = {
   "entry clerk": [
     { title: "Overview", items: [page.dashboard, page.todaysEntries] },
     { title: "Encoding", items: [page.clearing, page.newSales, page.collections, page.myEntries, page.remittances] },
-    { title: "Reports", items: [page.reports] },
+    // Fidelity: everyone's, view only (owner, November 24, 2026); their own stays under My HR as My Fidelity.
+    { title: "Reports", items: [page.reports, page.fidelity] },
     { title: "Members", items: [page.members, page.searchRecords, page.dropouts] },
     { title: "Lookup", items: [page.programs, page.branches] },
     myHr,
@@ -209,7 +210,9 @@ function placeGrantedPage(sections: NavSection[], item: NavItem) {
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
   const inRole = (href: string) => !configured || href === "/" || href === "/updates" || configured.some((route) => routeMatches(href, route));
-  const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href);
+  // Fidelity (everyone's) only for those who monitor it: for the rest, the Fidelity page every employee has by default
+  // only opens My Fidelity, so a Fidelity item in their menu led there (November 24, 2026).
+  const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href) && (item.href !== "/fidelity" || canMonitorFidelity(access));
   // A custom role with its pages ticked in Roles (e.g. an auditor role) gets them grouped as in the administrator
   // workspace, not squeezed into the MAS layout (owner, October 15, 2026).
   const base = knownWorkspace(role) ?? (configured ? adminSections : workspaces.mas);

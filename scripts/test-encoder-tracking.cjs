@@ -1803,6 +1803,34 @@ test('Finance-Auditor sees every ticked page in the Finance layout; other custom
   assert.equal(custom.some((section) => section.title === 'My Portfolio'), false);
 });
 
+test('Fidelity: Entry Clerks see everyone\'s (view only) from their menu; a pre-filled Fidelity tick gives MAS and IT Clerk nothing more than My Fidelity (November 24, 2026)', async () => {
+  const h = harness();
+  const { visibleNavigation } = h.load('lib/navigation.ts');
+  const { canMonitorFidelity } = h.load('lib/access-control.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const hrefs = (role, pages) => visibleNavigation(role, { roleNames: [role], permissions, rolePages: { [role.toLowerCase()]: pages } }).flatMap((section) => section.items.map((item) => item.href));
+  // As on production: Fidelity ticked for these roles by the Roles editor's pre-fill.
+  const clerk = hrefs('Entry Clerk', ['/', '/collections', '/my-entries', '/reports', '/fidelity', '/attendance']);
+  assert.equal(clerk.includes('/fidelity'), true, 'Entry Clerk: Fidelity in the menu');
+  assert.equal(clerk.includes('/fidelity/me'), true, 'and My Fidelity under My HR');
+  for (const role of ['MAS', 'IT Clerk']) {
+    const shown = hrefs(role, ['/', '/mam', '/fidelity', '/attendance', '/branches']);
+    assert.equal(shown.includes('/fidelity'), false, `${role}: no Fidelity item that would only open My Fidelity`);
+  }
+  for (const role of ['Administrator', 'CEO', 'President', 'Finance', 'Finance-Auditor', 'Entry Clerk']) assert.equal(canMonitorFidelity({ roleNames: [role] }), true, role);
+  for (const role of ['MAS', 'MAS-Officer', 'Collector', 'IT Clerk', 'HR Officer']) assert.equal(canMonitorFidelity({ roleNames: [role] }), false, role);
+
+  // The API: a MAS with Fidelity ticked gets only their own; an Entry Clerk gets everyone's but cannot pay out.
+  const route = h.load('app/api/fidelity/route.ts');
+  h.setUser({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'Mas', roleNames: ['MAS'], permissions, rolePages: { mas: ['/fidelity'] } });
+  const mas = await (await route.GET(new Request('http://localhost/api/fidelity'))).json();
+  assert.deepEqual([mas.canViewAll, mas.canMonitor], [false, false], 'a MAS no longer loads everyone\'s Fidelity');
+  h.setUser({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk', roleNames: ['Entry Clerk'], permissions, rolePages: { 'entry clerk': ['/fidelity'] } });
+  const seen = await (await route.GET(new Request('http://localhost/api/fidelity'))).json();
+  assert.deepEqual([seen.canViewAll, seen.canClaim], [true, false], 'view only');
+  assert.equal((await route.PATCH(new Request('http://localhost/api/fidelity', { method: 'PATCH', body: JSON.stringify({ masEmployeeId: 'DPE-0002', kind: 'full', amount: 1 }) }))).status, 403, 'no payouts');
+});
+
 test('pages granted to a role appear in the section where they belong, not under More', () => {
   const { visibleNavigation } = harness().load('lib/navigation.ts');
   const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };

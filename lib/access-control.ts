@@ -51,6 +51,16 @@ export const hrRoles = ["hr officer", "hr"];
  * dashboard and may read what Finance reads; changing money (payroll, Fidelity payouts) stays with Finance itself.
  */
 export const isFinanceFamilyRole = (role: string) => { const name = normalizeRoleName(role); return name === "finance" || /^finance[\s-]/.test(name); };
+
+/**
+ * Who sees every employee's Fidelity (view only; paying out stays with Finance): Administrators, the CEO and President,
+ * Finance roles, and Entry Clerks (owner, November 24, 2026). Everyone else has only My Fidelity (/fidelity/me). The
+ * page, the API and the sidebar all ask here. A tick of Fidelity in Roles does not grant it: every employee has that
+ * page by default (for My Fidelity) and the Roles editor pre-fills it, so the tick was on for MAS, Entry Clerk and IT
+ * Clerk without anyone choosing it, and it let them load everyone's Fidelity from the API.
+ */
+export const canMonitorFidelity = (context: Pick<AccessContext, "roleNames">) =>
+  context.roleNames.some((role) => { const name = normalizeRoleName(role); return isAdministratorRole(role) || executiveRoles.includes(name) || isFinanceFamilyRole(role) || name === "entry clerk"; });
 /** MAS-Officer, written "MAS-Officer" or "MAS Officer" (owner, November 16, 2026). */
 export const isMasOfficerRole = (role: string) => /^mas[\s-]+officer$/.test(normalizeRoleName(role));
 /** A MAS, including a MAS-Officer: sells, collects and has members like any MAS. */

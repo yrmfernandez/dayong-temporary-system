@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Fidelity for Entry Clerks: everyone's, view only; a pre-filled tick no longer opens it (2026-11-24)
+
+- **Asked (owner):** Entry Clerks clicking Fidelity land on My Fidelity. Owner chose: Entry Clerks see everyone's Fidelity, view only.
+- **Found:** every employee has the Fidelity page by default (it opens My Fidelity), and the Roles editor pre-fills it, so on production Fidelity is ticked for Entry Clerk, MAS, MAS-Officer, IT Clerk and Finance-Auditor. The sidebar showed those ticked roles a **Fidelity** item; the page let only Administrator, Finance, CEO and President in and sent the rest to My Fidelity. The API treated the tick as a grant, so MAS, MAS-Officer, Entry Clerk and IT Clerk could load **everyone's** Fidelity from `/api/fidelity`, though no page showed it.
+- **Done:** one rule, `canMonitorFidelity` (`lib/access-control.ts`): Administrator, CEO, President, Finance roles, Entry Clerk. Used by `app/fidelity/page.tsx`, `app/api/fidelity/route.ts` (the tick no longer counts) and `lib/navigation.ts` (the Fidelity item shows only to them; Entry Clerk has it under Reports, My Fidelity stays under My HR). Payouts stay Administrator and Finance (`canClaim`, PATCH unchanged).
+- **Status:** done: the change, test, docs; in progress: none; to do: owner pushes (no migration) and an Entry Clerk checks Fidelity in a browser.
+- **Tested:** new test (Entry Clerk's menu has Fidelity and My Fidelity; MAS and IT Clerk with the tick have no Fidelity item; who monitors; the API gives a ticked MAS only their own and an Entry Clerk everyone's without payouts); all 358 tests pass; type check and lint on the changed files pass.
+
 ### Submitted by MAS: CSUB-20261115121536-XADI checked; Already encoded another way (2026-11-23)
 
 - **Asked (owner):** a batch still in Collections → Submitted by MAS is already encoded and cannot be saved again; remove it, and make this possible in future.

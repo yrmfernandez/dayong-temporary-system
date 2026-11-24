@@ -15,7 +15,7 @@ Fidelity is a voluntary savings benefit. It is the employee's **own money**, han
 ## My Fidelity vs Fidelity monitoring
 
 - **My Fidelity** (`/fidelity/me`) always shows only the signed-in employee's own savings: balance, the excess above ₱10,000, pending amounts, total withdrawn, and their history. It is under My Portfolio for MAS and under My HR for every other role, and uses `GET /api/fidelity?scope=me`.
-- **Fidelity** (`/fidelity`) is company-wide monitoring for Administrator, Finance, CEO, and President. Finance or an Administrator records withdrawals there (`PATCH /api/fidelity` with `kind: "base"` plus `mode: "percent"` or `"fixed"` and `amount`, `kind: "excess"` and an amount, or `kind: "full"`). Other roles opening `/fidelity` are redirected to My Fidelity.
+- **Fidelity** (`/fidelity`) is company-wide monitoring for Administrator, Finance roles (Finance-Auditor too), CEO, President, and **Entry Clerks** (view only, under Reports in their menu; owner, November 24, 2026). One rule decides it for the page, the API and the menu (`canMonitorFidelity` in `lib/access-control.ts`); a tick of Fidelity in Roles does not grant it, because every employee has that page by default for My Fidelity and the Roles editor pre-fills it (before November 24 that pre-filled tick let MAS, Entry Clerk and IT Clerk load everyone's Fidelity from the API, and showed Entry Clerks a Fidelity item that opened My Fidelity). Finance or an Administrator records withdrawals there (`PATCH /api/fidelity` with `kind: "base"` plus `mode: "percent"` or `"fixed"` and `amount`, `kind: "excess"` and an amount, or `kind: "full"`). Other roles opening `/fidelity` are redirected to My Fidelity.
 
 ## Where it shows
 

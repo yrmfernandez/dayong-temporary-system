@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 
+import { canMonitorFidelity } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import { FidelityMonitoring } from "./fidelity-views";
 
-const monitoringRoles = ["administrator", "admin", "finance", "ceo", "president"];
-
-// Company-wide monitoring; everyone else only has their own savings, at /fidelity/me.
+// Company-wide monitoring; everyone else only has their own savings, at /fidelity/me. The same rule as the API
+// (lib/access-control.ts canMonitorFidelity): before November 24, 2026 this page sent Entry Clerks, who had a Fidelity
+// item in their menu, and Finance-Auditor to My Fidelity.
 export default async function FidelityPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (!user.roleNames.some((role) => monitoringRoles.includes(role.trim().toLowerCase()))) redirect("/fidelity/me");
+  if (!canMonitorFidelity(user)) redirect("/fidelity/me");
   return <FidelityMonitoring />;
 }
