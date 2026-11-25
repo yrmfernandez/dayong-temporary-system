@@ -116,7 +116,18 @@ export default function RemittancesPage() {
   // The slip whose difference is explained (Why the difference?).
   const [explainingId, setExplainingId] = useState("");
   const toggleExplain = (id: string) => setExplainingId((current) => current === id ? "" : id);
-  const records = (data?.remittances ?? []).filter((item) => ["Approved", "Rejected"].includes(item.status) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames));
+  const allRecords = (data?.remittances ?? []).filter((item) => ["Approved", "Rejected"].includes(item.status) && matches(item.id, item.accountableName, item.branch, ...item.clerkNames));
+  // Remittance Records filters (owner, November 25, 2026): received date, branch, accountable person, slip, status, difference.
+  const [recordFilter, setRecordFilter] = useState(EMPTY_RECORD_FILTER);
+  const setFilter = (change: Partial<typeof EMPTY_RECORD_FILTER>) => setRecordFilter((current) => ({ ...current, ...change }));
+  const records = allRecords.filter((item) => {
+    const day = item.remittanceDate.slice(0, 10), f = recordFilter;
+    return (!f.from || day >= f.from) && (!f.to || day <= f.to) && (!f.branch || item.branch === f.branch) && (!f.person || item.accountableName === f.person)
+      && (!f.slip || item.type === f.slip) && (!f.status || item.status === f.status)
+      && (!f.difference || (f.difference === "short" ? item.difference < 0 : f.difference === "over" ? item.difference > 0 : f.difference === "with" ? item.difference !== 0 : item.difference === 0));
+  });
+  const recordChoices = (pick: (item: (typeof allRecords)[number]) => string) => [...new Set(allRecords.map(pick))].filter(Boolean).sort().map((value) => ({ value, label: value }));
+  const filtersOn = Object.values(recordFilter).some(Boolean);
   const waitingForPhotos = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Outstanding" && !item.photoId && !item.cash && matches(item.id, item.accountableName, item.branch, item.encodedByName));
   const returned = (data?.outstanding ?? []).filter((item) => item.remittanceStatus === "Returned" && matches(item.id, item.accountableName, item.branch, item.encodedByName));
   const canApprove = Boolean(data?.canApprove);
@@ -290,7 +301,18 @@ export default function RemittancesPage() {
             <div className="grid gap-3 sm:grid-cols-3"><Field label="From OR date"><Input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} /></Field><Field label="To OR date"><Input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} /></Field><Field label="Branch"><SearchSelect aria-label="Branch" className="h-9" clearable placeholder="All branches" value={reportBranch} onValueChange={setReportBranch} options={[...new Set((data?.outstanding ?? []).map((item) => item.branch))].filter(Boolean).sort().map((branch) => ({ value: branch, label: branch }))} /></Field></div>
             <DataTable headers={["Entry", "Collector / MAS", "Branch", "OR date", "Age", "Status", "Remittance due"]} rows={(data?.outstanding ?? []).filter((item) => (!reportFrom || item.orDate >= reportFrom) && (!reportTo || item.orDate <= reportTo) && (!reportBranch || item.branch === reportBranch) && matches(item.id, item.accountableName, item.branch, item.encodedByName)).map((item) => [item.id, item.accountableName, item.branch, showDate(item.orDate), `${item.daysOutstanding} days`, <span key="status">{item.remittanceStatus === "Outstanding" && !item.photoId && !item.cash ? "Needs receipt photo" : item.remittanceStatus}{item.dateRemittedReason && <span className="block text-xs text-amber-800">Date Remitted changed{item.dateRemitted ? ` to ${showDate(item.dateRemitted)}` : ""}: {item.dateRemittedReason}</span>}</span>, formatPeso(item.remittanceAmount)])} empty="No outstanding cash matches these filters." />
           </CardContent></Card>
-          <Card><CardHeader><CardTitle>Remittance Records</CardTitle><p className="text-sm text-muted-foreground">Approved and rejected remittances.</p></CardHeader><CardContent>
+          <Card><CardHeader><CardTitle>Remittance Records</CardTitle><p className="text-sm text-muted-foreground">Approved and rejected remittances.</p></CardHeader><CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Received from"><Input type="date" value={recordFilter.from} max={recordFilter.to || undefined} onChange={(event) => setFilter({ from: event.target.value })} /></Field>
+              <Field label="Received to"><Input type="date" value={recordFilter.to} min={recordFilter.from || undefined} onChange={(event) => setFilter({ to: event.target.value })} /></Field>
+              <Field label="Branch"><SearchSelect aria-label="Branch" className="h-9" clearable placeholder="All branches" value={recordFilter.branch} onValueChange={(branch) => setFilter({ branch })} options={recordChoices((item) => item.branch)} /></Field>
+              <Field label="Accountable person"><SearchSelect aria-label="Accountable person" className="h-9" clearable placeholder="Everyone" value={recordFilter.person} onValueChange={(person) => setFilter({ person })} options={recordChoices((item) => item.accountableName)} /></Field>
+              <Field label="Slip"><SearchSelect aria-label="Slip" className="h-9" clearable placeholder="All slips" value={recordFilter.slip} onValueChange={(slip) => setFilter({ slip })} options={recordChoices((item) => item.type)} /></Field>
+              <Field label="Status"><SearchSelect aria-label="Status" className="h-9" clearable placeholder="Approved and rejected" value={recordFilter.status} onValueChange={(status) => setFilter({ status })} options={[{ value: "Approved", label: "Approved" }, { value: "Rejected", label: "Rejected" }]} /></Field>
+              <Field label="Difference"><SearchSelect aria-label="Difference" className="h-9" clearable placeholder="Any" value={recordFilter.difference} onValueChange={(difference) => setFilter({ difference })} options={[{ value: "with", label: "Short or over" }, { value: "short", label: "Short" }, { value: "over", label: "Over" }, { value: "none", label: "No difference" }]} /></Field>
+              <div className="flex items-end"><Button type="button" variant="outline" size="sm" className="h-9" disabled={!filtersOn} onClick={() => setRecordFilter(EMPTY_RECORD_FILTER)}>Clear filters</Button></div>
+            </div>
+            <p className="text-sm text-muted-foreground">{records.length} of {allRecords.length} remittance{allRecords.length === 1 ? "" : "s"} · expected {formatPeso(records.reduce((total, item) => total + item.expectedAmount, 0))} · actual {formatPeso(records.reduce((total, item) => total + item.actualAmount, 0))} · difference {formatPeso(records.reduce((total, item) => total + item.difference, 0))}</p>
             {deletingId && records.some((item) => item.id === deletingId) && <div className="mb-3">{deletePanel(deletingId)}</div>}
             {explainingId && records.some((item) => item.id === explainingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Why {explainingId} is {(records.find((item) => item.id === explainingId)?.difference ?? 0) < 0 ? "short" : "over"}</p><Button type="button" size="sm" variant="ghost" onClick={() => setExplainingId("")}>Close</Button></div><RemittanceDiscrepancy remittanceId={explainingId} /></div>}
             {viewingId && records.some((item) => item.id === viewingId) && <div className="mb-3 space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between"><p className="font-mono text-sm font-semibold">Entries on {viewingId}</p><Button type="button" size="sm" variant="ghost" onClick={() => setViewingId("")}>Close</Button></div><RemittanceEntries remittanceId={viewingId} canDecideIncentive={Boolean(data?.canDecideIncentive)} onChanged={() => void load(clerk)} /></div>}
@@ -298,7 +320,7 @@ export default function RemittancesPage() {
               ...(canDelete || canUndo ? [<div key="actions" className="flex flex-wrap gap-1">
                 {canUndo && item.status === "Approved" && <Button type="button" size="sm" variant="outline" disabled={saving} title="Approved by mistake? Put it back in Pending Approval." onClick={() => void undoApproval(item.id)}>Undo approval</Button>}
                 {canDelete && <Button type="button" size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={() => setDeletingId(deletingId === item.id ? "" : item.id)}>Delete</Button>}
-              </div>] : [])])} empty="No approved or rejected remittances." />
+              </div>] : [])])} empty={filtersOn ? "No remittance matches these filters." : "No approved or rejected remittances."} />
           </CardContent></Card>
         </div>
       )}
@@ -306,5 +328,6 @@ export default function RemittancesPage() {
   );
 }
 
+const EMPTY_RECORD_FILTER = { from: "", to: "", branch: "", person: "", slip: "", status: "", difference: "" };
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div>; }
 function DataTable({ headers, rows, empty }: { headers: string[]; rows: ReactNode[][]; empty: string }) { return <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[720px] text-sm"><thead className="bg-muted/50 text-left"><tr>{headers.map((header) => <th key={header} className="p-3">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${String(row[0])}-${index}`} className="border-t">{row.map((value, cellIndex) => <td key={cellIndex} className="p-3">{value}</td>)}</tr>)}{!rows.length && empty && <tr><td colSpan={headers.length} className="p-8 text-center text-muted-foreground">{empty}</td></tr>}</tbody></table></div>; }

@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Remittances: filters on Remittance Records (2026-11-25)
+
+- **Asked (owner):** add filters to Remittance Records.
+- **Done:** `app/remittances/page.tsx`: received from and to, branch, accountable person, slip, status (Approved or Rejected), difference (short or over, short, over, none), Clear filters, and a line with how many match and their expected, actual and difference totals. Filtered in the browser from the records the page already loads, so no extra database reads (egress). The search box and Entry Clerk filter still apply.
+- **Status:** done: the change, docs; in progress: none; to do: owner pushes, checks it in a browser.
+- **Tested:** type check, lint and build pass; not tried in a browser; no migration.
+
 ### Clerk report: Give to Finance button (2026-11-25)
 
 - **Asked (owner):** Cash Beg is the cash the clerk kept, not handed to Finance (e.g. 500 on hand, 300 given, 200 typed as Cash Beg). Owner agreed to the carried cash and asked for a quicker Cash to Finance entry, so it takes no more work than typing Cash Beg.
