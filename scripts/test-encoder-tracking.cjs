@@ -3512,7 +3512,7 @@ test('an Entry Clerk report counts only what that clerk encoded, grouped like th
   assert.equal(report.summaryLabel, '3RD WEEKLY REPORT');
   assert.deepEqual(report.collection.rows.map((row) => [row.label, row.accounts, row.gross, row.incentives, row.net, row.fidelity, row.penalty]), [['Jun 15, 2026', 1, 350, 50, 300, 20, 0], ['Jun 16, 2026', 1, 700, 100, 600, 0, 50]], 'by date; the other clerk\'s COL-3 is not counted');
   assert.deepEqual([report.newSales.total.accounts, report.newSales.total.gross, report.newSales.total.incentives], [1, 500, 50]);
-  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, turnoverShortOver: 0, turnoverSettled: 0, pendingCash: 0, totalCashIn: 1420, expenses: 100, forwardedToBank: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
+  assert.deepEqual(report.cash, { cashBeg: 0, cashBegEdit: null, salesNet: 450, collectionNet: 900, fidelity: 20, penalty: 50, turnoverShortOver: 0, turnoverSettled: 0, pendingCash: 0, totalCashIn: 1420, carries: false, carriedFrom: [], openingMissing: false, nonCashNet: 0, nonCashRecorded: 0, expenses: 100, forwardedToBank: 0, turnedOverToFinance: 0, totalCashOut: 100, remainingCashOnHand: 1320, totals: 1420 }, 'the penalty is cash in');
   assert.deepEqual(report.masSummary.rows.map((row) => [row.name, row.sales.accounts, row.collections.accounts, row.collections.gross]), [['Maria', 1, 2, 1050]]);
   // Cash Beg is typed case by case (owner, October 13, 2026): the next week does not carry what was left.
   const next = await buildClerkReport('weekly', '2026-06-24', { employeeId: 'DPE-7', name: 'Clerk' });
@@ -3561,6 +3561,66 @@ test('an expense on the report keeps its receipt photos, and only compressed pho
   assert.deepEqual(report.expenses.map((item) => item.photoIds), [ids], 'the report lists them for viewing');
 });
 
+test('from December 1, 2026 the cash is carried from a confirmed cash count: daily, weekly and monthly agree; bank and e-wallet are not cash; pending is not carried', async () => {
+  const h = harness();
+  const row = (id, day, amount, remittance, method) => { const item = Array(41).fill(''); Object.assign(item, { 0: id, 5: 'DP-1', 6: 'AGDAO', 7: 'Maria', 9: day, 10: amount, 19: 'Posted', 20: `${day}T02:00:00.000Z`, 22: 'DPE-7', 24: `${day}T02:00:00.000Z`, 26: remittance, 28: 'Outstanding', 31: 'Maria', 33: method }); return item; };
+  h.rows.Collections = [[], row('COL-1', '2026-12-01', 1000, 900, 'Cash'), row('COL-2', '2026-12-01', 500, 450, 'GCash'), row('COL-3', '2026-12-02', 1000, 900, 'Cash')];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+  await h.sync();
+  await seedDeposits([
+    ['DEP-1', '2026-12-01', 'DPE-7', 'Clerk', 'AGDAO', 'DSRDPI', 300, 'RCBC', '', 'Ref 1234567', 'Posted', '', ''],
+    ['DEP-2', '2026-12-01', 'DPE-7', 'Clerk', 'AGDAO', 'Finance Officer', 200, 'Turned over to Finance', '', '', 'Posted', '', ''],
+    ['DEP-3', '2026-12-01', 'DPE-7', 'Clerk', 'AGDAO', 'GCash', 450, 'GCash', '', 'Ref 7654321', 'Posted', '', ''],
+  ]);
+  await query(`update bank_deposits set non_cash = true where deposit_id = 'DEP-3'`);
+  await seedNotes([['DPE-7|daily|2026-12-01|agdao', 'DPE-7', 'daily', '2026-12-01', 120, '', '', '', '', '']]);
+  const { buildClerkReport } = h.load('lib/clerk-report.ts');
+  const { recordCashCount, decideCashCount } = h.load('lib/cash-position.ts');
+  const { runAsSystem } = h.load('lib/encoder-context.ts');
+  const clerk = { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' };
+  const report = (kind, day) => buildClerkReport(kind, day, clerk, 'AGDAO');
+
+  // No confirmed count yet: the typed Cash Beg (none) is used and the report says so.
+  const before = await report('daily', '2026-12-01');
+  assert.deepEqual([before.cash.carries, before.cash.openingMissing, before.cash.cashBeg], [true, true, 0]);
+  await assert.rejects(() => runAsSystem(() => recordCashCount({ employeeId: 'DPE-7', name: 'Clerk' }, { branch: 'AGDAO', date: '2026-11-30', amount: 1000 }, '2026-12-05')), /from 2026-12-01/);
+  await assert.rejects(() => runAsSystem(() => recordCashCount({ employeeId: 'DPE-7', name: 'Clerk' }, { branch: 'AGDAO', date: '2026-12-01', amount: 1000, denominations: '500x1' }, '2026-12-05')), /adds up to/);
+  const { id } = await runAsSystem(() => recordCashCount({ employeeId: 'DPE-7', name: 'Clerk' }, { branch: 'AGDAO', date: '2026-12-01', amount: 1000, denominations: '500x2' }, '2026-12-05'));
+  assert.equal((await report('daily', '2026-12-01')).cash.openingMissing, true, 'a pending count is not used');
+  await assert.rejects(() => runAsSystem(() => decideCashCount(id, 'confirm', '', { employeeId: 'DPE-7', name: 'Clerk', isAdmin: false })), /Another person confirms/);
+  await runAsSystem(() => decideCashCount(id, 'confirm', '', { employeeId: 'FIN-1', name: 'Finance', isAdmin: false }));
+
+  // Dec 1: starts with the 1,000 counted; the GCash collection and its non-cash record are shown, not counted.
+  const day1 = await report('daily', '2026-12-01');
+  assert.deepEqual([day1.cash.cashBeg, day1.cash.collectionNet, day1.cash.nonCashNet, day1.cash.pendingCash, day1.cash.forwardedToBank, day1.cash.turnedOverToFinance, day1.cash.nonCashRecorded, day1.cash.remainingCashOnHand],
+    [1000, 900, 450, 120, 300, 200, 450, 1520], 'opening 1,000 + 900 cash + 120 pending − 300 bank − 200 Finance');
+  // Dec 2: starts with what was left on Dec 1 without the pending cash (encoded later, counted then).
+  const day2 = await report('daily', '2026-12-02');
+  assert.deepEqual([day2.cash.cashBeg, day2.cash.remainingCashOnHand], [1400, 2300]);
+  // The week, the month and the last day of the month end on the same cash.
+  assert.equal((await report('weekly', '2026-12-02')).cash.remainingCashOnHand, 2300, 'week of Dec 1–6');
+  const month = await report('monthly', '2026-12-15');
+  assert.deepEqual([month.cash.cashBeg, month.cash.remainingCashOnHand], [1000, 2300], 'December: from the count');
+  assert.equal((await report('daily', '2026-12-31')).cash.cashBeg, 2300, 'Dec 31 starts with the month\'s cash');
+  // A later count of a different amount becomes the new starting point once confirmed.
+  const second = await runAsSystem(() => recordCashCount({ employeeId: 'DPE-7', name: 'Clerk' }, { branch: 'AGDAO', date: '2026-12-03', amount: 2250, note: 'Short 50' }, '2026-12-05'));
+  await runAsSystem(() => decideCashCount(second.id, 'confirm', 'Short 50, MAS to pay', { employeeId: 'FIN-1', name: 'Finance', isAdmin: false }));
+  assert.equal((await report('daily', '2026-12-03')).cash.cashBeg, 2250);
+  // Finance sees each pending count with what the system expected that day; a clerk cannot open the list.
+  const third = await runAsSystem(() => recordCashCount({ employeeId: 'DPE-7', name: 'Clerk' }, { branch: 'AGDAO', date: '2026-12-04', amount: 2000 }, '2026-12-05'));
+  const countsRoute = h.load('app/api/cash-counts/route.ts');
+  h.setUser({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await countsRoute.GET()).status, 403);
+  h.setUser({ userId: 'USR-F', employeeId: 'FIN-1', name: 'Finance', roleNames: ['Finance'], permissions: {} });
+  const listed = await (await countsRoute.GET()).json();
+  assert.deepEqual(listed.counts.filter((item) => item.status === 'Pending').map((item) => [item.id, item.amount, item.expected]), [[third.id, 2000, 2250]], 'expected from the Dec 3 count');
+  const rejected = await countsRoute.PATCH(request({ id: third.id, decision: 'reject', note: 'Count again with the branch head' }));
+  assert.equal(rejected.status, 200, JSON.stringify(await rejected.clone().json()));
+  // A non-cash record cannot be dated before December 1.
+  await assert.rejects(() => runAsSystem(() => h.load('lib/clerk-cash.ts').addDeposit({ date: '2026-11-30', amount: 10, bankAccount: 'GCash', transferType: 'GCash', remarks: 'Ref 1111111', nonCash: true }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' })), /before 2026-12-01/);
+});
+
 test('bank deposits count as cash out, pending cash counts only in its own report, and Cash Beg is typed per report', async () => {
   const h = harness();
   const collection = Array(41).fill(''); Object.assign(collection, { 0: 'COL-1', 5: 'DP-1', 7: 'Maria', 9: '2026-09-03', 10: 1000, 19: 'Posted', 20: '2026-09-03T02:00:00.000Z', 22: 'DPE-7', 24: '2026-09-03T02:00:00.000Z', 26: 900, 28: 'Outstanding', 31: 'Maria' });
@@ -3577,6 +3637,18 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   assert.deepEqual(day.deposits.map((item) => [item.id, item.amount, item.transferType]), [['DEP-1', 700, 'RCBC']], 'a voided deposit is left out');
   assert.deepEqual([day.cash.collectionNet, day.cash.pendingCash, day.cash.totalCashIn, day.cash.forwardedToBank, day.cash.remainingCashOnHand], [900, 120, 1020, 700, 320]);
   assert.equal(day.notes.specificRemarks, 'Penalty paid');
+  // Cash handed to Finance at the office in person (owner, November 24, 2026): cash out on its own line, like a deposit.
+  const { addDeposit } = h.load('lib/clerk-cash.ts');
+  const { runAsSystem: asSystem } = h.load('lib/encoder-context.ts');
+  const { FINANCE_TURNOVER } = h.load('lib/cash-turnover.ts');
+  await assert.rejects(() => asSystem(() => addDeposit({ date: '2026-09-03', amount: 200, transferType: FINANCE_TURNOVER, bankAccount: '', remarks: '' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' })), /who in Finance received/);
+  await asSystem(() => addDeposit({ date: '2026-09-03', amount: 200, transferType: FINANCE_TURNOVER, bankAccount: 'Finance Officer', remarks: '' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' }));
+  const withFinance = await buildClerkReport('daily', '2026-09-03', { employeeId: 'DPE-7', name: 'Clerk' });
+  assert.deepEqual([withFinance.cash.forwardedToBank, withFinance.cash.turnedOverToFinance, withFinance.cash.totalCashOut, withFinance.cash.remainingCashOnHand], [700, 200, 900, 120], 'no reference number needed; out of the cash on hand');
+  assert.deepEqual(withFinance.deposits.map((item) => [item.amount, item.transferType, item.bankAccount]), [[700, 'RCBC', 'DSRDPI'], [200, FINANCE_TURNOVER, 'Finance Officer']]);
+  await assert.rejects(() => asSystem(() => addDeposit({ date: '2026-09-03', amount: 50, transferType: 'RCBC', bankAccount: 'DSRDPI', remarks: 'no number' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' })), /need a number/, 'a bank deposit still needs its reference');
+  const [handover] = (await query("select deposit_id from bank_deposits where transfer_type = '" + FINANCE_TURNOVER + "'"));
+  await asSystem(() => h.load('lib/clerk-cash.ts').voidDeposit(handover.deposit_id, 'Test handover', { employeeId: 'DPE-7', isAdmin: false }));
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(nextDay.cash.cashBeg, 0, 'the 200 left the day before is not carried: Cash Beg is typed, case by case');
 

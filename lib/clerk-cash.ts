@@ -5,6 +5,8 @@ import { getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { validDate } from "@/lib/manila-date";
+import { FINANCE_TURNOVER } from "@/lib/cash-turnover";
+import { CARRY_START } from "@/lib/cash-carry";
 
 /**
  * What an Entry Clerk records for their report besides New Sales and Collections:
@@ -73,14 +75,15 @@ async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "
   if (problem) throw new Error(problem);
 }
 
-export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string };
+/** nonCash: a bank or e-wallet payment kept for its details; it takes no cash out from December 1, 2026 (lib/cash-position.ts). */
+export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string; nonCash: boolean };
 
 /** Posted (not voided) deposits by one clerk on or before `to`. */
 export async function getDeposits(employeeId: string, to: string): Promise<BankDeposit[]> {
   const rows = await currentDb().select().from(depositsTable)
     .where(and(eq(depositsTable.employee_id, employeeId), ne(depositsTable.status, "Voided"), lte(depositsTable.deposit_date, to)));
   return rows.sort((a, b) => text(a.deposit_date).localeCompare(text(b.deposit_date)) || a.row_seq - b.row_seq)
-    .map((row) => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks) }));
+    .map((row) => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks), nonCash: row.non_cash === true }));
 }
 
 function depositFields(input: Record<string, unknown>) {
@@ -88,11 +91,18 @@ function depositFields(input: Record<string, unknown>) {
   if (!validDate(date)) throw new Error("Enter the deposit date.");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter the amount deposited.");
   const bankAccount = text(input.bankAccount).slice(0, 100), transferType = text(input.transferType).slice(0, 60);
-  if (!bankAccount) throw new Error("Enter the bank account name.");
+  // Cash turned over to Finance in person (owner, November 24, 2026): who received it instead of a bank account, and no
+  // reference number is asked (remarks optional).
+  const toFinance = transferType === FINANCE_TURNOVER;
+  if (!bankAccount) throw new Error(toFinance ? "Enter who in Finance received the cash." : "Enter the bank account name.");
   if (!transferType) throw new Error("Enter the type of transfer (bank or channel).");
-  const remarksProblem = depositRemarksProblem(input.remarks);
+  const remarksProblem = toFinance ? "" : depositRemarksProblem(input.remarks);
   if (remarksProblem) throw new Error(remarksProblem);
-  return { deposit_date: date, bank_account_name: bankAccount, amount, transfer_type: transferType, mas: text(input.mas).slice(0, 100), remarks: text(input.remarks).slice(0, 200) };
+  // A bank or e-wallet payment recorded for its details (owner, November 24, 2026); never cash handed to Finance.
+  const nonCash = !toFinance && (input.nonCash === true || input.nonCash === "true");
+  // Before CARRY_START bank and e-wallet payments still count as cash on hand, so their records must take cash out.
+  if (nonCash && date < CARRY_START) throw new Error(`A record dated before ${CARRY_START} cannot be marked non-cash: bank and e-wallet payments are left out of cash on hand from that day.`);
+  return { deposit_date: date, bank_account_name: bankAccount, amount, transfer_type: transferType, mas: text(input.mas).slice(0, 100), remarks: text(input.remarks).slice(0, 200), non_cash: nonCash };
 }
 
 export async function addDeposit(input: Record<string, unknown>, clerk: { employeeId: string; name: string; branch: string }) {

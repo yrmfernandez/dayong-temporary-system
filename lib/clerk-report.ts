@@ -11,6 +11,9 @@ import { manilaDateOf } from "@/lib/remittance-deadline";
 import { getEntriesForRange, type DayEntry } from "@/lib/todays-entries";
 import { formatDate as showDate } from "@/lib/date-format";
 import { clerkTurnover } from "@/lib/turnover-variance";
+import { isFinanceTurnover } from "@/lib/cash-turnover";
+import { CARRY_START, confirmedCountsOn, dayBefore, entryCashByDay, type CashCount } from "@/lib/cash-position";
+import { cashMethodNames } from "@/lib/entry-batches";
 import { weekOfMonth } from "@/lib/report-week";
 
 /**
@@ -19,7 +22,7 @@ import { weekOfMonth } from "@/lib/report-week";
  * - New Sales and Collections sections (MAS or period rows: Accts, Gross, Inc, Net, Fid/bond) from what the clerk
  *   encoded in the period, by the date encoded.
  * - Expenses / Other Cash Out (expenses the clerk encoded) and Cash Flow Transactions (cash the clerk forwarded to the
- *   bank, lib/clerk-cash.ts).
+ *   bank, and since November 24, 2026 cash turned over to Finance in person; lib/clerk-cash.ts, lib/cash-turnover.ts).
  * - The cash summary: Cash Beg/Pending COH (the cash received that the clerk typed for this report, else zero), Sales
  *   Net, Collection
  *   Net, Fidelity Bond, Penalty (since October 12, 2026), Pending cash to be encoded, Total Cash In; Expenses, Cash forwarded to bank, Total Cash Out;
@@ -140,6 +143,35 @@ async function clerkFidelitySlips(employeeId: string, from: string, to: string) 
 }
 
 /**
+ * The cash a clerk holds at the start of `start` for `branch` ("" = every branch with a confirmed count), from
+ * CARRY_START (owner, November 24, 2026; lib/cash-position.ts): each branch's latest cash count confirmed on or before
+ * `start`, plus the report's own cash in and out from the count's day to the day before `start`. Null when no count is
+ * confirmed for the branch. `loaded` passes lists the report has already read.
+ */
+export async function cashHeldAtStart(employeeId: string, branch: string, start: string, loaded?: { expenses?: Awaited<ReturnType<typeof clerkExpenses>>; deposits?: BankDeposit[] }) {
+  const confirmed = await confirmedCountsOn(employeeId, start);
+  const key = (value: string) => text(value).toLowerCase();
+  const used = (branch ? [confirmed.get(key(branch))] : [...confirmed.values()]).filter((count): count is CashCount => Boolean(count));
+  if (!used.length) return null;
+  const to = dayBefore(start), from = used.map((count) => count.date).sort()[0];
+  const [cashNames, expenses, deposits] = await Promise.all([cashMethodNames(), loaded?.expenses ?? clerkExpenses(employeeId, to), loaded?.deposits ?? getDeposits(employeeId, to)]);
+  const [entries, slips, turnover] = from <= to
+    ? await Promise.all([entryCashByDay(employeeId, from, to, cashNames), clerkFidelitySlips(employeeId, from, to), clerkTurnover(employeeId, from, to)])
+    : [[], [], null];
+  const total = used.reduce((sum, count) => {
+    const mine = (value: string) => key(value) === key(count.branch), within = (day: string) => day >= count.date && day <= to;
+    const cashIn = entries.filter((row) => mine(row.branch) && within(row.day)).reduce((acc, row) => acc + row.cashNet + row.fidelity + row.penalty, 0)
+      + slips.filter((item) => mine(item.branch) && within(item.date)).reduce((acc, item) => acc + (Number(item.amount) || 0), 0)
+      + (turnover?.encoded ?? []).filter((item) => mine(item.branch) && within(manilaDateOf(item.encodedAt))).reduce((acc, item) => acc + item.cashEffect, 0)
+      + (turnover?.settled ?? []).filter((item) => mine(item.branch) && within(item.settledOn)).reduce((acc, item) => acc + item.settledCash, 0);
+    const cashOut = expenses.filter((item) => mine(item.branch) && within(item.recordedOn)).reduce((acc, item) => acc + item.amount, 0)
+      + deposits.filter((item) => !item.nonCash && mine(item.branch) && within(item.date)).reduce((acc, item) => acc + item.amount, 0);
+    return sum + count.amount + cashIn - cashOut;
+  }, 0);
+  return { amount: round(total), counts: used };
+}
+
+/**
  * `span` (owner, October 30, 2026): the dates of a weekly or monthly report the clerk submits (lib/report-periods.ts),
  * and a monthly's weeklies; without it a weekly or monthly runs over the calendar week or month of `date`.
  */
@@ -188,7 +220,19 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const typedCashBeg = branch ? ofPeriod.filter(forBranch).at(-1) ?? null
     : perBranch.length === 1 ? perBranch[0]
     : perBranch.length ? { amount: round(perBranch.reduce((total, edit) => total + edit.amount, 0)), reason: perBranch.map((edit) => `${edit.branch || "earlier"} ₱${edit.amount}: ${edit.reason}`).join("; "), updatedAt: perBranch.map((edit) => edit.updatedAt).sort().at(-1) ?? "", updatedBy: [...new Set(perBranch.map((edit) => edit.updatedBy))].join(", "), kind, start, branch: "" } : null;
-  const cashBeg = typedCashBeg ? round(typedCashBeg.amount) : 0;
+  /*
+   * From CARRY_START (owner, November 24, 2026; lib/cash-position.ts) a report starts with the cash held at the start of
+   * its first day, from the clerk's cash counts confirmed by Finance; the typed Cash Beg is used only until a count is
+   * confirmed (openingMissing says so).
+   */
+  const carries = start >= CARRY_START;
+  const carried = carries ? await cashHeldAtStart(clerk.employeeId, branch, start, { expenses: expensesAll, deposits: depositsAll }) : null;
+  const cashBeg = carried ? carried.amount : typedCashBeg ? round(typedCashBeg.amount) : 0;
+  // From CARRY_START bank and e-wallet payments are money already in the bank, not cash: on their own line, out of Cash In.
+  const nonCashEntry = (entry: DayEntry) => !entry.cash && entry.encodedAt.slice(0, 10) >= CARRY_START;
+  const netOf = (list: DayEntry[]) => round(list.reduce((total, entry) => total + entry.amount - entry.incentive, 0));
+  const salesCashNet = netOf(sales.filter((entry) => !nonCashEntry(entry))), collectionCashNet = netOf(collections.filter((entry) => !nonCashEntry(entry)));
+  const nonCashNet = netOf(entries.filter(nonCashEntry));
   const fidelity = round(newSales.total.fidelity + collection.total.fidelity + fidelityLater);
   // Penalties are cash the clerk receives with the batch (the turnover control total includes them), so they count in.
   const penalty = round(newSales.total.penalty + collection.total.penalty);
@@ -198,10 +242,17 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
    * (+ MAS paid the short, − overage returned). Remaining Cash on Hand is then the cash really held. Not carried as a balance.
    */
   const turnoverShortOver = round(turnover.shortOver), turnoverSettled = round(turnover.settledCash);
-  const totalCashIn = round(cashBeg + newSales.total.net + collection.total.net + fidelity + penalty + turnoverShortOver + turnoverSettled + notes.pendingCash);
+  const totalCashIn = round(cashBeg + salesCashNet + collectionCashNet + fidelity + penalty + turnoverShortOver + turnoverSettled + notes.pendingCash);
   const expenseTotal = round(expenses.reduce((total, item) => total + item.amount, 0));
   const depositTotal = round(deposits.reduce((total, item) => total + item.amount, 0));
-  const totalCashOut = round(expenseTotal + depositTotal);
+  // Cash Flow records marked non-cash (a bank or e-wallet payment kept for its details) take no cash out.
+  const cashOutDeposits = deposits.filter((item) => !item.nonCash);
+  const nonCashRecorded = round(depositTotal - cashOutDeposits.reduce((total, item) => total + item.amount, 0));
+  // Cash turned over to Finance in person (owner, November 24, 2026) leaves the cash on hand like a bank deposit; it is
+  // shown on its own line, and Cash forwarded to bank is the rest.
+  const turnedOverToFinance = round(cashOutDeposits.filter(isFinanceTurnover).reduce((total, item) => total + item.amount, 0));
+  const forwardedToBank = round(cashOutDeposits.reduce((total, item) => total + item.amount, 0) - turnedOverToFinance);
+  const totalCashOut = round(expenseTotal + forwardedToBank + turnedOverToFinance);
 
   // Summary sheet: New Member and Collection by Marketing Account Staff.
   const byMas = new Map<string, { name: string; sales: ReportLine; collections: ReportLine }>();
@@ -242,8 +293,12 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date, weeks), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
     ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
-      cashBeg, cashBegEdit: typedCashBeg, salesNet: newSales.total.net, collectionNet: collection.total.net, fidelity, penalty, turnoverShortOver, turnoverSettled, pendingCash: notes.pendingCash, totalCashIn,
-      expenses: expenseTotal, forwardedToBank: depositTotal, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
+      cashBeg, cashBegEdit: carried ? null : typedCashBeg, salesNet: salesCashNet, collectionNet: collectionCashNet, fidelity, penalty, turnoverShortOver, turnoverSettled, pendingCash: notes.pendingCash, totalCashIn,
+      /** From CARRY_START: Cash Beg is the cash held at the start (carried from these confirmed counts); openingMissing: no count confirmed yet. */
+      carries, carriedFrom: carried?.counts.map((count) => ({ id: count.id, branch: count.branch, date: count.date, amount: count.amount })) ?? [], openingMissing: carries && !carried,
+      /** Bank and e-wallet payments (not cash), and Cash Flow records marked non-cash: shown, not counted. */
+      nonCashNet, nonCashRecorded,
+      expenses: expenseTotal, forwardedToBank, turnedOverToFinance, totalCashOut, remainingCashOnHand: round(totalCashIn - totalCashOut), totals: totalCashIn,
     },
     notes,
     /** Each turnover difference behind the two cash lines, and the ones still open (they stop the audit approval). */

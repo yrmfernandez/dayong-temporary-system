@@ -622,6 +622,35 @@ export const entry_reject_requests = pgTable("entry_reject_requests", {
   index("entry_reject_requests_entry_idx").on(t.entry_id),
 ]).enableRLS();
 
+/**
+ * The cash an Entry Clerk physically holds for a branch, counted at the start of a day (owner, November 24, 2026), the
+ * starting point from which the clerk report carries the cash on hand (lib/cash-position.ts): the first on December 1,
+ * 2026, and later ones whenever the cash is counted again. Finance or an Administrator confirms a count before it is used.
+ */
+export const cash_counts = pgTable("cash_counts", {
+  ...rowSeq(),
+  count_id: text().primaryKey(),
+  employee_id: text().notNull(),
+  employee_name: text(),
+  branch: text().notNull(),
+  /** Counted before that day's transactions: the cash held at the start of this day. */
+  count_date: day("count_date").notNull(),
+  amount: money("amount").notNull(),
+  /** By denomination, e.g. "1000x3, 500x1" (lib/cash-count.ts); optional. */
+  denominations: text(),
+  note: text(),
+  /** Pending, Confirmed, Rejected */
+  status: text().notNull().default("Pending"),
+  decided_by_employee_id: text(),
+  decided_by_name: text(),
+  decided_at: moment("decided_at"),
+  decision_note: text(),
+  ...encoder(),
+}, (t) => [
+  index("cash_counts_clerk_idx").on(t.employee_id, t.count_date),
+  index("cash_counts_status_idx").on(t.status),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),
@@ -900,6 +929,11 @@ export const bank_deposits = pgTable("bank_deposits", {
   /** Links filled by the database from the names (trigger fill_links, migration 0013); hidden from the Sheets layer. */
   branch_id: text().references(() => branches.branch_id, employeeRef),
   mas_employee_id: text().references(() => employees.employee_id, employeeRef),
+  /**
+   * A bank or e-wallet payment recorded for its details (owner, November 24, 2026): money already in the bank, never
+   * cash, so it does not take cash out of the clerk report from December 1, 2026 (lib/cash-position.ts).
+   */
+  non_cash: boolean().notNull().default(false),
 }, (t) => [index("bank_deposits_branch_id_idx").on(t.branch_id), index("bank_deposits_mas_employee_id_idx").on(t.mas_employee_id), index("bank_deposits_employee_idx").on(t.employee_id, t.deposit_date)]).enableRLS();
 
 export const fidelity = pgTable("fidelity", {

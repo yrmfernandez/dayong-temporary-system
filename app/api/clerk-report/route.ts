@@ -7,6 +7,7 @@ import { getEmployees } from "@/lib/employees";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { getReportRemarks } from "@/lib/report-remarks";
 import { addDeposit, editDeposit, saveCashBeg, saveReportNotes, voidDeposit } from "@/lib/clerk-cash";
+import { listCashCounts, recordCashCount } from "@/lib/cash-position";
 import { depositDayProblem } from "@/lib/deposit-day";
 import { withEncoder } from "@/lib/encoder-context";
 import { createExpense, deleteExpense, editExpense } from "@/lib/finance-data";
@@ -70,7 +71,9 @@ export async function GET(request: Request) {
     const isOwn = report.encoder.employeeId === user.employeeId;
     // The audit of this report, so the clerk knows it is approved and its findings (owner, October 27, 2026).
     const audit = await clerkAuditView(report.encoder.employeeId, kind, report.from);
-    return Response.json({ success: true, report, period, remarks, canChoose, isOwn, audit, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
+    // The clerk's cash counts (lib/cash-position.ts), latest first, for the Cash count tab and its status.
+    const cashCounts = (await listCashCounts(report.encoder.employeeId, 20)).filter((count) => !branch || count.branch.toLowerCase() === branch.toLowerCase());
+    return Response.json({ success: true, report, period, remarks, canChoose, isOwn, audit, cashCounts, branch: branch || "all", branchChoices, masChoices: isOwn ? await masChoices(branch) : [], clerks: clerks.map((clerk) => ({ employeeId: clerk.employeeId, name: clerk.name, branch: clerk.branch })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to build the report." }, { status: 400 });
   }
@@ -126,6 +129,12 @@ export const POST = withEncoder(async (request: Request) => {
     const locked = await lockedBy(body, user.employeeId);
     if (locked) throw new Error(locked);
     switch (body.action) {
+      // The cash the clerk holds for the branch, counted at the start of a day, for Finance to confirm (owner, November 24, 2026).
+      case "add-cash-count": {
+        if (!clerk.branch) throw new Error("Choose the branch of the report first.");
+        const saved = await recordCashCount({ employeeId: clerk.employeeId, name: clerk.name }, { ...body, branch: clerk.branch }, manilaNow().date);
+        return Response.json({ success: true, message: `Cash count ${saved.id} recorded for ${clerk.branch}. It starts your carried cash once Finance confirms it.` });
+      }
       case "add-expense": {
         if (!clerk.branch) throw new Error("Choose the branch of the report, or ask an administrator to set your primary branch in Employees.");
         // At least one photo of the receipt (owner, October 21, 2026).

@@ -8,6 +8,7 @@ import { AdminDeletePanel } from "@/components/admin-delete";
 import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
 import { RejectRequests } from "@/components/reject-requests";
+import { CashCounts } from "@/components/cash-counts";
 import { RemittanceDiscrepancy } from "@/components/remittance-discrepancy";
 import { RemittanceEntries } from "@/components/remittance-entries";
 import { StatusBadge } from "@/components/status-badge";
@@ -47,13 +48,15 @@ type Dashboard = {
   canDelete?: boolean;
   clerk: string;
 };
-type View = "dashboard" | "approval" | "rejects" | "reports";
+type View = "dashboard" | "approval" | "rejects" | "counts" | "reports";
 
 const views = [
   { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
   { id: "approval" as const, label: "Pending Approval", icon: FileCheck2 },
   // Entry Clerks' requests to reject an entry, for the approvers (lib/entry-reject-requests.ts).
   { id: "rejects" as const, label: "Reject requests", icon: Ban },
+  // Entry Clerks' cash counts, for Finance to confirm (lib/cash-position.ts, November 24, 2026).
+  { id: "counts" as const, label: "Cash counts", icon: Wallet },
   { id: "reports" as const, label: "Reports", icon: BarChart3 },
 ];
 
@@ -209,7 +212,7 @@ export default function RemittancesPage() {
         <MetricTile tone={(data?.summary.discrepancyAmount ?? 0) ? "danger" : "teal"} icon={AlertTriangle} label="Discrepancies" value={formatPeso(data?.summary.discrepancyAmount ?? 0)} detail={(data?.summary.discrepancyAmount ?? 0) ? "Absolute shortage / overage · click to see why" : "Absolute shortage / overage"} onClick={(data?.summary.discrepancyAmount ?? 0) ? () => { setView("approval"); setOnlyDifferences(true); } : undefined} />
       </div>
 
-      <div className="overflow-x-auto border-b"><div className="flex min-w-max gap-1" role="tablist">{views.filter((item) => item.id !== "rejects" || canApprove).map((item) => { const Icon = item.icon; return <button key={item.id} type="button" role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)} className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${view === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}><Icon className="size-4" />{item.label}{item.id === "approval" && pending.length ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{pending.length}</span> : null}{item.id === "rejects" && pendingRejects ? <span className="rounded-full bg-amber-200 px-1.5 text-xs text-amber-950">{pendingRejects}</span> : null}</button>; })}</div></div>
+      <div className="overflow-x-auto border-b"><div className="flex min-w-max gap-1" role="tablist">{views.filter((item) => (item.id !== "rejects" && item.id !== "counts") || canApprove).map((item) => { const Icon = item.icon; return <button key={item.id} type="button" role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)} className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${view === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}><Icon className="size-4" />{item.label}{item.id === "approval" && pending.length ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{pending.length}</span> : null}{item.id === "rejects" && pendingRejects ? <span className="rounded-full bg-amber-200 px-1.5 text-xs text-amber-950">{pendingRejects}</span> : null}</button>; })}</div></div>
 
       {view === "dashboard" && (
         <div className="space-y-6">
@@ -280,6 +283,7 @@ export default function RemittancesPage() {
         onViewSlip={(id) => { setView("approval"); setOnlyDifferences(false); setSearch(id); setViewingId(id); }}
         onChanged={(text) => { setMessage(text); void load(clerk); }} />}
 
+      {view === "counts" && canApprove && <CashCounts />}
       {view === "reports" && (
         <div className="space-y-6">
           <Card><CardHeader><CardTitle>Outstanding Cash Aging</CardTitle><p className="text-sm text-muted-foreground">Entries not yet approved, by how long since the OR date.</p></CardHeader><CardContent className="space-y-4">

@@ -14,15 +14,18 @@ import { Input } from "@/components/ui/input";
 import { readApiResponse } from "@/lib/api-response";
 import type { ClerkReport as Report, ReportLine } from "@/lib/clerk-report";
 import type { ClerkAuditView } from "@/lib/daily-audit";
+import type { CashCount } from "@/lib/cash-position";
+import { CARRY_START } from "@/lib/cash-carry";
 import type { ClerkPeriod, PeriodView } from "@/lib/report-periods";
 import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expense-options";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 import { manilaToday } from "@/lib/manila-date";
+import { FINANCE_TURNOVER, isFinanceTurnover } from "@/lib/cash-turnover";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
-type Result = { success: boolean; message?: string; report: Report; period: PeriodView | null; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
+type Result = { success: boolean; message?: string; report: Report; cashCounts?: CashCount[]; period: PeriodView | null; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
 // The period input's value and the date sent to the server (any day inside the period).
@@ -65,6 +68,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
   // An expense opened for editing (owner, October 16, 2026: edit or delete expenses on the report, as deposits).
   const [editingExpense, setEditingExpense] = useState<Report["expenses"][number] | null>(null);
+  // Give to Finance (owner, November 25, 2026): opens Cash to Finance with the Remaining Cash on Hand filled in.
+  const [financeRequest, setFinanceRequest] = useState(0);
   // A Fidelity entry (handed in after encoding) opened for editing (October 13, 2026).
   const [editingFidelity, setEditingFidelity] = useState<Report["fidelitySlips"][number] | null>(null);
   // Every entry filters (owner, October 14, 2026): kind, remitted / returned / missing photo, OR search, MAS, program.
@@ -190,13 +195,13 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   {editable && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this expense being deleted?", { required: true }); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
                 </span>} />
               <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
-                headers={["Bank Account Name", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
+                headers={["Bank Account / Received by", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
                 rows={report.cashFlowTotals
                   // Monthly and yearly: the total of each week / month (owner, October 20, 2026); deposits are edited on the daily or weekly report.
                   ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
                   : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
                 total={report.depositTotal}
-                action={editable && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById("deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
+                action={editable && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById(isFinanceTurnover(report.deposits[index]) ? "finance-form" : "deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
 
             {(report.fidelityReceived.length > 0 || own) && (
@@ -221,10 +226,14 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">
               <dl className="space-y-0.5">
-                <Cash label="Cash Beg/Pending COH" value={report.cash.cashBeg} color={tone.cashBeg} />
+                <Cash label={report.cash.carries && !report.cash.openingMissing ? "Cash on hand at start (carried)" : "Cash Beg/Pending COH"} value={report.cash.cashBeg} color={tone.cashBeg} />
+                {/* From December 1, 2026 the opening cash is carried from Finance-confirmed cash counts (lib/cash-position.ts). */}
+                {report.cash.carries && report.cash.carriedFrom.length > 0 && <p className="text-right text-[11px] text-muted-foreground">Carried from the cash count{report.cash.carriedFrom.length > 1 ? "s" : ""} {report.cash.carriedFrom.map((count) => `${count.branch} ${showDate(count.date)} ${money(count.amount)}`).join("; ")}</p>}
+                {report.cash.openingMissing && <p className="text-right text-[11px] font-semibold text-amber-700 dark:text-amber-400">No cash count confirmed yet for this branch: record your count on the Cash count tab. Until Finance confirms it, the typed Cash Beg is used.</p>}
                 {report.cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {report.cash.cashBegEdit.updatedBy}: {report.cash.cashBegEdit.reason}</p>}
                 <Cash label="Sales Net" value={report.cash.salesNet} />
                 <Cash label="Collection Net" value={report.cash.collectionNet} />
+                {report.cash.nonCashNet !== 0 && <p className="flex justify-between gap-6 text-xs text-muted-foreground"><span>Bank / e-wallet (not cash, not counted)</span><span className="w-28 text-right">{money(report.cash.nonCashNet)}</span></p>}
                 <Cash label="Fidelity Bond" value={report.cash.fidelity} />
                 <Cash label="Penalty" value={report.cash.penalty} />
                 {/* The turnover sheet short (−) or over (+) on the clerk's batches, and cash that settled one (lib/turnover-variance.ts). */}
@@ -235,9 +244,14 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 <div className="h-2" />
                 <Cash label="Expenses" value={report.cash.expenses} />
                 <Cash label="Cash forwarded to bank" value={report.cash.forwardedToBank} />
+                {(report.cash.turnedOverToFinance ?? 0) !== 0 && <Cash label="Cash turned over to Finance" value={report.cash.turnedOverToFinance} />}
+                {report.cash.nonCashRecorded !== 0 && <p className="flex justify-between gap-6 text-xs text-muted-foreground"><span>Non-cash records (not counted)</span><span className="w-28 text-right">{money(report.cash.nonCashRecorded)}</span></p>}
                 <Cash label="Total Cash Out/Expense" value={report.cash.totalCashOut} color={tone.cashOut} strong />
                 <div className="h-2" />
                 <Cash label="Remaining Cash on Hand" value={report.cash.remainingCashOnHand} color={tone.remaining} strong />
+                {editable && data?.branch !== "all" && report.cash.remainingCashOnHand > 0 && <div className="flex justify-end print:hidden">
+                  <Button type="button" size="sm" variant="outline" onClick={() => { setFinanceRequest((count) => count + 1); setTimeout(() => document.getElementById("finance-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }}
+                    title="Record cash you hand to Finance; change the amount if you give less and the rest is carried to the next day">Give to Finance</Button></div>}
                 <div className="flex justify-end gap-6 pt-3 font-bold italic"><span>TOTALS</span><span className="w-28 text-right">{money(report.cash.totals)}</span></div>
               </dl>
               <NoteBox title="Specific Rmks" text={report.notes.specificRemarks} />
@@ -252,9 +266,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
       {report && kind !== "daily" && <MasSummary report={report} />}
 
-      {report && editable && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
+      {report && editable && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} cashCounts={data?.cashCounts ?? []} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
         editingExpense={editingExpense} onExpenseDone={() => setEditingExpense(null)}
-        masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} />}
+        masChoices={data?.masChoices ?? []} editingFidelity={editingFidelity} onFidelityDone={() => setEditingFidelity(null)} financeRequest={financeRequest} />}
       {report && editable && data?.branch === "all" && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Choose one branch to record expenses, deposits, Cash Beg and notes for it.</p>}
 
       {report && (
@@ -613,9 +627,9 @@ function expenseForm(item: Report["expenses"][number]) {
   return { category: account.choice, categoryOther: account.other, date: item.date, amount: String(item.amount), receiptNumber: item.receipt, payee: item.payee, description: item.purpose, remarks: item.remarks, approvedBy: approver.choice, approvedByOther: approver.other };
 }
 
-function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone }: { report: Report; act: (body: Record<string, unknown>) => Promise<boolean>; saved: { ok: boolean; text: string } | null; saving: boolean; editing: Report["deposits"][number] | null; onEditDone: () => void;
+function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDone, masChoices, editingFidelity, onFidelityDone, editingExpense, onExpenseDone, financeRequest = 0 }: { report: Report; cashCounts: CashCount[]; act: (body: Record<string, unknown>) => Promise<boolean>; saved: { ok: boolean; text: string } | null; saving: boolean; editing: Report["deposits"][number] | null; onEditDone: () => void;
   editingExpense: Report["expenses"][number] | null; onExpenseDone: () => void;
-  masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void }) {
+  masChoices: Array<{ id: string; name: string }>; editingFidelity: Report["fidelitySlips"][number] | null; onFidelityDone: () => void; financeRequest?: number }) {
   const today = manilaToday();
   const inPeriod = today >= report.from && today <= report.to ? today : report.to;
   const [expense, setExpense] = useState(editingExpense ? expenseForm(editingExpense) : { category: "Transportation", categoryOther: "", date: inPeriod, amount: "", receiptNumber: "", payee: "", description: "", remarks: "", approvedBy: "VP Finance", approvedByOther: "" });
@@ -623,23 +637,39 @@ function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoic
   const [expensePhotos, setExpensePhotos] = useState<PickedPhoto[]>([]);
   const savedPhotos = editingExpense?.photoIds.length ?? 0;
   const photoBodies = () => expensePhotos.map(({ dataUrl, width, height }) => ({ dataUrl, width, height }));
-  const [deposit, setDeposit] = useState(editing
-    ? { date: editing.date, bankAccount: editing.bankAccount, amount: String(editing.amount), transferType: editing.transferType, mas: editing.mas, remarks: editing.remarks }
-    : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "" });
+  // Cash turned over to Finance in person is kept like a deposit (lib/cash-turnover.ts) and edited in its own tab.
+  const editingTurnover = editing && isFinanceTurnover(editing) ? editing : null;
+  const editingDeposit = editing && !editingTurnover ? editing : null;
+  const [deposit, setDeposit] = useState(editingDeposit
+    ? { date: editingDeposit.date, bankAccount: editingDeposit.bankAccount, amount: String(editingDeposit.amount), transferType: editingDeposit.transferType, mas: editingDeposit.mas, remarks: editingDeposit.remarks, nonCash: editingDeposit.nonCash }
+    : { date: inPeriod, bankAccount: "DSRDPI", amount: "", transferType: "", mas: "", remarks: "", nonCash: false });
+  const [turnover, setTurnover] = useState(editingTurnover
+    ? { date: editingTurnover.date, receivedBy: editingTurnover.bankAccount, amount: String(editingTurnover.amount), mas: editingTurnover.mas, remarks: editingTurnover.remarks }
+    : { date: inPeriod, receivedBy: lastFinanceReceiver(), amount: "", mas: "", remarks: "" });
   const [fidelity, setFidelity] = useState(editingFidelity
     ? { masEmployeeId: editingFidelity.masEmployeeId, amount: String(editingFidelity.amount), date: editingFidelity.date, remarks: editingFidelity.remarks }
     : { masEmployeeId: "", amount: "", date: inPeriod, remarks: "" });
   const [cashBeg, setCashBeg] = useState({ amount: report.cash.cashBegEdit ? String(report.cash.cashBegEdit.amount) : "", reason: report.cash.cashBegEdit?.reason ?? "" });
   const [notes, setNotes] = useState({ pendingCash: String(report.notes.pendingCash || ""), specificRemarks: report.notes.specificRemarks, pendingTransactions: report.notes.pendingTransactions, otherComments: report.notes.otherComments });
+  // The cash held at the start of a day, counted for Finance to confirm (lib/cash-position.ts, from December 1, 2026).
+  const [count, setCount] = useState({ date: report.from >= CARRY_START ? report.from : CARRY_START, amount: "", denominations: "", note: "" });
   const masNames = report.masSummary.rows.map((row) => row.name);
   // One form at a time, in tabs (owner, October 14, 2026: the side-by-side forms were messy). Editing opens its tab.
-  const [section, setSection] = useState<RecordSection>(editing ? "deposit" : editingFidelity ? "fidelity" : "expense");
+  const [section, setSection] = useState<RecordSection>(editingTurnover ? "finance" : editing ? "deposit" : editingFidelity ? "fidelity" : "expense");
+  // Give to Finance pressed: open the tab with the Remaining Cash on Hand as the amount (the clerk lowers it if they give less).
+  const [seenFinanceRequest, setSeenFinanceRequest] = useState(financeRequest);
+  const remainingText = String(Math.max(0, report.cash.remainingCashOnHand));
+  if (financeRequest !== seenFinanceRequest) {
+    setSeenFinanceRequest(financeRequest);
+    setSection("finance");
+    if (!editingTurnover) setTurnover((current) => ({ ...current, date: report.from === report.to ? report.from : report.to, amount: remainingText, receivedBy: current.receivedBy || lastFinanceReceiver() }));
+  }
   const textarea = "min-h-20 w-full rounded-md border bg-background p-2 text-sm";
 
   return (
     <div className="rounded-xl border print:hidden">
       <div className="overflow-x-auto border-b px-2"><div className="flex min-w-max gap-1" role="tablist" aria-label="Record for this report">
-        {RECORD_SECTIONS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
+        {RECORD_SECTIONS.filter(([id]) => (id !== "cashBeg" || !report.cash.carries || report.cash.openingMissing) && (id !== "count" || report.to >= CARRY_START)).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
           className={`border-b-2 px-3 py-3 text-sm font-medium ${section === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
       </div></div>
       <div className="p-4">
@@ -670,10 +700,10 @@ function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoic
 
       {section === "deposit" && <form id="deposit-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
-        if (editing) { if (await act({ action: "edit-deposit", id: editing.id, ...deposit, amount: Number(deposit.amount) })) onEditDone(); return; }
+        if (editingDeposit) { if (await act({ action: "edit-deposit", id: editingDeposit.id, ...deposit, amount: Number(deposit.amount) })) onEditDone(); return; }
         if (await act({ action: "add-deposit", ...deposit, date: report.from === report.to ? report.from : deposit.date, amount: Number(deposit.amount) })) setDeposit((current) => ({ ...current, amount: "", remarks: "" }));
       }}>
-        <FormTitle title={editing ? `Edit deposit ${editing.id}` : "Add cash forwarded to bank"} note="Cash out of this report: cash you deposited or sent to the bank." />
+        <FormTitle title={editingDeposit ? `Edit deposit ${editingDeposit.id}` : "Add cash forwarded to bank"} note="Cash out of this report: cash you deposited or sent to the bank. Cash handed to Finance at the office goes in Cash to Finance." />
         <div className="grid gap-3 sm:grid-cols-2">
           {/* The report's day (owner, October 23, 2026): to record a deposit on another day, open that day's report. */}
           <Field label="Date">{report.from === report.to
@@ -684,12 +714,58 @@ function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoic
           <Field label="Type of transfer *"><Input value={deposit.transferType} onChange={(event) => setDeposit({ ...deposit, transferType: event.target.value })} placeholder="e.g. RCBC, GCash" /></Field>
           <Field label="MAS"><Input list="report-mas" value={deposit.mas} onChange={(event) => setDeposit({ ...deposit, mas: event.target.value })} /><datalist id="report-mas">{masNames.map((name) => <option key={name} value={name} />)}</datalist></Field>
           <Field label="Remarks * (with a number)"><Input value={deposit.remarks} onChange={(event) => setDeposit({ ...deposit, remarks: event.target.value })} placeholder="e.g. Ref 01101026001363" /></Field>
+          {/* A bank or e-wallet payment kept for its details (owner, November 24, 2026): money already in the bank, so no cash out. */}
+          {report.to >= CARRY_START && <label className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" className="mt-1" checked={deposit.nonCash} onChange={(event) => setDeposit({ ...deposit, nonCash: event.target.checked })} /><span>Bank / e-wallet payment (not cash): recorded for its details only; it takes no cash out. From {showDate(CARRY_START)} bank and e-wallet payments are not counted as cash on hand.</span></label>}
         </div>
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={saving || !deposit.amount || !deposit.transferType.trim() || !/\d/.test(deposit.remarks)}>{editing ? "Save changes" : "Save deposit"}</Button>
+          <Button type="submit" size="sm" disabled={saving || !deposit.amount || !deposit.transferType.trim() || !/\d/.test(deposit.remarks)}>{editingDeposit ? "Save changes" : "Save deposit"}</Button>
           {deposit.remarks.trim() !== "" && !/\d/.test(deposit.remarks) && <span className="self-center text-xs text-red-700 dark:text-red-400">Remarks need a number; letters only are not accepted.</span>}
-          {editing && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
+          {editingDeposit && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
         </div>
+      </form>}
+
+      {/* Cash handed to Finance at the office in person (owner, November 24, 2026): out of the cash on hand like a deposit. */}
+      {section === "finance" && <form id="finance-form" className="space-y-4" onSubmit={async (event) => {
+        event.preventDefault();
+        const body = { date: report.from === report.to ? report.from : turnover.date, bankAccount: turnover.receivedBy, amount: Number(turnover.amount), transferType: FINANCE_TURNOVER, mas: turnover.mas, remarks: turnover.remarks };
+        if (editingTurnover) { if (await act({ action: "edit-deposit", id: editingTurnover.id, ...body })) onEditDone(); return; }
+        if (await act({ action: "add-deposit", ...body })) { rememberFinanceReceiver(turnover.receivedBy); setTurnover((current) => ({ ...current, amount: "", remarks: "" })); }
+      }}>
+        <FormTitle title={editingTurnover ? `Edit cash turned over to Finance ${editingTurnover.id}` : "Add cash turned over to Finance"} note="Cash out of this report: cash you handed to Finance at the office in person. Record each handover on the day you gave it. What you keep is carried to the next day; no Cash Beg to type." />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Date">{report.from === report.to
+            ? <Input type="date" value={report.from} readOnly title="This report's day. Open another day's report to record a handover there." />
+            : <Input type="date" min={report.from} max={report.to} value={turnover.date} onChange={(event) => setTurnover({ ...turnover, date: event.target.value })} />}</Field>
+          <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={turnover.amount} onChange={(event) => setTurnover({ ...turnover, amount: event.target.value })} />
+            {!editingTurnover && report.cash.remainingCashOnHand > 0 && turnover.amount !== remainingText && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setTurnover({ ...turnover, amount: remainingText })}>Use Remaining Cash on Hand ({money(report.cash.remainingCashOnHand)})</button>}</Field>
+          <Field label="Received by (Finance) *"><Input value={turnover.receivedBy} onChange={(event) => setTurnover({ ...turnover, receivedBy: event.target.value })} placeholder="Who in Finance received the cash" /></Field>
+          <Field label="MAS"><Input list="report-mas" value={turnover.mas} onChange={(event) => setTurnover({ ...turnover, mas: event.target.value })} /></Field>
+          <Field label="Remarks" wide><Input value={turnover.remarks} onChange={(event) => setTurnover({ ...turnover, remarks: event.target.value })} placeholder="e.g. Nov 23 collections, acknowledgement no." /></Field>
+        </div>
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={saving || !turnover.amount || !turnover.receivedBy.trim()}>{editingTurnover ? "Save changes" : "Save cash to Finance"}</Button>
+          {editingTurnover && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
+        </div>
+      </form>}
+
+      {/* The cash held at the start of a day (owner, November 24, 2026): Finance confirms it, then the report carries from it. */}
+      {section === "count" && <form id="count-form" className="space-y-4" onSubmit={async (event) => {
+        event.preventDefault();
+        if (await act({ action: "add-cash-count", date: count.date, amount: Number(count.amount), denominations: count.denominations, note: count.note })) setCount((current) => ({ ...current, amount: "", denominations: "", note: "" }));
+      }}>
+        <FormTitle title="Record a cash count" note={`Count the cash you hold for ${report.branch} before the day's transactions, and record it. Once Finance confirms it (Remittances → Cash counts), every report from that day starts with the cash carried from it. Record the first one on ${showDate(CARRY_START)}, and again whenever the cash is counted.`} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Start of day"><Input type="date" min={CARRY_START} value={count.date} onChange={(event) => setCount({ ...count, date: event.target.value })} /></Field>
+          <Field label="Cash counted"><Input type="number" min="0" step="0.01" placeholder="0.00" value={count.amount} onChange={(event) => setCount({ ...count, amount: event.target.value })} /></Field>
+          <Field label="By denomination (optional)"><Input value={count.denominations} onChange={(event) => setCount({ ...count, denominations: event.target.value })} placeholder="e.g. 1000x3, 500x1, 20x2" /></Field>
+          <Field label="Note"><Input value={count.note} onChange={(event) => setCount({ ...count, note: event.target.value })} placeholder="e.g. counted with the branch head" /></Field>
+        </div>
+        <Button type="submit" size="sm" disabled={saving || count.amount === "" || count.date < CARRY_START}>Record cash count</Button>
+        {cashCounts.length > 0 && <div className="overflow-x-auto rounded-md border"><table className="w-full text-xs">
+          <thead className="bg-muted/50 text-left"><tr>{["Start of", "Branch", "Counted", "Status", "Finance"].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead>
+          <tbody>{cashCounts.map((item) => <tr key={item.id} className="border-t"><td className="p-2">{showDate(item.date)}</td><td className="p-2">{item.branch}</td><td className="p-2">{money(item.amount)}</td>
+            <td className="p-2">{item.status === "Pending" ? "Waiting for Finance" : item.status}</td><td className="p-2">{item.decidedBy}{item.decisionNote ? `: ${item.decisionNote}` : ""}</td></tr>)}</tbody>
+        </table></div>}
       </form>}
 
       {/* Fidelity handed in after the MAS's entries were encoded: its own slip, approved in Remittances (October 13, 2026). */}
@@ -748,10 +824,19 @@ function RecordPanel({ report, act, saved, saving, editing, onEditDone, masChoic
   );
 }
 
-const RECORD_SECTIONS = [["expense", "Expense"], ["deposit", "Cash to bank"], ["fidelity", "Fidelity"], ["cashBeg", "Cash Beg"], ["notes", "Notes"]] as const;
+const RECORD_SECTIONS = [["expense", "Expense"], ["deposit", "Cash to bank"], ["finance", "Cash to Finance"], ["fidelity", "Fidelity"], ["count", "Cash count"], ["cashBeg", "Cash Beg"], ["notes", "Notes"]] as const;
 type RecordSection = (typeof RECORD_SECTIONS)[number][0];
 
 /** A form's heading and what it is for. */
+// Who in Finance received the clerk's cash last time, kept in this browser only as a convenience (may be unavailable).
+const FINANCE_RECEIVER_KEY = "clerk-report:finance-received-by";
+function lastFinanceReceiver() {
+  try { return typeof window === "undefined" ? "" : window.localStorage.getItem(FINANCE_RECEIVER_KEY) ?? ""; } catch { return ""; }
+}
+function rememberFinanceReceiver(name: string) {
+  try { if (name.trim()) window.localStorage.setItem(FINANCE_RECEIVER_KEY, name.trim()); } catch { /* storage blocked: nothing to remember */ }
+}
+
 function FormTitle({ title, note }: { title: string; note: string }) {
   return <div><p className="font-semibold">{title}</p><p className="text-xs text-muted-foreground">{note}</p></div>;
 }
