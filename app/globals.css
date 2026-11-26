@@ -194,7 +194,7 @@
   --glow-lime: rgb(154 205 50 / 18%);
   --glow-gold: rgb(227 169 43 / 14%);
   --glow-violet: rgb(162 77 230 / 14%);
-  --glow-cyan: rgb(32 190 200 / 12%);
+  --glow-cyan: rgb(30 195 240 / 12%);
   /* The active page in the sidebar: violet glass with a glowing edge (.nav-active). */
   --nav-active-fill: linear-gradient(90deg, rgb(123 51 199 / 15%), rgb(123 51 199 / 5%));
   --nav-active-edge: rgb(123 51 199 / 26%);
@@ -204,11 +204,11 @@
    * right, a faint violet haze at the top. Pastel here; the dark theme uses the same layout, stronger.
    */
   --page-mesh:
-    radial-gradient(circle at 10% 8%, rgb(56 205 214 / 30%) 0, transparent 26%),
+    radial-gradient(circle at 10% 8%, rgb(40 200 240 / 30%) 0, transparent 26%),
     radial-gradient(circle at 90% 12%, rgb(140 110 245 / 30%) 0, transparent 28%),
     radial-gradient(circle at 18% 92%, rgb(120 100 240 / 26%) 0, transparent 26%),
-    radial-gradient(circle at 70% 96%, rgb(56 205 214 / 24%) 0, transparent 26%),
-    radial-gradient(ellipse 48% 58% at 4% 50%, rgb(56 205 214 / 16%) 0, transparent 70%),
+    radial-gradient(circle at 70% 96%, rgb(40 200 240 / 24%) 0, transparent 26%),
+    radial-gradient(ellipse 48% 58% at 4% 50%, rgb(40 200 240 / 16%) 0, transparent 70%),
     radial-gradient(ellipse 52% 60% at 96% 94%, rgb(167 92 240 / 24%) 0, transparent 70%),
     linear-gradient(160deg, #f1eef9 0%, #eef0f7 55%, #f0ecf8 100%);
   /* The floating window (.app-frame): a thin white sheet, a bright top edge, a long soft violet-tinted shadow. */
@@ -317,11 +317,11 @@
   --nav-active-icon: #c9a6ff;
   /* Broad blurred cyan (left middle) and violet (lower right) light on near-black navy, as in the reference. */
   --page-mesh:
-    radial-gradient(circle at 10% 10%, rgb(0 200 170 / 30%) 0, transparent 24%),
+    radial-gradient(circle at 10% 10%, rgb(0 210 245 / 28%) 0, transparent 24%),
     radial-gradient(circle at 88% 10%, rgb(110 90 255 / 36%) 0, transparent 26%),
     radial-gradient(circle at 20% 92%, rgb(100 80 240 / 32%) 0, transparent 24%),
-    radial-gradient(circle at 68% 96%, rgb(0 190 210 / 26%) 0, transparent 24%),
-    radial-gradient(ellipse 46% 60% at 2% 48%, rgb(0 200 220 / 14%) 0, transparent 70%),
+    radial-gradient(circle at 68% 96%, rgb(0 210 245 / 24%) 0, transparent 24%),
+    radial-gradient(ellipse 46% 60% at 2% 48%, rgb(0 215 245 / 14%) 0, transparent 70%),
     radial-gradient(ellipse 54% 64% at 98% 96%, rgb(177 77 255 / 22%) 0, transparent 70%),
     linear-gradient(180deg, #0f1622 0%, #0b111a 100%);
   --frame-fill: linear-gradient(160deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1.5%)), rgb(13 19 30 / 58%);
@@ -428,9 +428,18 @@
     --violet-80: #c9b3ef;
     --violet-95: #efeaf7;
     background:
-      radial-gradient(circle at 100% 0%, rgb(227 169 43 / 16%), transparent 22rem),
-      linear-gradient(160deg, #2a1640 0%, #1d1428 55%, #16121c 100%);
+      radial-gradient(circle at 0% 0%, rgb(177 77 255 / 34%), transparent 26rem),
+      radial-gradient(circle at 100% 100%, rgb(0 210 245 / 18%), transparent 24rem),
+      linear-gradient(160deg, #22183c 0%, #151a2c 55%, #0f1520 100%);
     color: #fff;
+  }
+
+  /* Login (November 26, 2026): the same floating window as the app from laptops up, and a glass sign-in card. */
+  .login-card {
+    background: var(--glass-fill-strong);
+    border: 1px solid var(--frame-border);
+    box-shadow: var(--frame-shadow);
+    backdrop-filter: var(--glass-blur);
   }
 
   /* Semantic tones: badges, metric icons, alerts. Colour is always paired with text or an icon. */
@@ -555,7 +564,18 @@
   }
   .app-main { border-radius: 0 1.75rem 1.75rem 0; }
 }
-@media (min-width: 1024px) { .app-stage { padding: 1.25rem 1.5rem; } }
+@media (min-width: 1024px) {
+  .app-stage { padding: 1.25rem 1.5rem; }
+  .login-frame {
+    max-width: 2000px;
+    margin-inline: auto;
+    border-radius: 1.75rem;
+    background: var(--frame-fill);
+    border: 1px solid var(--frame-border);
+    box-shadow: var(--frame-shadow);
+    animation: frame-enter 560ms var(--ease-out) backwards;
+  }
+}
 @media (min-width: 1536px) { .app-stage { padding: 2rem 2.75rem; } }
 
 @keyframes frame-enter {
