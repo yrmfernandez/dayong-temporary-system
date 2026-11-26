@@ -685,6 +685,69 @@ export const inventory_items = pgTable("inventory_items", {
   index("inventory_items_branch_idx").on(t.branch),
 ]).enableRLS();
 
+/**
+ * Deceased Members (owner, November 26, 2026): what an Entry Clerk encodes when a member dies: who, the program and
+ * its NOP and total monthly deposit, the date of death, which requirements were handed in and which claims were given,
+ * whether the account was converted to services (casket and full payment) and when it was released
+ * (lib/deceased-members.ts). Requirement and claim lists are jsonb arrays of the ticked labels. A removed record keeps
+ * its row with the reason.
+ */
+export const deceased_claims = pgTable("deceased_claims", {
+  ...rowSeq(),
+  claim_id: text().primaryKey(),
+  /** The clerk who encoded it (only they change it). */
+  employee_id: text().notNull(),
+  employee_name: text(),
+  branch: text().notNull(),
+  mas_employee_id: text(),
+  mas_name: text(),
+  /** The member, when picked from the branch and MAS list; blank when the name was typed. */
+  member_id: text(),
+  /** Name of the deceased member or beneficiary. */
+  deceased_name: text().notNull(),
+  program_id: text(),
+  program_name: text(),
+  converted_to_services: boolean().notNull().default(false),
+  nop: integer(),
+  total_monthly_deposit: money("total_monthly_deposit"),
+  date_of_death: day("date_of_death").notNull(),
+  requirements_json: jsonb().$type<string[]>().notNull().default([]),
+  requirements_other: text(),
+  claims_json: jsonb().$type<string[]>().notNull().default([]),
+  claims_other: text(),
+  /** Half glass, Full glass, Other (with service_other); only when converted to services. */
+  service: text(),
+  service_other: text(),
+  full_payment_amount: money("full_payment_amount"),
+  date_of_release: day("date_of_release"),
+  remarks: text(),
+  /** Active, Removed */
+  status: text().notNull().default("Active"),
+  removed_reason: text(),
+  removed_at: moment("removed_at"),
+  updated_at: moment("updated_at"),
+  ...encoder(),
+}, (t) => [
+  index("deceased_claims_clerk_idx").on(t.employee_id, t.status),
+  index("deceased_claims_branch_idx").on(t.branch, t.date_of_death),
+]).enableRLS();
+
+/** Files attached to a Deceased Members record (any number): kept in Supabase Storage, path in storage_path. */
+export const deceased_claim_files = pgTable("deceased_claim_files", {
+  ...rowSeq(),
+  file_id: text().primaryKey(),
+  claim_id: text().notNull(),
+  file_name: text().notNull(),
+  mime_type: text().notNull(),
+  size_bytes: integer().notNull(),
+  storage_path: text().notNull(),
+  /** Set when the clerk takes the file off the record; the stored file and the row stay. */
+  removed_at: moment("removed_at"),
+  ...encoder(),
+}, (t) => [
+  index("deceased_claim_files_claim_idx").on(t.claim_id),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),

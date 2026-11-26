@@ -1,11 +1,11 @@
 import {
   Award, BadgeCheck, BarChart3, Building2, CalendarCheck, CalendarClock, ChartNoAxesColumnIncreasing, ClipboardCheck,
   ClipboardList, CreditCard, FilePen, UserRoundCog, FileWarning, Database, FilePlus2, FileSearch, FileText, HandCoins, History,
-  LayoutDashboard, Banknote, Boxes, Megaphone, SearchCheck, UserMinus, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
+  LayoutDashboard, Banknote, Boxes, Flower2, Megaphone, SearchCheck, UserMinus, Camera, PiggyBank, Receipt, ReceiptText, ScrollText, TriangleAlert, ShieldCheck, UserCog, Users, Wallet,
   type LucideIcon,
 } from "lucide-react";
 
-import { canAccessPath, canMonitorFidelity, isAdministratorRole, isFinanceFamilyRole, keepsInventory, type AccessContext } from "@/lib/access-control";
+import { canAccessPath, canMonitorFidelity, isAdministratorRole, isFinanceFamilyRole, keepsDeceasedRecords, keepsInventory, type AccessContext } from "@/lib/access-control";
 
 export type NavItem = { name: string; href: string; icon: LucideIcon; children?: NavItem[] };
 export type NavSection = { title: string; items: NavItem[] };
@@ -72,6 +72,8 @@ const page = {
   masReport: { name: "MAS Report", href: "/mas-report", icon: ClipboardCheck },
   // Each Entry Clerk's inventory; Administrators and Finance see every clerk's (owner, November 26, 2026; lib/inventory.ts).
   inventory: { name: "Inventory", href: "/inventory", icon: Boxes },
+  // Entry Clerks encode deceased members; Administrators and Finance see every record (owner, November 26, 2026; lib/deceased-members.ts).
+  deceased: { name: "Deceased Members", href: "/deceased-members", icon: Flower2 },
 } satisfies Record<string, NavItem>;
 
 /** The pages a System Update step can open: every page once, by name (lib/system-updates.ts). */
@@ -97,7 +99,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Finance", items: [page.cash, page.expenses, page.payables, page.commissions, page.payroll, page.fidelity] },
     { title: "Reports", items: [page.reports, page.companyReports, page.masReport, page.soa, page.dailyAudit, page.userReports] },
     { title: "People", items: [page.employees, page.attendanceReview, page.attendanceTracking, page.leaveApprovals] },
-    { title: "Master Data", items: [page.members, page.searchRecords, page.dropouts, page.fullyPaid, page.programs, page.branches] },
+    { title: "Master Data", items: [page.members, page.searchRecords, page.dropouts, page.fullyPaid, page.deceased, page.programs, page.branches] },
     { title: "Administration", items: [page.userAccounts, page.roles, page.auditLog, page.entryCorrections, page.memberCorrections] },
     { title: "Inventory", items: [page.inventory] },
     myHr,
@@ -114,7 +116,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Cash", items: [page.clearing, page.remittances, page.cash] },
     { title: "Payables", items: [page.payroll, page.commissions, page.expenses, page.payables] },
     { title: "Monitoring", items: [page.mam, page.fidelity, page.dailyAudit, page.attendanceTracking, page.auditLog] },
-    { title: "Directory", items: [page.members, page.searchRecords, page.fullyPaid, page.programs] },
+    { title: "Directory", items: [page.members, page.searchRecords, page.fullyPaid, page.deceased, page.programs] },
     { title: "Inventory", items: [page.inventory] },
     myHr,
   ],
@@ -123,7 +125,7 @@ const workspaces: Record<string, NavSection[]> = {
     { title: "Encoding", items: [page.clearing, page.newSales, page.collections, page.myEntries, page.remittances] },
     // Fidelity: everyone's, view only (owner, November 24, 2026); their own stays under My HR as My Fidelity.
     { title: "Reports", items: [page.reports, page.fidelity] },
-    { title: "Members", items: [page.members, page.searchRecords, page.dropouts] },
+    { title: "Members", items: [page.members, page.searchRecords, page.dropouts, page.deceased] },
     { title: "Inventory", items: [page.inventory] },
     { title: "Lookup", items: [page.programs, page.branches] },
     myHr,
@@ -215,7 +217,7 @@ function placeGrantedPage(sections: NavSection[], item: NavItem) {
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
   // Inventory stays for Entry Clerks, Finance and Administrators even when their pages were configured before it existed.
-  const inRole = (href: string) => !configured || href === "/" || href === "/updates" || (href === "/inventory" && keepsInventory(access)) || configured.some((route) => routeMatches(href, route));
+  const inRole = (href: string) => !configured || href === "/" || href === "/updates" || (href === "/inventory" && keepsInventory(access)) || (href === "/deceased-members" && keepsDeceasedRecords(access)) || configured.some((route) => routeMatches(href, route));
   // Fidelity (everyone's) only for those who monitor it: for the rest, the Fidelity page every employee has by default
   // only opens My Fidelity, so a Fidelity item in their menu led there (November 24, 2026).
   const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href) && (item.href !== "/fidelity" || canMonitorFidelity(access));

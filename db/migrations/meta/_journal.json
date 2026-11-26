@@ -400,6 +400,13 @@
       "when": 1795653164642,
       "tag": "0056_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1795671461186,
+      "tag": "0057_deceased_members",
+      "breakpoints": true
     }
   ]
 }

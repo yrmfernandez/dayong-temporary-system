@@ -6646,6 +6646,107 @@ test('Inventory: each Entry Clerk keeps their own list per branch; Administrator
   assert.equal((await route.POST(request({ name: 'Bag' }))).status, 403);
 });
 
+test('Deceased Members: an Entry Clerk encodes records with checklists, services and files; Administrators and Finance see every record, view only (November 26, 2026)', async () => {
+  await seed('branches', [{ branch_id: 'BR-1', branch_name_code: 'Toril' }, { branch_id: 'BR-2', branch_name_code: 'Calinan' }]);
+  await seed('employees', [
+    { employee_id: 'DPE-0002', full_name: 'Clerk One', primary_branch: 'Toril' }, { employee_id: 'DPE-0003', full_name: 'Clerk Two', primary_branch: 'Calinan' },
+    { employee_id: 'DPE-0005', full_name: 'Fin Person' }, { employee_id: 'DPE-0007', full_name: 'Mas Person' },
+    { employee_id: 'DPE-0008', full_name: 'Mas Toril', primary_branch: 'Toril', operational_roles: 'MAS', employment_status: 'active' },
+    { employee_id: 'DPE-0009', full_name: 'Mas Gone', primary_branch: 'Toril', operational_roles: 'MAS', employment_status: 'resigned' },
+  ]);
+  await seed('programs', [{ program_id: 'P1', program_code: 'A', program_name: 'Program A', base_pay: 350 }, { program_id: 'P2', program_code: 'B', program_name: 'Program B', base_pay: 500 }]);
+  await seed('members', [{ member_id: 'M1', member_number: 'PH-1', surname: 'DELA CRUZ', first_name: 'JUAN' }, { member_id: 'M2', member_number: 'PH-2', surname: 'SANTOS', first_name: 'ANA' }]);
+  await seed('member_programs', [
+    { enrollment_id: 'E1', member_id: 'M1', member_number: 'PH-1', program_id: 'P1', branch: 'Toril', mas: 'Mas Toril', status: 'Active', account_status: 'Deceased' },
+    { enrollment_id: 'E2', member_id: 'M2', member_number: 'PH-2', program_id: 'P2', branch: 'Calinan', mas: 'Mas Toril', status: 'Active' },
+  ]);
+  const clerk = { userId: 'U2', employeeId: 'DPE-0002', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} };
+  const other = { userId: 'U3', employeeId: 'DPE-0003', name: 'Clerk Two', roleNames: ['Entry Clerk'], permissions: {} };
+  const finance = { userId: 'U5', employeeId: 'DPE-0005', name: 'Fin Person', roleNames: ['Finance'], permissions: {} };
+  const mas = { userId: 'U7', employeeId: 'DPE-0007', name: 'Mas Person', roleNames: ['MAS'], permissions: {} };
+  const h = harness(clerk);
+  const route = h.load('app/api/deceased-members/route.ts');
+  const fileRoute = h.load('app/api/deceased-members/files/route.ts');
+  const get = async (query = '') => (await route.GET(new Request(`http://localhost/api/deceased-members${query}`))).json();
+  const post = async (body) => (await route.POST(request(body))).json();
+  const patch = async (body) => (await route.PATCH(request(body))).json();
+  const fileUrl = (id) => `http://localhost/api/deceased-members/files?id=${id}`;
+  const attach = async (claimId, name, type, content) => {
+    const form = new FormData(); form.append('claimId', claimId); form.append('file', new File([content], name, { type }));
+    return (await fileRoute.POST(new Request('http://localhost/api/deceased-members/files', { method: 'POST', body: form }))).json();
+  };
+
+  const mine = await get();
+  assert.deepEqual([mine.view, mine.canOversee, mine.branches, mine.records], ['mine', false, ['Toril'], []]);
+  assert.deepEqual(mine.mas.Toril.map((item) => item.name), ['Mas Toril'], 'active MAS of the branch only');
+  assert.deepEqual(mine.programs.map((item) => item.id).sort(), ['P1', 'P2']);
+  const choices = await get('?members=1&branch=Toril&mas=mas toril');
+  assert.deepEqual(choices.members.map((item) => [item.id, item.name, item.programIds, item.statuses]), [['M1', 'DELA CRUZ, JUAN', ['P1'], ['Deceased']]], 'members of the branch and MAS, whatever the account status');
+  assert.match((await get('?members=1&branch=Calinan&mas=Mas Toril')).message, /one of your branches/, 'only their own branches');
+
+  const base = { masEmployeeId: 'DPE-0008', masName: 'Mas Toril', memberId: 'M1', deceasedName: 'DELA CRUZ, JUAN', programId: 'P1', convertedToServices: 'no', nop: '24', totalMonthlyDeposit: '8,400', dateOfDeath: '2026-01-15' };
+  assert.match((await post({ ...base, convertedToServices: '' })).message, /Convert to services/);
+  assert.match((await post({ ...base, dateOfDeath: '2999-01-01' })).message, /after today/);
+  assert.match((await post({ ...base, programId: 'P9' })).message, /program/);
+  assert.match((await post({ ...base, requirements: ['Other'] })).message, /other requirement/);
+  assert.match((await post({ ...base, convertedToServices: 'yes' })).message, /Choose the service/);
+  assert.match((await post({ ...base, dateOfRelease: '2026-01-01' })).message, /before the date of death/);
+  const saved = await post({ ...base, requirements: ['Application form', 'Receipts', 'Other', 'Not a requirement'], requirementsOther: 'Affidavit', claims: ['Cash', '10,000'], remarks: 'Released to the son' });
+  assert.equal(saved.success, true, saved.message);
+  const record = saved.record;
+  assert.deepEqual([record.branch, record.masEmployeeId, record.memberId, record.nop, record.totalMonthlyDeposit, record.requirements, record.requirementsOther, record.claims, record.service, record.fullPaymentAmount],
+    ['Toril', 'DPE-0008', 'M1', 24, 8400, ['Application form', 'Receipts'], 'Affidavit', ['Cash', '10,000'], '', null], 'checked lists, primary branch by default, no service when not converted');
+  assert.match((await post({ ...base, deceasedName: 'dela cruz, juan' })).message, /already encoded/, 'the same person and date of death once');
+
+  const converted = await patch({ action: 'update', id: record.id, ...base, convertedToServices: 'yes', service: 'Other', serviceOther: 'Wooden casket', fullPaymentAmount: '25,000', dateOfRelease: '2026-01-20' });
+  assert.deepEqual([converted.record.convertedToServices, converted.record.service, converted.record.serviceOther, converted.record.fullPaymentAmount, converted.record.dateOfRelease, converted.record.requirements], [true, 'Other', 'Wooden casket', 25000, '2026-01-20', []], 'an edit saves the whole form');
+  const typed = await post({ ...base, masEmployeeId: '', masName: 'Old Mas', memberId: '', deceasedName: 'REYES, PEDRO', dateOfDeath: '2026-02-01' });
+  assert.deepEqual([typed.record.masEmployeeId, typed.record.masName, typed.record.memberId], ['', 'Old Mas', ''], 'a typed MAS and name');
+
+  const pdf = await attach(record.id, 'death-certificate.pdf', 'application/pdf', 'PDF bytes');
+  assert.equal(pdf.success, true, pdf.message);
+  assert.equal((await attach(record.id, 'photo.jpg', 'image/jpeg', 'JPG bytes')).record.files.length, 2, 'as many files as needed');
+  assert.match((await attach(record.id, 'run.exe', 'application/x-msdownload', 'MZ')).message, /cannot be attached/);
+  const fileId = pdf.record.files[0].id;
+  const opened = await fileRoute.GET(new Request(fileUrl(fileId)));
+  assert.deepEqual([opened.status, opened.headers.get('content-type'), await opened.text()], [200, 'application/pdf', 'PDF bytes']);
+
+  h.setUser(other);
+  assert.deepEqual((await get()).records, [], 'another clerk sees only their own');
+  assert.match((await patch({ action: 'update', id: record.id, ...base })).message, /Only the clerk who encoded/);
+  assert.match((await attach(record.id, 'x.pdf', 'application/pdf', 'x')).message, /Only the clerk who encoded/);
+  assert.equal((await fileRoute.GET(new Request(fileUrl(fileId)))).status, 404, 'nor opens their files');
+
+  h.setUser(clerk);
+  const removedFile = await (await fileRoute.DELETE(request({ id: fileId }))).json();
+  assert.equal(removedFile.record.files.length, 1, 'a file taken off the record');
+  assert.equal(globalThis.dayongTestStorage.size, 2, 'its stored file stays');
+  assert.match((await patch({ action: 'remove', id: typed.record.id, reason: '' })).message, /why/);
+  assert.equal((await patch({ action: 'remove', id: typed.record.id, reason: 'Encoded twice' })).record.status, 'Removed');
+  assert.deepEqual((await get()).records.map((item) => item.id), [record.id], 'removed records are hidden by default');
+  assert.equal((await get('?removed=1')).records.length, 2);
+  assert.equal((await patch({ action: 'restore', id: typed.record.id })).record.status, 'Active');
+
+  h.setUser(finance);
+  const all = await get();
+  assert.deepEqual([all.view, all.canOversee, all.records.length], ['all', true, 2]);
+  assert.equal(await (await fileRoute.GET(new Request(fileUrl(removedFile.record.files[0].id)))).text(), 'JPG bytes', 'Finance opens the files');
+  assert.match((await patch({ action: 'update', id: record.id, ...base })).message, /Only the clerk who encoded/, 'Finance sees but does not change');
+
+  h.setUser(mas);
+  assert.equal((await route.GET(new Request('http://localhost/api/deceased-members'))).status, 403, 'a MAS has no Deceased Members');
+  assert.equal((await route.POST(request(base))).status, 403);
+});
+
+test('Deceased Members is in the sidebar for Administrators, Finance and Entry Clerks, kept when their pages were configured before it (November 26, 2026)', () => {
+  const { visibleNavigation } = harness().load('lib/navigation.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const has = (role, rolePages) => visibleNavigation(role, { roleNames: [role], permissions, rolePages }).some((section) => section.items.some((item) => item.href === '/deceased-members'));
+  for (const role of ['Administrator', 'Finance', 'Entry Clerk']) assert.ok(has(role), `${role} has Deceased Members`);
+  assert.ok(has('Entry Clerk', { 'entry clerk': ['/new-sales'] }), 'kept with configured pages');
+  assert.ok(!has('MAS'));
+});
+
 test('Inventory has its own sidebar section for Administrators, Finance and Entry Clerks, kept when their pages were configured before it (November 26, 2026)', () => {
   const { visibleNavigation } = harness().load('lib/navigation.ts');
   const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };

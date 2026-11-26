@@ -45,3 +45,18 @@ export async function readPhoto(path: string) {
   if (error || !data) throw new Error("Photo not found.");
   return Buffer.from(await data.arrayBuffer()).toString("base64");
 }
+
+/**
+ * A stored file's bytes, for download (Deceased Members attachments, lib/deceased-members.ts). Those files share the
+ * private bucket under deceased/<record>/; only the server reads them.
+ */
+export async function readStoredFile(path: string): Promise<Uint8Array> {
+  if (shared.dayongTestStorage) {
+    const file = shared.dayongTestStorage.get(path);
+    if (!file) throw new Error("File not found.");
+    return file.bytes;
+  }
+  const { data, error } = await client().storage.from(PHOTO_BUCKET).download(path);
+  if (error || !data) throw new Error("File not found.");
+  return new Uint8Array(await data.arrayBuffer());
+}
