@@ -104,7 +104,7 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/entry-corrections` | GET, PATCH, PUT | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) |
 | `/api/exceptions` | GET, PATCH | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) |
 | `/api/expenses` | GET, POST, PATCH | [app/api/expenses/route.ts](../app/api/expenses/route.ts) |
-| `/api/fidelity` | GET, PATCH | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) |
+| `/api/fidelity` | GET, PATCH, POST | [app/api/fidelity/route.ts](../app/api/fidelity/route.ts) |
 | `/api/finance-options` | GET, POST | [app/api/finance-options/route.ts](../app/api/finance-options/route.ts) |
 | `/api/fully-paid` | GET, POST | [app/api/fully-paid/route.ts](../app/api/fully-paid/route.ts) |
 | `/api/history` | GET, PATCH | [app/api/history/route.ts](../app/api/history/route.ts) |

@@ -34,6 +34,15 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Fidelity: Finance and Administrators add Fidelity to an employee by hand (2026-11-26)
+
+- **Asked (owner):** in Fidelity, allow Admin and Finance to add Fidelity to an employee manually.
+- **Decided while building (not asked):** a reason is required (5+ characters), as for other manual changes. **Cash received now** is ticked by default and posts a Fidelity contribution inflow to the cash ledger, as withdrawals post an outflow. Unticked, it is a correction with no cash entry. The addition counts at once (Approved). The same roles as withdrawals can add (Administrator, Finance).
+- **Done:** `addFidelity`, `MANUAL_TYPE` (Manual Addition) in `lib/fidelity.ts`, counted in the balance with the old-system openings. POST `/api/fidelity`. Fidelity Monitoring: Add Fidelity on every row, a zero balance included, with amount, reason, cash received, cash account, branch and date; the reason shows in the history. `components/cash-out-fields.tsx` has an `incoming` option (Received into, Date received). No migration. Docs: `docs/system-guide.md` (Fidelity savings), `docs/code-reference.md`.
+- **Status:** done: the change, a test, docs; in progress: none; to do: owner pushes (no migration for this change; Cash on spot above still needs migration 0059 first), then tries it in a browser (add with cash received and check the cash ledger; add as a correction; check the balance and history).
+- **Not done:** no undo for a manual addition (reverse it with a withdrawal). The employee sees the addition and its reason on My Fidelity.
+- **Tested:** new route test (reason, amount, known employee, cash account needed when cash is received, the balance counts both additions, only cash received enters the ledger, an Entry Clerk is refused). All 368 tests pass; type check, lint (no errors) and build pass; not tried in a browser.
+
 ### New Sales: Cash on spot, the whole program paid at once at a 20% incentive (2026-11-26)
 
 - **Asked (owner):** add a Cash on spot option in New Sales; clicked, it means the member paid that program in full, and its incentive is automatically 20%.

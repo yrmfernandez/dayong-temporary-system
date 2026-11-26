@@ -104,7 +104,7 @@ export function MyFidelity() {
                 {history.map((item) => <tr key={item.id} className="border-t">
                   <td className="p-3">{showDate(item.date)}</td>
                   <td className="p-3 font-mono text-xs">{item.id}</td>
-                  <td className="p-3">{item.type}{item.direction === "out" && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
+                  <td className="p-3">{item.type}{(item.direction === "out" || item.type === "Manual Addition") && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{formatPeso(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>
@@ -151,6 +151,8 @@ export function FidelityMonitoring() {
   // The payout being recorded (owner, October 30, 2026): from the base by percentage or fixed amount, the excess, or
   // the whole balance, with where the cash came from.
   const [payout, setPayout] = useState<{ account: Account; kind: Kind; mode: "percent" | "fixed"; amount: string; notes: string; cash: CashOut } | null>(null);
+  // Fidelity added by hand (owner, November 26, 2026): amount, reason, and whether the cash was handed over now.
+  const [adding, setAdding] = useState<{ account: Account; amount: string; reason: string; cashReceived: boolean; cash: CashOut } | null>(null);
   const options = useMemo(() => {
     const list = data?.accounts ?? [];
     const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -187,8 +189,24 @@ export function FidelityMonitoring() {
   const total = accounts.reduce((sum, item) => sum + item.approved, 0);
   const pending = accounts.reduce((sum, item) => sum + item.pending, 0);
 
+  const startAdding = (account: Account) => {
+    setError(""); setMessage(""); setPayout(null);
+    setAdding((current) => current?.account.masEmployeeId === account.masEmployeeId ? null : { account, amount: "", reason: "", cashReceived: true, cash: { account: "", branch: account.branch ?? "", date: manilaToday() } });
+  };
+  const addReady = (current: NonNullable<typeof adding>) => Number(current.amount) > 0 && current.reason.trim().length >= 5 && Boolean(current.cash.date) && (!current.cashReceived || cashOutReady(current.cash));
+  async function addFidelity() {
+    if (!adding || !addReady(adding)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/fidelity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ masEmployeeId: adding.account.masEmployeeId, amount: Math.round(Number(adding.amount) * 100) / 100, reason: adding.reason.trim(), cashReceived: adding.cashReceived, ...adding.cash }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || "Unable to add Fidelity.");
+      setAdding(null); setMessage(result.message); await load();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to add Fidelity."); }
+    finally { setBusy(false); }
+  }
   const startPayout = (account: Account, kind: Kind) => {
-    setError(""); setMessage("");
+    setError(""); setMessage(""); setAdding(null);
     setPayout((current) => current?.account.masEmployeeId === account.masEmployeeId && current.kind === kind ? null
       : { account, kind, mode: "percent", amount: kind === "excess" ? String(account.excess) : kind === "base" ? "100" : String(account.approved), notes: "", cash: { account: "", branch: account.branch ?? "", date: manilaToday() } });
   };
@@ -273,12 +291,27 @@ export function FidelityMonitoring() {
                   <td className="p-3 tabular-nums">{formatPeso(item.pending)}</td>
                   <td className="p-3 tabular-nums">{formatPeso(item.claimed)}</td>
                   <td className="p-3"><StatusBadge status={item.separated ? `Left (${item.employmentStatus})` : item.excess > 0 ? "Above the base" : "Saving"} tone={item.separated ? "warning" : item.excess > 0 ? "success" : "info"} />{item.branch && <span className="mt-1 block text-xs text-muted-foreground">{item.branch}</span>}</td>
-                  <td className="p-3">{data.canClaim && item.approved > 0 ? <div className="flex flex-wrap gap-2">
+                  <td className="p-3">{data.canClaim ? <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => startAdding(item)}>Add Fidelity</Button>
                     {item.base > 0 && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "base")}>{KIND_LABEL.base}</Button>}
                     {item.excess > 0 && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startPayout(item, "excess")}>{KIND_LABEL.excess}</Button>}
-                    <Button type="button" size="sm" disabled={busy} onClick={() => startPayout(item, "full")}>{KIND_LABEL.full}</Button>
+                    {item.approved > 0 && <Button type="button" size="sm" disabled={busy} onClick={() => startPayout(item, "full")}>{KIND_LABEL.full}</Button>}
                   </div> : "—"}</td>
                 </tr>
+                {adding?.account.masEmployeeId === item.masEmployeeId && <tr><td colSpan={8} className="border-t bg-muted/30 p-3">
+                  <p className="mb-2 text-sm font-semibold">Add Fidelity to {item.masName} (balance {formatPeso(item.approved)})</p>
+                  <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+                    <label className="space-y-1 text-sm">Amount *<input type="number" min="0.01" step="0.01" className={field} value={adding.amount} onChange={(event) => setAdding({ ...adding, amount: event.target.value })} placeholder="0.00" /></label>
+                    <label className="space-y-1 text-sm">Reason * (at least 5 characters)<input maxLength={300} className={field} value={adding.reason} onChange={(event) => setAdding({ ...adding, reason: event.target.value })} placeholder="e.g. Paid Fidelity at the office; left out of the remittance of Nov 20" /></label>
+                  </div>
+                  <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={adding.cashReceived} onChange={(event) => setAdding({ ...adding, cashReceived: event.target.checked })} />
+                    <span>Cash received now<span className="block text-xs text-muted-foreground">{adding.cashReceived ? "Also recorded as a Fidelity contribution inflow into this cash account." : "Only the Fidelity record is saved (a correction, or cash already recorded elsewhere); nothing enters the cash ledger."}</span></span></label>
+                  <div className="mt-3">{adding.cashReceived
+                    ? <CashOutFields incoming value={adding.cash} onChange={(cash) => setAdding({ ...adding, cash })} />
+                    : <label className="block max-w-xs space-y-1 text-sm">Date<input type="date" max={manilaToday()} className={field} value={adding.cash.date} onChange={(event) => setAdding({ ...adding, cash: { ...adding.cash, date: event.target.value } })} /></label>}</div>
+                  <div className="mt-3 flex gap-2"><Button type="button" disabled={busy || !addReady(adding)} onClick={() => void addFidelity()}>Add {Number(adding.amount) > 0 ? formatPeso(Math.round(Number(adding.amount) * 100) / 100) : "Fidelity"}</Button><Button type="button" variant="ghost" onClick={() => setAdding(null)}>Cancel</Button></div>
+                  <p className="mt-2 text-xs text-muted-foreground">It counts in the balance at once (Approved) and shows in the history as Manual Addition, with the reason and who added it.</p>
+                </td></tr>}
                 {payout?.account.masEmployeeId === item.masEmployeeId && <tr><td colSpan={8} className="border-t bg-muted/30 p-3">
                   <p className="mb-2 text-sm font-semibold">{payout.kind === "base" ? `Withdraw from ${item.masName}'s base (up to ${formatPeso(item.base)})` : payout.kind === "excess" ? `Withdraw from ${item.masName}'s excess (up to ${formatPeso(item.excess)})` : `Withdraw the whole ${formatPeso(item.approved)} of ${item.masName}'s Fidelity`}</p>
                   <CashOutFields value={payout.cash} onChange={(cash) => setPayout({ ...payout, cash })} />
@@ -316,7 +349,7 @@ export function FidelityMonitoring() {
                   <td className="p-3 font-mono text-xs">{item.id}</td>
                   <td className="p-3">{item.masName}</td>
                   <td className="p-3">{item.branch || branchOf.get(item.masEmployeeId) || "—"}</td>
-                  <td className="p-3">{item.type}{item.direction === "out" && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
+                  <td className="p-3">{item.type}{(item.direction === "out" || item.type === "Manual Addition") && item.remarks && <span className="block text-xs text-muted-foreground">{item.remarks}</span>}</td>
                   <td className="p-3 font-semibold tabular-nums">{item.direction === "in" ? "+" : "−"}{formatPeso(item.amount)}</td>
                   <td className="p-3"><StatusBadge status={item.status} /></td>
                   <td className="p-3">{item.encodedBy || "—"}</td>

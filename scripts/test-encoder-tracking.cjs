@@ -5107,6 +5107,38 @@ test('Fidelity is not locked: an active employee withdraws part of the base by p
   assert.equal((await query("select sum(amount)::float8 as out from cash_transactions where direction = 'outflow' and category = 'Fidelity release'"))[0].out, 13000, 'each payout leaves the cash ledger');
 });
 
+test('Finance or an Administrator adds Fidelity to an employee by hand, with a reason, with or without cash received (November 26, 2026)', async () => {
+  const h = harness({ userId: 'USR-9', employeeId: 'DPE-0009', name: 'finance', roleNames: ['Finance'], permissions: {} });
+  h.rows.Employees = [[], ['DPE-0002', 'MAS Two', 'BR-1', 'MAS', 'active']];
+  h.rows.Remittances = [['remittance_id']];
+  h.rows.Fidelity = [['claim_id']];
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'MAS Two' }]);
+  await seed('cash_accounts', [{ cash_account_id: 'CAC-1', account_name: 'Cash on Hand', account_type: 'cash', opening_balance: 0, status: 'active' }]);
+  await h.sync();
+  const route = h.load('app/api/fidelity/route.ts');
+  const post = (body) => route.POST(new Request('http://localhost/api/fidelity', { method: 'POST', body: JSON.stringify({ masEmployeeId: 'DPE-0002', date: '2026-10-20', ...body }), headers: { 'Content-Type': 'application/json' } }));
+  const balance = async () => {
+    const saved = await query("select fidelity_id, mas_employee_id, mas_name, transaction_type, fidelity_amount::float8 as amount, transaction_date::text as date, status, notes from fidelity order by row_seq");
+    h.rows.Fidelity = [['claim_id'], ...saved.map((row) => [row.fidelity_id, row.mas_employee_id, row.mas_name, '', '', row.transaction_type, 0, row.amount, row.date, row.status, row.notes ?? ''])];
+    const { getFidelityData } = h.load('lib/fidelity.ts'); const data = await getFidelityData('', true);
+    return { approved: data.accounts.find((item) => item.masEmployeeId === 'DPE-0002').approved, history: data.transactions.map((item) => [item.type, item.direction, item.status, item.amount, item.remarks]) };
+  };
+  assert.equal((await post({ amount: 500, reason: 'x' })).status, 400, 'a reason is needed');
+  assert.equal((await post({ amount: 0, reason: 'Paid at the office' })).status, 400, 'an amount is needed');
+  assert.equal((await post({ masEmployeeId: 'DPE-404', amount: 500, reason: 'Paid at the office' })).status, 400, 'a known employee');
+  assert.equal((await post({ amount: 500, reason: 'Paid at the office', cashReceived: true })).status, 400, 'cash received needs the cash account');
+  const cash = await post({ amount: 500, reason: 'Paid at the office', cashReceived: true, account: 'Cash on Hand', branch: 'BR-1' });
+  assert.equal(cash.status, 200, JSON.stringify(await cash.clone().json()));
+  const correction = await post({ amount: 250.5, reason: 'Left out of the remittance of Oct 2' });
+  assert.equal(correction.status, 200, JSON.stringify(await correction.clone().json()));
+  const after = await balance();
+  assert.equal(after.approved, 750.5, 'counts at once');
+  assert.deepEqual(after.history.map((item) => item.slice(0, 4)), [['Manual Addition', 'in', 'Approved', 500], ['Manual Addition', 'in', 'Approved', 250.5]]);
+  assert.deepEqual((await query("select category, amount::float8 as amount, reference_type from cash_transactions")).map((row) => Object.values(row)), [['Fidelity contribution', 500, 'Fidelity']], 'only the cash received enters the ledger');
+  h.setUser({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  assert.equal((await post({ amount: 500, reason: 'Paid at the office' })).status, 403, 'an Entry Clerk cannot add Fidelity');
+});
+
 test('a resubmitted batch keeps the time its cash was cleared, even when the MAS was cleared again later', async () => {
   const h = harness();
   await seedAccount({ doi: '2026-09-01' });

@@ -1,6 +1,6 @@
 import { canMonitorFidelity } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
-import { getFidelityData, withdrawFidelity } from "@/lib/fidelity";
+import { addFidelity, getFidelityData, withdrawFidelity } from "@/lib/fidelity";
 import { withEncoder } from "@/lib/encoder-context";
 
 // ?scope=me always returns only the signed-in employee's own Fidelity (the "My Fidelity" page),
@@ -35,5 +35,21 @@ export const PATCH = withEncoder(async (request: Request) => {
     return Response.json({ success: true, message: `${result.type} of ${result.amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} recorded for ${result.masName}.` });
   } catch (error) {
     return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to record the Fidelity withdrawal." }, { status: 400 });
+  }
+});
+
+/**
+ * Finance or an Administrator adds Fidelity to an employee by hand (owner, November 26, 2026), with a reason; with
+ * `cashReceived` it also records the cash inflow (account, branch, date).
+ */
+export const POST = withEncoder(async (request: Request) => {
+  const user = await getSessionUser(), roles = user?.roleNames.map((role) => role.trim().toLowerCase()) ?? [];
+  if (!user || !roles.some((role) => ["administrator", "admin", "finance"].includes(role))) return Response.json({ success: false, message: "Finance or Administrator access is required to add Fidelity." }, { status: 403 });
+  try {
+    const body = await request.json();
+    const result = await addFidelity(String(body.masEmployeeId ?? ""), Number(body.amount), String(body.reason ?? ""), body.date, body.cashReceived === true ? { account: body.account, branch: body.branch, date: body.date } : null);
+    return Response.json({ success: true, message: `${result.amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} Fidelity added for ${result.masName}${result.cash ? "; the cash is in the cash ledger" : ""}.` });
+  } catch (error) {
+    return Response.json({ success: false, message: error instanceof Error ? error.message : "Unable to add Fidelity." }, { status: 400 });
   }
 });

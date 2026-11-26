@@ -110,7 +110,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/inventory` | **Inventory** (November 26, 2026; own sidebar section): each Entry Clerk lists what they keep for their branch (supplies, forms, equipment) and keeps quantities current with + and −; Administrators and Finance see every clerk's list, view only, with filters and CSV. See section 7, Inventory. |
 | `/vendor-payables` | Vendor invoices, outstanding balances, and partial/full payment tracking. |
 | `/commissions` | Earned incentive comparison and the commission register; create and mark commissions Paid. |
-| `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, base and excess, and base (percent or fixed), excess and full withdrawals. |
+| `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, base and excess, Fidelity added by hand, and base (percent or fixed), excess and full withdrawals. |
 | `/payroll` | Pay profiles, Draft runs, adjustments, approval, payment, printable payslips. |
 | `/employees` | Staff register, employment status, operational roles, multiple branches, and primary branch. Administrators can change an Employee ID; every reference follows (section 11). |
 | `/attendance` | Your current-day time-in/time-out and attendance calendar. |
@@ -537,6 +537,8 @@ Excess       = max(0, balance − PHP 10,000)
 **Example:** PHP 12,500 approved savings means a PHP 10,000 base and PHP 2,500 excess. Finance may pay the PHP 2,500 excess, 50% of the base (PHP 5,000), a fixed PHP 3,000, or the whole PHP 12,500.
 
 Since October 24, 2026 a Fidelity withdrawal posts its cash outflow from the chosen cash account in the same step, dated on the payment date (today in Manila unless an earlier date is chosen).
+
+**Add Fidelity by hand (owner, November 26, 2026).** On Fidelity Monitoring, Finance and Administrators (the same people who record withdrawals) have **Add Fidelity** on every employee's row, a zero balance included. They type the amount and a **reason** (at least 5 characters) and choose whether the **cash was received now**. Ticked (the default), it also asks for the cash account it went into, the branch and the date received, and posts a **Fidelity contribution** inflow to the cash ledger in the same step. Unticked (a correction, or cash already recorded elsewhere), it asks only for the date, and nothing enters the cash ledger. The addition is saved in `fidelity` as type **Manual Addition**, status Approved, so it counts in the balance at once. The history shows it with its reason and who added it. Entry Clerks and the other monitoring roles only see it. No migration was needed. There is no undo button yet: a wrong addition is reversed with a withdrawal. Code: `addFidelity` and `MANUAL_TYPE` in [fidelity.ts](../lib/fidelity.ts), POST on [/api/fidelity](../app/api/fidelity/route.ts).
 
 Sources: [earned comparison](../lib/earned-commissions.ts), [register](../lib/finance-operations.ts), [Fidelity](../lib/fidelity.ts).
 

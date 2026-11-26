@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { createCashTransaction } from "@/lib/finance-data";
 import { cashOutDetails } from "@/lib/finance-operations";
+import { manilaToday } from "@/lib/manila-date";
 import { FIDELITY_CAP, baseWithdrawalAmount, fidelityStanding } from "@/lib/fidelity-cap";
 const text=(value:unknown)=>String(value??"").trim();
 const amount=(value:unknown)=>Math.round((Number(value)||0)*100)/100;
@@ -23,6 +24,9 @@ const SEPARATION_TYPE="Separation Release";
  * the 2022-2026 total as an approved opening balance, and what an active employee already withdrew there as paid out.
  */
 export const OPENING_TYPE="Opening Balance (old system)",OLD_WITHDRAWAL_TYPE="Withdrawal (old system)";
+/** Fidelity added to an employee by hand by Finance or an Administrator (owner, November 26, 2026; addFidelity). */
+export const MANUAL_TYPE="Manual Addition";
+const ADDED_IN=new Set([OPENING_TYPE.toLowerCase(),MANUAL_TYPE.toLowerCase()]);
 // "Claim" rows are the earlier release-at-the-cap records; they still count as money paid out.
 const PAID_OUT=new Set(["claim",SEPARATION_TYPE.toLowerCase(),OLD_WITHDRAWAL_TYPE.toLowerCase(),...Object.values(WITHDRAWAL_TYPES).map(type=>type.toLowerCase())]);
 async function source(){const response=await sheets.spreadsheets.values.batchGet({spreadsheetId:GOOGLE_SHEET_ID,ranges:["'Remittances'!A:Y","'Fidelity'!A:O"],valueRenderOption:"UNFORMATTED_VALUE",dateTimeRenderOption:"FORMATTED_STRING"});const remittances=response.data.valueRanges?.[0]?.values??[],claims=response.data.valueRanges?.[1]?.values??[];return{remittances,claims}}
@@ -50,7 +54,7 @@ export async function getFidelityData(employeeId:string,viewAll:boolean){
   return{id:text(row[0]),masEmployeeId:text(row[13]),masName:text(row[2]),date:text(row[3]),status:shownStatus(text(row[4])),amount:amount(row[24]),type:"Contribution",direction:"in" as const,encodedBy:encoders.get(text(row[0]))||text(row[17])||slipEncoder,remarks:text(row[22]),branch:text(row[1])};
  });
  const withdrawals=claims.slice(1).filter(row=>text(row[0])&&PAID_OUT.has(text(row[5]).toLowerCase())).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:text(row[9])||"Released",amount:amount(row[7]),type:text(row[5]),direction:"out" as const,encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
- const openings=claims.slice(1).filter(row=>text(row[0])&&text(row[5]).toLowerCase()===OPENING_TYPE.toLowerCase()).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:"Approved",amount:amount(row[7]),type:OPENING_TYPE,direction:"in" as const,encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
+ const openings=claims.slice(1).filter(row=>text(row[0])&&ADDED_IN.has(text(row[5]).toLowerCase())).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:"Approved",amount:amount(row[7]),type:text(row[5]).toLowerCase()===MANUAL_TYPE.toLowerCase()?MANUAL_TYPE:OPENING_TYPE,direction:"in" as const,encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
  const transactions=[...contributions,...openings,...withdrawals].filter(item=>viewAll||item.masEmployeeId===employeeId).sort((a,b)=>b.date.localeCompare(a.date));
  const employees=await getEmployees();
  // Every active employee can sell as a MAS (see the MAS lists in New Sales and Collections), so each may save Fidelity.
@@ -105,4 +109,29 @@ export async function withdrawFidelity(masEmployeeId:string,kind:string,requeste
   await createCashTransaction({date:cash.date,direction:"outflow",category:"Fidelity release",description:`${type}: ${account.masName}`,amount:paid,branch:cash.branch,account:cash.account,referenceType:"Fidelity",referenceId:id,remarks:text(notes)});
  });
  return{amount:paid,type,masName:account.masName};
+}
+
+/**
+ * Adds Fidelity to an employee by hand (owner, November 26, 2026): Finance or an Administrator, with a reason. It counts
+ * at once (Approved). When the employee handed the cash over directly (`cashInput` given), it also enters the cash ledger
+ * as a "Fidelity contribution" inflow into that account; without it (a correction, or cash already recorded elsewhere)
+ * only the Fidelity record is saved.
+ */
+export const MANUAL_REASON_MIN=5;
+export async function addFidelity(masEmployeeId:string,requested:number,reason:string,dateInput:unknown,cashInput:{account?:unknown;branch?:unknown;date?:unknown}|null){
+ const employee=(await getEmployees()).find(item=>item.id===text(masEmployeeId));
+ if(!employee)throw new Error("Choose the employee.");
+ const added=amount(requested);
+ if(!(added>0))throw new Error("Enter the amount of Fidelity to add.");
+ const note=text(reason).slice(0,300);
+ if(note.length<MANUAL_REASON_MIN)throw new Error(`Give the reason for adding it (at least ${MANUAL_REASON_MIN} characters).`);
+ const cash=cashInput?await cashOutDetails({...cashInput,date:cashInput.date??dateInput},employee.branch):null;
+ const date=cash?.date??(text(dateInput)||manilaToday());
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>manilaToday())throw new Error("Enter the date (today or earlier).");
+ const id=createReadableId("FAD");
+ await inTransaction(async()=>{
+  await currentDb().insert(schema.fidelity).values({fidelity_id:id,mas_employee_id:employee.id,mas_name:employee.name,transaction_type:MANUAL_TYPE,incentive_amount:0,fidelity_amount:added,transaction_date:date,status:"Approved",notes:note,...encodedBy()});
+  if(cash)await createCashTransaction({date:cash.date,direction:"inflow",category:"Fidelity contribution",description:`${MANUAL_TYPE}: ${employee.name}`,amount:added,branch:cash.branch,account:cash.account,referenceType:"Fidelity",referenceId:id,remarks:note});
+ });
+ return{id,amount:added,masName:employee.name,cash:Boolean(cash)};
 }

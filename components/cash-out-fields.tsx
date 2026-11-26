@@ -16,7 +16,7 @@ export const cashOutReady = (value: CashOut) => Boolean(value.account && value.b
  * Where a payout comes from (owner, October 24, 2026; upgrade #3): the cash account, the branch it is charged to and
  * the day paid. Commissions and Fidelity payouts record a cash outflow with these (lib/finance-operations.ts cashOutDetails).
  */
-export function CashOutFields({ value, onChange }: { value: CashOut; onChange: (value: CashOut) => void }) {
+export function CashOutFields({ value, onChange, incoming = false }: { value: CashOut; onChange: (value: CashOut) => void; /** Cash received (e.g. Fidelity added by hand): the labels say so. */ incoming?: boolean }) {
   const [options, setOptions] = useState<Options>({ accounts: [], branches: [] });
   const [error, setError] = useState("");
   useEffect(() => {
@@ -30,14 +30,14 @@ export function CashOutFields({ value, onChange }: { value: CashOut; onChange: (
     return () => { live = false; };
   }, []);
   return <div className="grid gap-3 sm:grid-cols-3">
-    <div className="space-y-1"><Label>Paid from (cash account)</Label>
+    <div className="space-y-1"><Label>{incoming ? "Received into (cash account)" : "Paid from (cash account)"}</Label>
       <select aria-label="Cash account" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={value.account} onChange={(event) => onChange({ ...value, account: event.target.value })}>
         <option value="">Select account</option>
         {options.accounts.filter((account) => account.status === "active").map((account) => <option key={account.id}>{account.name}</option>)}
       </select></div>
-    <div className="space-y-1"><Label>Charged to branch</Label>
+    <div className="space-y-1"><Label>{incoming ? "Branch" : "Charged to branch"}</Label>
       <SearchSelect aria-label="Branch" className="h-9" placeholder="Search branch" value={value.branch} onValueChange={(branch) => onChange({ ...value, branch })} options={options.branches.map((branch) => ({ value: branch.name, label: branch.name, description: branch.territory }))} /></div>
-    <div className="space-y-1"><Label>Date paid</Label><Input type="date" max={manilaToday()} value={value.date} onChange={(event) => onChange({ ...value, date: event.target.value })} /></div>
+    <div className="space-y-1"><Label>{incoming ? "Date received" : "Date paid"}</Label><Input type="date" max={manilaToday()} value={value.date} onChange={(event) => onChange({ ...value, date: event.target.value })} /></div>
     {error && <p role="alert" className="text-sm text-red-700 sm:col-span-3">{error}</p>}
   </div>;
 }
