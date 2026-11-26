@@ -17,17 +17,19 @@ export const fixedNewSaleAmount = (program: { registrationFeeRequired: boolean; 
 
 /**
  * Cash on spot (owner, November 26, 2026; lib/remittance.ts CASH_ON_SPOT_RATE): the New Sale pays the whole program, its
- * Total amount payable, so the account is Fully Paid from the start (lib/account-rules.ts counts the New Sale toward the
- * total). Only a program with a Total amount payable and no registration fee can take it: a registration-fee New Sale
- * pays the registration only and does not count toward the program.
+ * Total amount payable, plus the registration amount on a registration-fee program, so the account is Fully Paid from
+ * the start (lib/account-data.ts counts the New Sale, less any registration, toward the total). Only a program with a
+ * Total amount payable can take it.
  */
-export const cashOnSpotAmount = (program: { registrationFeeRequired: boolean; payBalanceTotal?: number | null }) =>
-  !program.registrationFeeRequired && Number(program.payBalanceTotal) > 0 ? Math.round(Number(program.payBalanceTotal) * 100) / 100 : 0;
-export function cashOnSpotProblem(program: { name: string; registrationFeeRequired: boolean; payBalanceTotal?: number | null }, amount: number) {
+export const cashOnSpotAmount = (program: { registrationFeeRequired: boolean; registrationAmount?: number | null; payBalanceTotal?: number | null }) => {
+  const total = Number(program.payBalanceTotal) || 0;
+  if (total <= 0) return 0;
+  return Math.round((total + (program.registrationFeeRequired ? Number(program.registrationAmount) || 0 : 0)) * 100) / 100;
+};
+export function cashOnSpotProblem(program: { name: string; registrationFeeRequired: boolean; registrationAmount?: number | null; payBalanceTotal?: number | null }, amount: number) {
   const full = cashOnSpotAmount(program);
-  if (program.registrationFeeRequired) return `${program.name} has a registration fee, so it cannot be paid as Cash on spot.`;
   if (!full) return `${program.name} has no Total amount payable in Programs, so it cannot be paid as Cash on spot.`;
-  if (Math.round(amount * 100) !== Math.round(full * 100)) return `Cash on spot pays ${program.name} in full: the amount paid must be ${full.toFixed(2)}.`;
+  if (Math.round(amount * 100) !== Math.round(full * 100)) return `Cash on spot pays ${program.name} in full: the amount paid must be ${full.toFixed(2)}${program.registrationFeeRequired ? " (registration plus the Total amount payable)" : ""}.`;
   return "";
 }
 

@@ -111,7 +111,7 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
       monthFrom: collections.month_from, monthTo: collections.month_to, nopFrom: collections.nop_from, nopTo: collections.nop_to,
       amount: collections.amount_collected, dateRemitted: collections.date_remitted, mas: collections.mas,
     }).from(collections).where(and(eq(collections.status, "Posted"), scoped ? inArray(collections.enrollment_id, ids) : undefined)),
-    scoped && !memberNumbers.length ? [] : db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no, registrationFee: sales.registration_amount, amountPaid: sales.amount_paid })
+    scoped && !memberNumbers.length ? [] : db.select({ memberNumber: sales.member_number, programId: sales.program_id, applicationNumber: sales.application_no, registrationFee: sales.registration_amount, amountPaid: sales.amount_paid, cashOnSpot: sales.cash_on_spot })
       .from(sales).where(scoped ? inArray(sales.member_number, memberNumbers) : undefined),
     scoped && !programIds.length ? [] : db.select().from(programIncentives).where(scoped ? inArray(programIncentives.program_id, programIds) : undefined),
   ]);
@@ -122,10 +122,19 @@ export async function loadAccountData(scope: AccountScope = {}, db: Queryable = 
   }));
   const saleList = saleRows.map((row) => ({ memberNumber: text(row.memberNumber), programId: row.programId, applicationNumber: text(row.applicationNumber), registrationFee: row.registrationFee ?? 0 }));
   // What each account's New Sale paid toward its months (a registration-fee program's New Sale pays no month), so a
-  // flexible program's payoff counts it (lib/account-rules.ts, Fully Paid).
-  const salePaid = new Map<string, number>();
-  for (const row of saleRows) { const key = `${text(row.memberNumber)}|${row.programId}`; salePaid.set(key, (salePaid.get(key) ?? 0) + (Number(row.amountPaid) || 0)); }
-  for (const account of accounts) if (!account.registrationFee) account.saleCredit = salePaid.get(`${account.memberNumber}|${account.programId}`) ?? 0;
+  // flexible program's payoff counts it (lib/account-rules.ts, Fully Paid). A Cash on spot New Sale on a registration-fee
+  // program (owner, November 26, 2026) pays the registration plus the whole program: what is above the registration counts.
+  const salePaid = new Map<string, number>(), cashOnSpotPaid = new Map<string, number>();
+  for (const row of saleRows) {
+    const key = `${text(row.memberNumber)}|${row.programId}`;
+    salePaid.set(key, (salePaid.get(key) ?? 0) + (Number(row.amountPaid) || 0));
+    if (row.cashOnSpot) cashOnSpotPaid.set(key, (cashOnSpotPaid.get(key) ?? 0) + Math.max(0, (Number(row.amountPaid) || 0) - (Number(row.registrationFee) || 0)));
+  }
+  for (const account of accounts) {
+    const key = `${account.memberNumber}|${account.programId}`;
+    if (!account.registrationFee) account.saleCredit = salePaid.get(key) ?? 0;
+    else if (cashOnSpotPaid.has(key)) account.saleCredit = cashOnSpotPaid.get(key);
+  }
   const incentives = tierRows.map((row) => ({
     id: row.incentive_id, programId: row.program_id, role: text(row.role) as IncentiveTier["role"], fromMonth: row.from_month ?? 0, toMonth: row.to_month ?? 0,
     incentiveType: text(row.incentive_type) as IncentiveTier["incentiveType"], markUp: row.mark_up ?? 0, incentiveAmount: row.incentive_amount ?? 0, branchId: text(row.branch_id),

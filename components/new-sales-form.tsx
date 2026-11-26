@@ -392,7 +392,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const programOf = (sale: (typeof sales)[number]) => (sale.program.programId && programs.find((item) => item.id === sale.program.programId)) || programs.find((item) => item.code === sale.program.programCode);
   const lockedProgram = (sale: (typeof sales)[number]) => { const program = programOf(sale); return program && !program.newSaleAmountEditable && !program.flexible ? program : null; };
   // Cash on spot (owner, November 26, 2026): the whole program is paid now, its Total amount payable, at a 20% MAS incentive.
-  // Only a program with a Total amount payable and no registration fee takes it (lib/program-amount-lock.ts).
+  // Only a program with a Total amount payable takes it; a registration fee is added to it (lib/program-amount-lock.ts).
   const cashOnSpotFull = (sale: (typeof sales)[number]) => { const program = programOf(sale); return program ? cashOnSpotAmount(program) : 0; };
   const cashOnSpotOn = (sale: (typeof sales)[number]) => sale.cashOnSpot === true && cashOnSpotFull(sale) > 0;
   const amountPaidOf = (sale: (typeof sales)[number]) => { if (cashOnSpotOn(sale)) return cashOnSpotFull(sale); const locked = lockedProgram(sale); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
@@ -2004,7 +2004,7 @@ Is this cash part of that handover?`) ? "same"
                           <Button type="button" size="sm" variant={cashOnSpotOn(sale) ? "default" : "outline"} aria-pressed={cashOnSpotOn(sale)} disabled={!cashOnSpotFull(sale)}
                             onClick={() => updateSale(sale.id, (current) => cashOnSpotOn(current) ? { ...current, cashOnSpot: false } : { ...current, cashOnSpot: true, noIncentive: false })}>{cashOnSpotOn(sale) ? "Cash on spot ✓" : "Cash on spot"}</Button>
                           <span className="text-xs text-muted-foreground">{!cashOnSpotFull(sale)
-                            ? (selectedProgram.registrationFeeRequired ? "Not for a program with a registration fee." : "This program has no Total amount payable in Programs, so it cannot be paid in full here.")
+                            ? "This program has no Total amount payable in Programs, so it cannot be paid in full here."
                             : cashOnSpotOn(sale)
                               ? `The member pays ${selectedProgram.name} in full now (${formatPeso(cashOnSpotFull(sale))}); the account is Fully Paid and the MAS incentive is ${CASH_ON_SPOT_RATE}%. Click again to undo.`
                               : `Click when the member pays the whole program now (${formatPeso(cashOnSpotFull(sale))}); the MAS incentive is ${CASH_ON_SPOT_RATE}%.`}</span>
@@ -2060,7 +2060,7 @@ Is this cash part of that handover?`) ? "same"
                           }
                           placeholder="0.00"
                         />
-                        {cashOnSpotOn(sale) && <p className="text-xs text-muted-foreground">Cash on spot: the program&apos;s Total amount payable.</p>}
+                        {cashOnSpotOn(sale) && <p className="text-xs text-muted-foreground">Cash on spot: the program&apos;s Total amount payable{selectedProgram?.registrationFeeRequired ? " plus the registration" : ""}.</p>}
                         {!cashOnSpotOn(sale) && lockedProgram(sale) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
                         <div className="space-y-2">

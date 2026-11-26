@@ -79,14 +79,19 @@ test("Cash on spot: the whole program paid on the New Sale earns the MAS 20% of 
   assert.equal(calculateSaleIncentive({ ...program, cashOnSpot: false }, 21000).incentive, 150, "without it the month-1 tier applies");
 });
 
-test("Cash on spot needs a program with a Total amount payable and no registration fee, paid exactly", () => {
+test("Cash on spot needs a program with a Total amount payable, paid exactly, plus the registration when there is one", () => {
   const program = { name: "D-350", registrationFeeRequired: false, payBalanceTotal: 21000 };
   assert.equal(cashOnSpotAmount(program), 21000);
   assert.equal(cashOnSpotProblem(program, 21000), "");
   assert.match(cashOnSpotProblem(program, 350), /must be 21000.00/);
   assert.equal(cashOnSpotAmount({ ...program, payBalanceTotal: 0 }), 0);
   assert.match(cashOnSpotProblem({ ...program, payBalanceTotal: 0 }, 350), /no Total amount payable/);
-  assert.match(cashOnSpotProblem({ ...program, registrationFeeRequired: true }, 21000), /registration fee/);
+  const withFee = { ...program, registrationFeeRequired: true, registrationAmount: 500 };
+  assert.equal(cashOnSpotAmount(withFee), 21500, "registration plus the Total amount payable");
+  assert.equal(cashOnSpotProblem(withFee, 21500), "");
+  assert.match(cashOnSpotProblem(withFee, 21000), /must be 21500.00 \(registration plus/);
+  const quote = calculateSaleIncentive({ basePay: 350, registrationFeeRequired: true, incentiveTiers: [], saleIncentiveType: "percentage", saleIncentiveAmount: 10, cashOnSpot: true }, 21500);
+  assert.deepEqual([quote.incentive, quote.remittance], [4300, 17200], "20% of the whole amount, registration included");
 });
 
 test("New Sale incentive settings are validated", () => {

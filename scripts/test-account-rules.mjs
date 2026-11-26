@@ -219,4 +219,6 @@ test("Cash on spot: a New Sale that pays the Total amount payable makes the acco
   const full = { ...account, payBalanceTotal: 21000, saleCredit: 21000 };
   assert.equal(accountState(full, [], "2026-01-15").status, "Fully Paid");
   assert.equal(accountState({ ...full, saleCredit: 350 }, [], "2026-01-20").status, "NS", "one month paid is still a New Sale");
+  // A registration-fee program: the credit is what the New Sale paid above the registration (lib/account-data.ts).
+  assert.equal(accountState({ ...full, registrationFee: true }, [], "2026-01-15").status, "Fully Paid");
 });
