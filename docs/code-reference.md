@@ -24,6 +24,7 @@ Regenerate from the repository root with `node scripts/generate-code-reference.m
 | `/commissions` | [app/commissions/page.tsx](../app/commissions/page.tsx) | `@/components/cash-out-fields`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/components/ui/search-select`, `@/lib/use-live-refresh`, `@/lib/date-format` |
 | `/company-reports` | [app/company-reports/page.tsx](../app/company-reports/page.tsx) | `@/components/company-reports` |
 | `/dropouts` | [app/dropouts/page.tsx](../app/dropouts/page.tsx) | `@/components/app-dialog`, `@/components/ui/badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/date-format`, `@/lib/use-live-refresh` |
+| `/inventory` | [app/inventory/page.tsx](../app/inventory/page.tsx) | `@/components/app-dialog`, `@/components/metric-tile`, `@/components/status-badge`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/label`, `@/lib/api-response`, `@/lib/date-format`, `@/lib/inventory-rules`, `@/lib/money`, `@/lib/use-live-refresh` |
 | `/employees` | [app/employees/page.tsx](../app/employees/page.tsx) | `@/components/app-dialog`, `@/lib/api-response`, `@/components/ui/button`, `@/components/ui/search-select`, `@/components/branch-duties`, `@/components/bulk-member-transfer`, `@/components/inline-panel`, `@/components/status-badge`, `@/components/one-time-password`, `@/components/nte-panel`, `@/lib/use-live-refresh`, `@/lib/date-format` |
 | `/entry-corrections` | [app/entry-corrections/page.tsx](../app/entry-corrections/page.tsx) | `@/components/admin-delete`, `@/components/bulk-member-transfer`, `@/components/entry-editor`, `@/components/ui/button`, `@/components/ui/card`, `@/components/ui/input`, `@/components/ui/search-select`, `@/app/programs/program-transfer`, `@/lib/api-response`, `@/lib/entry-search`, `@/lib/date-format` |
 | `/exceptions` | [app/exceptions/page.tsx](../app/exceptions/page.tsx) | `@/components/entry-correction-form`, `@/components/entry-editor`, `@/components/ui/button`, `@/components/ui/card`, `@/lib/api-response`, `@/lib/exception-fix`, `@/lib/exceptions` |
@@ -94,7 +95,9 @@ All routes pass through the authentication proxy except the three public auth en
 | `/api/cron/nightly` | GET, POST | [app/api/cron/nightly/route.ts](../app/api/cron/nightly/route.ts) |
 | `/api/dashboard/gross-sales` | GET | [app/api/dashboard/gross-sales/route.ts](../app/api/dashboard/gross-sales/route.ts) |
 | `/api/dropouts` | GET, POST, PATCH | [app/api/dropouts/route.ts](../app/api/dropouts/route.ts) |
-| `/api/employees` | GET, POST, PATCH, DELETE | [app/api/employees/route.ts](../app/api/employees/route.ts) |
+| `/api/inventory` | GET, POST, PATCH | [app/api/inventory/route.ts](../app/api/inventory/route.ts) |
+| `/api/employees` | GET, POST, PATCH, DELETE | [app/api/inventory/route.ts](../app/api/inventory/route.ts) | `GET`, `POST`, `PATCH` | `@/lib/access-control`, `@/lib/auth-server`, `@/lib/encoder-context`, `@/lib/inventory`, `@/lib/manila-date` |
+| [app/api/employees/route.ts](../app/api/employees/route.ts) |
 | `/api/entry-corrections` | GET, PATCH, PUT | [app/api/entry-corrections/route.ts](../app/api/entry-corrections/route.ts) |
 | `/api/exceptions` | GET, PATCH | [app/api/exceptions/route.ts](../app/api/exceptions/route.ts) |
 | `/api/expenses` | GET, POST, PATCH | [app/api/expenses/route.ts](../app/api/expenses/route.ts) |

@@ -106,6 +106,7 @@ Visibility depends on your roles and configured page access. A page you can revi
 | `/exceptions` | Administrator review of dates, amounts, duplicate entries, missing member details, overdue cash, backdating, OR numbers without a branch letter, application numbers to complete, and **imported receipts sharing a number** (October 9, 2026). |
 | `/expenses` | Company expense forms and posted outflows; authorized voiding with a reason. |
 | `/cash-transactions` | Consolidated cash ledger plus other manual inflows/outflows. |
+| `/inventory` | **Inventory** (November 26, 2026; own sidebar section): each Entry Clerk lists what they keep for their branch (supplies, forms, equipment) and keeps quantities current with + and −; Administrators and Finance see every clerk's list, view only, with filters and CSV. See section 7, Inventory. |
 | `/vendor-payables` | Vendor invoices, outstanding balances, and partial/full payment tracking. |
 | `/commissions` | Earned incentive comparison and the commission register; create and mark commissions Paid. |
 | `/fidelity`, `/fidelity/me` | Staff savings, contributions, pending amounts, base and excess, and base (percent or fixed), excess and full withdrawals. |
@@ -469,6 +470,17 @@ status = Paid when balance is zero; otherwise Partially Paid
 **Current connection limit:** paying a Vendor Payable updates its register, timestamp, and payment account; it does **not** automatically create an Expense or Cash Transaction. Record the actual cash movement consistently when needed. Avoid also entering an expense for an invoice without understanding that executive operating costs already include vendor invoice amounts.
 
 Sources: [finance ledger](../lib/finance-data.ts), [payables/cash accounts](../lib/finance-operations.ts), [executive finance](../lib/executive-analytics.ts).
+
+### Inventory (November 26, 2026)
+
+Owner: each Entry Clerk lists their inventory, and Administrators and Finance can see it, in its own section, easy to use. Page `/inventory`, sidebar section **Inventory** (Administrator, Finance and Finance-named roles, Entry Clerk). Code: [lib/inventory.ts](../lib/inventory.ts), [lib/inventory-rules.ts](../lib/inventory-rules.ts), [app/api/inventory/route.ts](../app/api/inventory/route.ts), [app/inventory/page.tsx](../app/inventory/page.tsx); table `inventory_items` (migration 0056).
+
+- **Who:** Entry Clerks, Finance roles and Administrators always have the page, even when their role's pages were set in Roles before Inventory existed. Another role gets it only when ticked in Roles → Page access, and then keeps a list of their own.
+- **The clerk's list (My inventory):** **Add an item** with the item name, quantity (with − and +), unit, category (suggested or typed) and condition (Good, Needs repair, Damaged, Missing). **More details** opens the branch (when the clerk has more than one), **Alert when at or below** (low stock), unit cost and a note (serial number, where it is kept). After an add the form keeps the branch, category and unit and goes back to the name, so several items are listed quickly. The same item name twice in one branch is refused (change its quantity instead).
+- **Keeping it current:** each row has − and + (several taps make one save) and the quantity can be typed; the condition is changed from the row; the pencil edits the rest. **Remove** asks why (used up, disposed, transferred) and keeps the item on record; **Show removed** lists them with **Restore**. **Mark all as checked today** (after counting everything, for the branch chosen, or the only branch) stamps today on each item.
+- **Branches:** the clerk's primary branch and the branches ticked Entry Clerk for them in Employees. Someone with no branch (e.g. Finance) cannot list items.
+- **Administrators and Finance (Every clerk):** every clerk's items, grouped by branch and clerk, view only: quantity and unit, condition, low stock, unit cost and value, last checked, note. Filters: search, branch, clerk, category, **Needs attention** (low stock or not in good condition), **Low stock**, **Not checked lately** (never checked or over 30 days), **Show removed**; the tiles count the filtered items and filter when clicked. **Download CSV** saves what is shown (dates as YYYY-MM-DD). An Administrator or Finance user who also has a branch switches to **My inventory** for their own list.
+- **Records:** every add, change and removal is in the Audit Log; removed items keep their reason. The list refreshes live when an item changes (the table is small).
 
 ## 8. Commissions and Fidelity
 

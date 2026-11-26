@@ -393,6 +393,13 @@
       "when": 1795484497142,
       "tag": "0055_cash_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1795653164642,
+      "tag": "0056_inventory",
+      "breakpoints": true
     }
   ]
 }

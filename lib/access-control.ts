@@ -21,8 +21,8 @@ const roleRoutes: Record<string, string[]> = {
   president: ["/", "/company-reports", "/admin-reports", "/mam", "/soa", "/members", "/search-records", "/attendance-tracking", "/attendance", "/settings"],
   "hr officer": ["/", "/todays-entries", "/audit", "/dropouts", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
   hr: ["/", "/todays-entries", "/audit", "/dropouts", "/employees", "/branches", "/attendance", "/attendance-reviews", "/attendance-tracking", "/leave-requests", "/leave-approvals", "/settings"],
-  finance: ["/", "/audit", "/members", "/search-records", "/fully-paid", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
-  "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/search-records", "/dropouts", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/settings"],
+  finance: ["/", "/audit", "/members", "/search-records", "/fully-paid", "/clearing", "/remittances", "/mam", "/programs", "/expenses", "/cash-transactions", "/vendor-payables", "/commissions", "/payroll", "/fidelity", "/history", "/inventory", "/attendance", "/attendance-tracking", "/leave-requests", "/settings"],
+  "entry clerk": ["/", "/todays-entries", "/clearing", "/my-entries", "/new-sales", "/members", "/search-records", "/dropouts", "/collections", "/remittances", "/attendance", "/leave-requests", "/reports", "/inventory", "/settings"],
   // IT builds and runs the system: accounts, roles, configuration, and the audit trail.
   "it clerk": ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
   it: ["/", "/user-accounts", "/roles", "/employees", "/branches", "/programs", "/master-data", "/history", "/entry-corrections", "/member-corrections", "/dropouts", "/search-records", "/fully-paid", "/settings"],
@@ -61,6 +61,13 @@ export const isFinanceFamilyRole = (role: string) => { const name = normalizeRol
  */
 export const canMonitorFidelity = (context: Pick<AccessContext, "roleNames">) =>
   context.roleNames.some((role) => { const name = normalizeRoleName(role); return isAdministratorRole(role) || executiveRoles.includes(name) || isFinanceFamilyRole(role) || name === "entry clerk"; });
+/**
+ * Inventory (owner, November 26, 2026): each Entry Clerk lists their own; Administrators and Finance roles see every
+ * clerk's (view only). These roles always have the page, even when their pages were configured in Roles before it
+ * existed; anyone else needs it ticked in Roles and then keeps a list of their own (lib/inventory.ts).
+ */
+export const canOverseeInventory = (context: Pick<AccessContext, "roleNames">) => context.roleNames.some((role) => isAdministratorRole(role) || isFinanceFamilyRole(role));
+export const keepsInventory = (context: Pick<AccessContext, "roleNames">) => canOverseeInventory(context) || context.roleNames.some((role) => normalizeRoleName(role) === "entry clerk");
 /** MAS-Officer, written "MAS-Officer" or "MAS Officer" (owner, November 16, 2026). */
 export const isMasOfficerRole = (role: string) => /^mas[\s-]+officer$/.test(normalizeRoleName(role));
 /** A MAS, including a MAS-Officer: sells, collects and has members like any MAS. */
@@ -137,6 +144,7 @@ export function accessibleRoutes(context: AccessContext) {
 
 export function canAccessPath(context: AccessContext, pathname: string): boolean {
   if (context.realAccess && !canAccessPath(context.realAccess, pathname)) return false;
+  if (routeMatches(pathname, "/inventory") && keepsInventory(context)) return true;
   const routes = accessibleRoutes(context);
   return routes.includes("*") || routes.some((route) => routeMatches(pathname, route));
 }

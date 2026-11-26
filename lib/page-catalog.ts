@@ -29,6 +29,9 @@ export const pageCatalog: Array<{ group: string; pages: Array<{ href: string; la
     { href: "/history", label: "Audit Log" },
     { href: "/exceptions", label: "Exceptions (administrators)" },
   ] },
+  { group: "Inventory", pages: [
+    { href: "/inventory", label: "Inventory (own list; Administrators and Finance see every clerk's; Entry Clerks and Finance always have it)" },
+  ] },
   { group: "People", pages: [
     { href: "/employees", label: "Employees" },
     { href: "/attendance", label: "My Attendance" },

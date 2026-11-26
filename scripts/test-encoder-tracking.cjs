@@ -6586,3 +6586,72 @@ test('IT writes a System Update, announces it to everyone or chosen roles; each 
   assert.equal((await patch({ action: 'delete', id: everyone.update.id })).success, true);
   assert.deepEqual(await query("select count(*)::int as n from system_update_views where update_id = $1", [everyone.update.id]), [{ n: 0 }], 'its views go with it');
 });
+
+test('Inventory: each Entry Clerk keeps their own list per branch; Administrators and Finance see every clerk list, view only (November 26, 2026)', async () => {
+  await seed('branches', [{ branch_id: 'BR-1', branch_name_code: 'Toril' }, { branch_id: 'BR-2', branch_name_code: 'Calinan' }]);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Clerk One', primary_branch: 'Toril' }, { employee_id: 'DPE-0003', full_name: 'Clerk Two', primary_branch: 'Calinan' }, { employee_id: 'DPE-0005', full_name: 'Fin Person' }, { employee_id: 'DPE-0007', full_name: 'Mas Person' }]);
+  await seed('employee_branches', [{ assignment_id: 'EBA-1', employee_id: 'DPE-0002', branch_id: 'BR-2', clerk_duty: true, mas_duty: false }]);
+  const clerk = { userId: 'U2', employeeId: 'DPE-0002', name: 'Clerk One', roleNames: ['Entry Clerk'], permissions: {} };
+  const other = { userId: 'U3', employeeId: 'DPE-0003', name: 'Clerk Two', roleNames: ['Entry Clerk'], permissions: {} };
+  const finance = { userId: 'U5', employeeId: 'DPE-0005', name: 'Fin Person', roleNames: ['Finance'], permissions: {} };
+  const mas = { userId: 'U7', employeeId: 'DPE-0007', name: 'Mas Person', roleNames: ['MAS'], permissions: {} };
+  const h = harness(clerk);
+  const route = h.load('app/api/inventory/route.ts');
+  const get = async (query = '') => (await route.GET(new Request(`http://localhost/api/inventory${query}`))).json();
+  const post = async (body) => (await route.POST(request(body))).json();
+  const patch = async (body) => (await route.PATCH(request(body))).json();
+
+  const mine = await get();
+  assert.deepEqual([mine.view, mine.canOversee, mine.branches, mine.primaryBranch], ['mine', false, ['Toril', 'Calinan'], 'Toril'], 'primary branch and the branch they clerk');
+  const receipts = await post({ name: '  Official  receipt booklet ', quantity: '12', unit: 'booklet', category: 'Forms & receipts', minQuantity: '5', unitCost: '1,250.50' });
+  assert.equal(receipts.success, true, receipts.message);
+  assert.deepEqual([receipts.item.name, receipts.item.branch, receipts.item.quantity, receipts.item.minQuantity, receipts.item.unitCost, receipts.item.condition, receipts.item.lastCheckedOn], ['Official receipt booklet', 'Toril', 12, 5, 1250.5, 'Good', ''], 'name tidied, primary branch by default');
+  assert.match((await post({ name: 'official receipt BOOKLET' })).message, /already on your Toril list/, 'the same item twice in a branch is refused');
+  assert.equal((await post({ name: 'Official receipt booklet', branch: 'Calinan', quantity: 3 })).success, true, 'the same item in another of their branches');
+  assert.match((await post({ name: 'Stapler', branch: 'Bunawan' })).message, /one of your branches/, 'not a branch of theirs');
+  assert.match((await post({ name: 'Stapler', quantity: '2.5' })).message, /whole number/);
+  assert.match((await post({ name: 'Stapler', condition: 'Broken' })).message, /Condition is one of/);
+  assert.match((await post({ name: 'x' })).message, /name/);
+
+  assert.equal((await patch({ action: 'update', id: receipts.item.id, quantity: 4 })).item.quantity, 4);
+  assert.equal((await patch({ action: 'update', id: receipts.item.id, condition: 'Damaged' })).item.condition, 'Damaged');
+  assert.equal((await patch({ action: 'update', id: receipts.item.id, unitCost: '' })).item.unitCost, null, 'a cleared cost is none');
+  assert.equal((await patch({ action: 'check', branch: 'Toril' })).message, '1 item marked as checked today.', 'only the branch asked');
+  const checked = (await get()).items;
+  assert.deepEqual(checked.map((item) => [item.branch, Boolean(item.lastCheckedOn)]), [['Calinan', false], ['Toril', true]]);
+
+  h.setUser(other);
+  assert.deepEqual((await get()).items, [], 'another clerk sees only their own');
+  assert.match((await patch({ action: 'update', id: receipts.item.id, quantity: 99 })).message, /Only the clerk who listed/);
+  assert.equal((await get('?view=all')).view, 'mine', 'a clerk cannot ask for every list');
+  await post({ name: 'Electric fan', category: 'Equipment', quantity: 1 });
+
+  h.setUser(clerk);
+  assert.match((await patch({ action: 'remove', id: receipts.item.id, reason: '' })).message, /why/);
+  assert.equal((await patch({ action: 'remove', id: receipts.item.id, reason: 'Used up' })).item.status, 'Removed');
+  assert.deepEqual((await get()).items.map((item) => item.branch), ['Calinan'], 'removed items are hidden by default');
+  const withRemoved = (await get('?removed=1')).items.find((item) => item.id === receipts.item.id);
+  assert.deepEqual([withRemoved.status, withRemoved.removedReason], ['Removed', 'Used up']);
+  assert.equal((await patch({ action: 'restore', id: receipts.item.id })).item.status, 'Active');
+
+  h.setUser(finance);
+  const all = await get();
+  assert.deepEqual([all.view, all.canOversee], ['all', true]);
+  assert.deepEqual(all.items.map((item) => [item.branch, item.employeeName, item.name]), [['Calinan', 'Clerk Two', 'Electric fan'], ['Calinan', 'Clerk One', 'Official receipt booklet'], ['Toril', 'Clerk One', 'Official receipt booklet']]);
+  assert.match((await patch({ action: 'update', id: receipts.item.id, quantity: 1 })).message, /Only the clerk who listed/, 'Finance sees but does not change');
+  assert.match((await post({ name: 'Ledger' })).message, /no branch/, 'Finance without a branch keeps no list');
+
+  h.setUser(mas);
+  assert.equal((await route.GET(new Request('http://localhost/api/inventory'))).status, 403, 'a MAS has no Inventory');
+  assert.equal((await route.POST(request({ name: 'Bag' }))).status, 403);
+});
+
+test('Inventory has its own sidebar section for Administrators, Finance and Entry Clerks, kept when their pages were configured before it (November 26, 2026)', () => {
+  const { visibleNavigation } = harness().load('lib/navigation.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const context = (roleNames, rolePages) => ({ roleNames, permissions, rolePages });
+  const sections = (role, rolePages) => visibleNavigation(role, context([role], rolePages));
+  for (const role of ["Administrator", "Finance", "Entry Clerk"]) assert.ok(sections(role).some((section) => section.title === "Inventory" && section.items[0].href === "/inventory"), `${role} has the Inventory section`);
+  assert.ok(sections("Entry Clerk", { "entry clerk": ["/new-sales"] }).some((section) => section.title === "Inventory"), "kept in the menu with configured pages");
+  assert.ok(!sections("MAS").some((section) => section.title === "Inventory"));
+});

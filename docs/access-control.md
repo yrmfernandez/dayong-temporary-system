@@ -53,11 +53,13 @@ Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists th
 | --- | --- |
 | Administrator | Overview (Dashboard, Today's Entries, Exceptions) · Operations (New Sales, Collections, My Entries, Remittances, MAM) · Finance (Cash Transactions, Expenses, Vendor Payables, Commissions, Fidelity) · Reports (Reports, Statement of Account, Daily Audit, Report Review) · People · Master Data · Administration (User Accounts, Roles, Audit Log) · My HR |
 | CEO / President | Overview (Dashboard) · Reports (Report Review, MAM) · Directory (Members) · People (Attendance Tracking, including the printable daily board and late-time adjustment) · My HR (My Attendance). The dashboard is the executive analytics view (`lib/executive-analytics.ts`). Executive roles do not receive the shared employee pages, and a user whose only roles are CEO / President is not offered the MAS workspace. |
-| Finance | Overview · Cash (Remittances, Cash Transactions) · Payables (Payroll, Commissions, Expenses, Vendor Payables) · Monitoring (MAM, Fidelity, Audits, Attendance Tracking, Audit Log) · Directory (Members, Programs) · My HR |
-| Entry Clerk | Overview (Dashboard, Today's Entries) · Encoding (New Sales, Collections, My Entries, Remittances) · Reports · Lookup (Members, Programs, Branches) · My HR |
+| Finance | Overview · Cash (Remittances, Cash Transactions) · Payables (Payroll, Commissions, Expenses, Vendor Payables) · Monitoring (MAM, Fidelity, Audits, Attendance Tracking, Audit Log) · Directory (Members, Programs) · Inventory (every clerk's, view only, November 26, 2026) · My HR |
+| Entry Clerk | Overview (Dashboard, Today's Entries) · Encoding (New Sales, Collections, My Entries, Remittances) · Reports · Inventory (own list, November 26, 2026) · Lookup (Members, Programs, Branches) · My HR |
 | HR Officer | Overview (Dashboard, Today's Entries) · People (Employees, Attendance Review, Attendance Tracking, Leave Approvals) · Audit (Audits) · Directory (Branches) · My HR |
 | IT Clerk | System (System Health dashboard) · Access Control (User Accounts, Roles, Employees) · Configuration (Branches, Programs, Master Data) · Monitoring (Audit Log, Edit / Corrections) · My HR. IT does not need the `manage_users` flag; see Job permissions. |
 | MAS | Overview · My Portfolio (My Members, MAM, My Fidelity) · Reference (Programs, Branches, Master Data) · My HR |
+
+Inventory (November 26, 2026): Entry Clerks, Finance-named roles and Administrators always have `/inventory` and its sidebar section, even when their pages were configured in Roles before it existed (`keepsInventory` in `lib/access-control.ts`); Administrators and Finance see every clerk's list (`canOverseeInventory`), everyone else only their own.
 
 Reports is one sidebar link; Daily, Weekly, Monthly, and Yearly are tabs on that page (`/reports?tab=…`). The old `/reports/daily`…`/reports/yearly` addresses redirect to their tab.
 

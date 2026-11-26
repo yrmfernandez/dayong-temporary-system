@@ -306,3 +306,16 @@ test("MAS Report weekly range: the month most of its days fall in and that month
   assert.deepEqual(masWeekPlace("2026-11-30", "2026-11-30"), { month: "2026-11", week: 5 });
   assert.deepEqual(masWeekPlace("2026-12-30", "2027-01-02"), { month: "2027-01", week: 1 }, "a tie goes to the later month");
 });
+
+test("Inventory: Entry Clerks, Finance roles and Administrators always have it, even with pages configured before it; Administrators and Finance oversee (November 26, 2026)", async () => {
+  const { canOverseeInventory } = await import("../lib/access-control.ts");
+  const context = (roleNames, rolePages) => ({ roleNames, permissions, rolePages });
+  assert.equal(access(["Entry Clerk"], "/inventory"), true);
+  assert.equal(access(["Finance"], "/inventory"), true);
+  assert.equal(access(["Finance-Auditor"], "/inventory"), true);
+  assert.equal(access(["MAS"], "/inventory"), false);
+  assert.equal(access(["HR Officer"], "/inventory"), false);
+  assert.equal(canAccessPath(context(["Entry Clerk"], { "entry clerk": ["/new-sales"] }), "/inventory"), true, "configured before Inventory existed");
+  assert.equal(canAccessPath(context(["HR Officer"], { "hr officer": ["/inventory"] }), "/inventory"), true, "granted in Roles");
+  assert.deepEqual([["Administrator"], ["Finance"], ["Finance-Auditor"], ["Entry Clerk"]].map((roleNames) => canOverseeInventory({ roleNames })), [true, true, true, false]);
+});

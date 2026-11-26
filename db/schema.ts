@@ -651,6 +651,40 @@ export const cash_counts = pgTable("cash_counts", {
   index("cash_counts_status_idx").on(t.status),
 ]).enableRLS();
 
+/**
+ * Inventory (owner, November 26, 2026): what each Entry Clerk keeps for a branch (supplies, forms, equipment), listed
+ * by the clerk and seen by Administrators and Finance (lib/inventory.ts). A removed item keeps its row with the reason.
+ */
+export const inventory_items = pgTable("inventory_items", {
+  ...rowSeq(),
+  item_id: text().primaryKey(),
+  /** The clerk whose list it is. */
+  employee_id: text().notNull(),
+  employee_name: text(),
+  branch: text().notNull(),
+  name: text().notNull(),
+  category: text(),
+  quantity: integer().notNull().default(0),
+  unit: text(),
+  /** Good, Needs repair, Damaged, Missing */
+  condition: text().notNull().default("Good"),
+  /** Low stock: flagged when the quantity is at or below this; blank for none. */
+  min_quantity: integer(),
+  unit_cost: money("unit_cost"),
+  note: text(),
+  /** The last day the clerk confirmed the item is there as listed. */
+  last_checked_on: day("last_checked_on"),
+  /** Active, Removed */
+  status: text().notNull().default("Active"),
+  removed_reason: text(),
+  removed_at: moment("removed_at"),
+  updated_at: moment("updated_at"),
+  ...encoder(),
+}, (t) => [
+  index("inventory_items_clerk_idx").on(t.employee_id, t.status),
+  index("inventory_items_branch_idx").on(t.branch),
+]).enableRLS();
+
 export const beneficiaries = pgTable("beneficiaries", {
   ...rowSeq(),
   beneficiary_id: text().primaryKey(),
