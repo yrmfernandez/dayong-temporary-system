@@ -75,11 +75,11 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, count
   }
 
   return <>
-    {mobileOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] md:hidden" onClick={onMobileClose} aria-hidden />}
+    {mobileOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] duration-(--dur-base) animate-in fade-in-0 md:hidden" onClick={onMobileClose} aria-hidden />}
 
     <aside
       aria-label="Main navigation"
-      className={`glass-sidebar fixed inset-y-2 left-2 z-50 flex w-[min(18rem,86vw)] shrink-0 flex-col overflow-hidden rounded-2xl transition-[width,transform] duration-200 md:static md:m-3 md:mr-0 md:h-[calc(100dvh-1.5rem)] md:translate-x-0 ${collapsed ? "md:w-[4.5rem]" : "md:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1rem)]"}`}
+      className={`glass-sidebar fixed inset-y-2 left-2 z-50 flex w-[min(18rem,86vw)] shrink-0 flex-col overflow-hidden rounded-2xl transition-[width,translate] duration-300 ease-(--ease-drawer) md:duration-200 md:static md:m-3 md:mr-0 md:h-[calc(100dvh-1.5rem)] md:translate-x-0 ${collapsed ? "md:w-[4.5rem]" : "md:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1rem)]"}`}
     >
       <div className={`flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border ${collapsed ? "md:justify-center md:px-2" : "px-4"}`}>
         <Link href="/" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring md:flex-none" aria-label="Dayong Monitoring System home">
@@ -105,7 +105,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, count
       </div>
 
       <nav className={`flex-1 overflow-y-auto overscroll-contain py-3 [scrollbar-color:var(--sidebar-scrollbar)_transparent] ${collapsed ? "md:px-2" : "px-3"}`} aria-label={`${activeRole || "User"} workspace`}>
-        {!sections.length && <div className="space-y-2 px-1" aria-hidden>{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-9 animate-pulse rounded-lg bg-sidebar-accent" />)}</div>}
+        {!sections.length && <div className="space-y-2 px-1" aria-hidden>{Array.from({ length: 6 }, (_, index) => <div key={index} className="skeleton h-9 rounded-lg" />)}</div>}
         {!!sections.length && !filtered.length && <p className="px-3 py-6 text-center text-xs text-sidebar-muted">No page matches &ldquo;{query}&rdquo;.</p>}
         <div className="space-y-5">
           {filtered.map((section) => <div key={section.title}>
@@ -150,19 +150,19 @@ function NavLink({ item, pathname, active, collapsed, indicator, forceOpen, coun
   return <div>
     <div className="relative flex items-center">
       <Link href={item.href} title={collapsed ? item.name : undefined} aria-current={exact ? "page" : undefined}
-        className={`flex min-h-9 flex-1 items-center gap-3 px-3 py-1.5 text-sm font-medium transition-colors ${style} ${collapsed ? "md:justify-center md:px-0" : ""} ${!exact && inside ? "text-sidebar-accent-foreground" : ""}`}>
+        className={`flex min-h-9 flex-1 items-center gap-3 px-3 py-1.5 text-sm font-medium transition-colors duration-(--dur-fast) ${style} ${collapsed ? "md:justify-center md:px-0" : ""} ${!exact && inside ? "text-sidebar-accent-foreground" : ""}`}>
         <span className="relative shrink-0"><Icon className="size-4" />{waiting > 0 && collapsed && <span className="absolute -right-1.5 -top-1.5 hidden size-2.5 rounded-full bg-brand-red ring-2 ring-sidebar md:block" aria-hidden />}</span>
         <span className={`truncate ${collapsed ? "md:hidden" : ""}`}>{item.name}</span>
         {waiting > 0 && <Badge count={waiting} label={item.name} className={`ml-auto ${item.children?.length ? "mr-6" : ""} ${collapsed ? "md:hidden" : ""}`} />}
       </Link>
       {!!item.children?.length && <button type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${item.name} pages`}
-        className={`absolute right-1 rounded-md p-1 ${exact && indicator === "pill" ? "text-sidebar-primary-foreground/80 hover:bg-black/10" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"} ${collapsed ? "md:hidden" : ""}`}>
-        <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        className={`absolute right-1 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${collapsed ? "md:hidden" : ""}`}>
+        <ChevronDown className={`size-3.5 transition-transform duration-(--dur-base) ease-(--ease-out) ${open ? "rotate-180" : ""}`} />
       </button>}
     </div>
-    {open && <div className={`ml-5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 ${collapsed ? "md:hidden" : ""}`}>
+    {open && <div className={`ml-5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 duration-(--dur-base) animate-in fade-in-0 slide-in-from-top-1 ${collapsed ? "md:hidden" : ""}`}>
       {item.children!.map((child) => <Link key={child.href} href={child.href} aria-current={pathname === child.href ? "page" : undefined}
-        className={`flex min-h-8 items-center rounded-md px-3 text-[13px] transition-colors ${pathname === child.href ? "bg-sidebar-accent font-semibold text-brand-moss" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}><span className="truncate">{child.name}</span>{(counts[child.href] ?? 0) > 0 && child.href !== item.href && <Badge count={counts[child.href]} label={child.name} className="ml-auto" />}</Link>)}
+        className={`flex min-h-8 items-center rounded-md px-3 text-[13px] transition-colors ${pathname === child.href ? "bg-sidebar-accent font-semibold text-primary" : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}><span className="truncate">{child.name}</span>{(counts[child.href] ?? 0) > 0 && child.href !== item.href && <Badge count={counts[child.href]} label={child.name} className="ml-auto" />}</Link>)}
     </div>}
   </div>;
 }
@@ -180,11 +180,11 @@ function IconAction({ label, href, onClick, active = false, danger = false, chil
     : <button type="button" onClick={onClick} title={label} aria-label={label} className={className}>{children}</button>;
 }
 
-// Lime on aubergine mirrors the seal's ring and lettering.
+// The open page: violet glass with a glowing edge (.nav-active in app/globals.css, November 26, 2026; was a lime pill).
 function linkStyle(active: boolean, indicator: IndicatorStyle) {
-  if (!active) return "rounded-lg text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+  if (!active) return "rounded-lg text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
   return indicator === "pill"
-    ? "rounded-lg bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-md shadow-black/20"
+    ? "nav-active rounded-lg font-semibold"
     : "rounded-r-lg border-l-[3px] border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground";
 }
 

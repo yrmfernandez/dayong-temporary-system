@@ -158,7 +158,7 @@ export function ProfileMenu({ name, employeeId, activeRole, children, triggerCla
     <Popover.Trigger aria-label={`Your profile: ${name}`} className={triggerClassName}>{children}</Popover.Trigger>
     <Popover.Portal>
       <Popover.Positioner side={side} align={side === "bottom" ? "end" : "start"} sideOffset={8} className="z-[70]">
-        <Popover.Popup className="w-[min(20rem,calc(100vw-1.5rem))] origin-(--transform-origin) rounded-2xl border bg-popover p-4 text-popover-foreground shadow-2xl outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95">
+        <Popover.Popup className="w-[min(20rem,calc(100vw-1.5rem))] origin-(--transform-origin) rounded-2xl border bg-popover p-4 text-popover-foreground shadow-2xl outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
           <div className="flex items-center gap-3 border-b pb-3">
             <Avatar name={name} className="size-11 text-sm" />
             <div className="min-w-0">

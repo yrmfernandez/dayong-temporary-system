@@ -124,7 +124,19 @@
   --brand-red: #c4262e;
   --brand-orange: #d9731f;
 
-  --background: #f4f3f7;
+  /*
+   * Motion (November 26, 2026; Emil Kowalski's animation standards, Material and Fluent timing). UI enters with a strong
+   * ease-out (fast start, soft landing), never ease-in; micro-interactions 120-150 ms, panels and pages 200-320 ms.
+   * Only transform and opacity animate on entrances, so nothing reflows.
+   */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 130ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  --background: #f3f3f8;
   --foreground: #1d1528;
   --card: #ffffff;
   --card-foreground: #1d1528;
@@ -153,8 +165,8 @@
   --sidebar: linear-gradient(165deg, rgb(255 255 255 / 62%), rgb(255 255 255 / 38%));
   --sidebar-foreground: #2b2138;
   --sidebar-muted: #6b6379;
-  --sidebar-primary: #a6d33c;
-  --sidebar-primary-foreground: #1d1428;
+  --sidebar-primary: #7b33c7;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgb(123 51 199 / 9%);
   --sidebar-accent-foreground: #1d1528;
   --sidebar-border: rgb(29 21 40 / 8%);
@@ -181,39 +193,47 @@
   --glow-purple: rgb(123 51 199 / 16%);
   --glow-lime: rgb(154 205 50 / 18%);
   --glow-gold: rgb(227 169 43 / 14%);
-  /* Pastel gradient mesh in the seal's colours: purple, gold, lime, teal. */
+  --glow-violet: rgb(162 77 230 / 14%);
+  --glow-cyan: rgb(32 190 200 / 12%);
+  /* The active page in the sidebar: violet glass with a glowing edge (.nav-active). */
+  --nav-active-fill: linear-gradient(90deg, rgb(123 51 199 / 15%), rgb(123 51 199 / 5%));
+  --nav-active-edge: rgb(123 51 199 / 26%);
+  --nav-active-icon: #7b33c7;
+  /*
+   * Two soft pools of light behind the glass (November 26, 2026 redesign): cyan at the left middle, violet at the lower
+   * right, a faint violet haze at the top. Pastel here; the dark theme uses the same layout, stronger.
+   */
   --page-mesh:
-    radial-gradient(at 0% 0%, rgb(167 118 240 / 48%) 0, transparent 46%),
-    radial-gradient(at 100% 0%, rgb(255 206 112 / 42%) 0, transparent 40%),
-    radial-gradient(at 100% 100%, rgb(154 205 50 / 40%) 0, transparent 46%),
-    radial-gradient(at 0% 100%, rgb(76 195 163 / 32%) 0, transparent 46%),
-    radial-gradient(at 55% 45%, rgb(196 150 245 / 22%) 0, transparent 55%),
-    linear-gradient(135deg, #f1ebfb 0%, #f7f3f9 50%, #eff6e6 100%);
+    radial-gradient(ellipse 48% 58% at 4% 50%, rgb(56 205 214 / 24%) 0, transparent 70%),
+    radial-gradient(ellipse 52% 60% at 96% 94%, rgb(167 92 240 / 30%) 0, transparent 70%),
+    radial-gradient(ellipse 46% 36% at 62% -4%, rgb(187 151 234 / 26%) 0, transparent 70%),
+    linear-gradient(160deg, #f4f1fb 0%, #f2f4f9 55%, #f3effa 100%);
 }
 
 .dark {
   color-scheme: dark;
 
-  --violet-10: #f3f0f8;
-  --violet-20: #e6e0ef;
-  --violet-30: #c5bcd3;
-  --violet-40: #aca2bc;
-  --violet-50: #b98af0;
-  --violet-60: #b48af2;
-  --violet-70: #9a6fdc;
-  --violet-80: #6c4f96;
-  --violet-90: #302a3b;
-  --violet-95: #211d29;
+  /* Navy glass (November 26, 2026): text is crisp cool white and grey, accents stay violet. */
+  --violet-10: #f2f5fa;
+  --violet-20: #e1e7f0;
+  --violet-30: #c3ccda;
+  --violet-40: #a9b4c5;
+  --violet-50: #bf8fff;
+  --violet-60: #b98cff;
+  --violet-70: #9d6cf0;
+  --violet-80: #6a52a8;
+  --violet-90: #253045;
+  --violet-95: #182132;
   --purple-10: #f6effd;
   --purple-20: #ead9fb;
-  --purple-30: #d4b0f6;
-  --purple-40: #c28ff2;
-  --purple-50: #b67cef;
-  --purple-60: #c592f4;
-  --purple-70: #a773e0;
-  --purple-80: #6d4a98;
-  --purple-90: #35283f;
-  --purple-95: #251d2d;
+  --purple-30: #d6b2fb;
+  --purple-40: #c693fb;
+  --purple-50: #b97ffa;
+  --purple-60: #c795fc;
+  --purple-70: #a875ec;
+  --purple-80: #6b4ca3;
+  --purple-90: #2c2848;
+  --purple-95: #1d1d36;
 
   --brand-purple: #c7a2f6;
   --brand-lime: #a9d94a;
@@ -224,69 +244,76 @@
   --brand-red: #f07a7f;
   --brand-orange: #f3a15a;
 
-  /* Soft dark greys (not black), each elevation a few percent lighter. */
-  --background: #131118;
-  --foreground: #ece8f2;
-  --card: #1b1822;
-  --card-foreground: #ece8f2;
-  --popover: #221e2a;
-  --popover-foreground: #ece8f2;
-  --primary: #b48af2;
-  --primary-foreground: #1a1024;
-  --secondary: #2e2340;
+  /* Near-black navy, each elevation a few percent lighter (November 26, 2026; was violet-grey #131118). */
+  --background: #101722;
+  --foreground: #f2f5fa;
+  --card: #161e2c;
+  --card-foreground: #f2f5fa;
+  --popover: #1a2335;
+  --popover-foreground: #f2f5fa;
+  --primary: #b98cff;
+  --primary-foreground: #160d26;
+  --secondary: #2a2546;
   --secondary-foreground: #e6d6fb;
-  --muted: #25212d;
-  --muted-foreground: #a9a1b6;
-  --accent: #2a2533;
-  --accent-foreground: #ece8f2;
+  --muted: #1c2537;
+  --muted-foreground: #a9b4c5;
+  --accent: #212b3f;
+  --accent-foreground: #f2f5fa;
   --destructive: #f07a7f;
-  --border: #2f2a38;
-  --input: #3a3445;
-  --ring: #b48af2;
-  --chart-1: #b48af2;
+  --border: #263247;
+  --input: #314058;
+  --ring: #b98cff;
+  --chart-1: #b98cff;
   --chart-2: #4cc3a3;
   --chart-3: #f0c052;
   --chart-4: #86a8ea;
   --chart-5: #f3a15a;
 
-  --sidebar: linear-gradient(165deg, rgb(34 30 42 / 55%), rgb(18 16 22 / 45%));
-  --sidebar-foreground: #e6e0ee;
-  --sidebar-muted: #9a91ab;
-  --sidebar-primary: #a9d94a;
-  --sidebar-primary-foreground: #14101a;
-  --sidebar-accent: rgb(255 255 255 / 7%);
+  --sidebar: linear-gradient(170deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2.5%)), rgb(16 23 34 / 42%);
+  --sidebar-foreground: #dfe5ee;
+  --sidebar-muted: #8f9bb0;
+  --sidebar-primary: #b98cff;
+  --sidebar-primary-foreground: #160d26;
+  --sidebar-accent: rgb(255 255 255 / 6%);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgb(255 255 255 / 8%);
-  --sidebar-ring: #a9d94a;
-  --sidebar-scrollbar: rgb(255 255 255 / 15%);
+  --sidebar-border: rgb(220 235 255 / 10%);
+  --sidebar-ring: #b98cff;
+  --sidebar-scrollbar: rgb(220 235 255 / 16%);
 
-  /* Dark glass from the reference: rgba(30,30,30,.45), blur 45px, 15% white edge, deep shadow. */
-  --glass-fill: linear-gradient(135deg, rgb(44 40 54 / 52%), rgb(24 22 30 / 38%));
-  --glass-fill-strong: linear-gradient(135deg, rgb(40 36 50 / 82%), rgb(22 20 28 / 74%));
-  --glass-fill-content: linear-gradient(135deg, rgb(40 36 50 / 88%), rgb(24 22 30 / 82%));
-  --glass-highlight: rgb(255 255 255 / 8%);
-  --glass-border: rgb(255 255 255 / 12%);
-  --glass-blur: blur(40px) saturate(150%);
-  --glass-shadow: 0 1px 0 rgb(255 255 255 / 6%) inset, 0 24px 64px -20px rgb(0 0 0 / 60%);
+  /*
+   * Dark glass from the November 26, 2026 reference: a faint white film (about 4.5%) over translucent navy, thin
+   * cool-grey edges, soft deep shadow. Cards scroll without a live blur (see "Scrolling"), so they carry a navy base
+   * that keeps dense tables readable while the glows still tint them.
+   */
+  --glass-fill: linear-gradient(160deg, rgb(255 255 255 / 7%), rgb(255 255 255 / 3%)), rgb(16 23 34 / 40%);
+  --glass-fill-strong: linear-gradient(160deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2.5%)), rgb(16 23 34 / 66%);
+  --glass-fill-content: linear-gradient(160deg, rgb(255 255 255 / 5.5%), rgb(255 255 255 / 2.5%)), rgb(16 23 34 / 52%);
+  --glass-highlight: rgb(255 255 255 / 7%);
+  --glass-border: rgb(220 235 255 / 15%);
+  --glass-blur: blur(24px) saturate(140%);
+  --glass-shadow: 0 1px 0 rgb(255 255 255 / 5%) inset, 0 22px 56px -26px rgb(0 0 0 / 72%);
 
-  --surface-glass: rgb(30 27 38 / 50%);
-  --surface-card: rgb(27 24 34 / 92%);
+  --surface-glass: rgb(22 30 44 / 50%);
+  --surface-card: rgb(22 30 44 / 92%);
   --surface-highlight: rgb(255 255 255 / 5%);
-  --surface-edge: rgb(255 255 255 / 10%);
-  --surface-thead: rgb(255 255 255 / 4%);
-  --surface-row-hover: rgb(255 255 255 / 4%);
+  --surface-edge: rgb(220 235 255 / 12%);
+  --surface-thead: rgb(220 235 255 / 4%);
+  --surface-row-hover: rgb(220 235 255 / 4%);
   --shadow-tint: 0 0 0;
-  --glow-purple: rgb(180 138 242 / 10%);
+  --glow-purple: rgb(185 140 255 / 10%);
   --glow-lime: rgb(169 217 74 / 7%);
   --glow-gold: rgb(240 192 82 / 6%);
-  /* Glowing mesh on near-black, like the reference's dark backdrop. */
+  --glow-violet: rgb(177 77 255 / 16%);
+  --glow-cyan: rgb(0 227 242 / 9%);
+  --nav-active-fill: linear-gradient(90deg, rgb(185 140 255 / 20%), rgb(185 140 255 / 5%));
+  --nav-active-edge: rgb(185 140 255 / 30%);
+  --nav-active-icon: #c9a6ff;
+  /* Broad blurred cyan (left middle) and violet (lower right) light on near-black navy, as in the reference. */
   --page-mesh:
-    radial-gradient(at 0% 0%, rgb(123 51 199 / 48%) 0, transparent 46%),
-    radial-gradient(at 100% 0%, rgb(227 169 43 / 16%) 0, transparent 40%),
-    radial-gradient(at 100% 100%, rgb(154 205 50 / 20%) 0, transparent 46%),
-    radial-gradient(at 0% 100%, rgb(35 128 106 / 30%) 0, transparent 46%),
-    radial-gradient(at 55% 45%, rgb(94 17 144 / 22%) 0, transparent 55%),
-    linear-gradient(135deg, #100c16 0%, #0b0b0c 50%, #0b0f0a 100%);
+    radial-gradient(ellipse 46% 60% at 2% 48%, rgb(0 200 220 / 26%) 0, transparent 70%),
+    radial-gradient(ellipse 54% 64% at 98% 96%, rgb(177 77 255 / 34%) 0, transparent 70%),
+    radial-gradient(ellipse 44% 34% at 60% -6%, rgb(123 51 199 / 16%) 0, transparent 70%),
+    linear-gradient(180deg, #111926 0%, #0e141e 100%);
 }
 
 @layer base {
@@ -356,10 +383,10 @@
     position: relative;
     overflow: hidden;
     border: 1px solid var(--glass-border);
-    border-radius: 1.25rem;
+    border-radius: 1rem;
     background:
-      radial-gradient(circle at 94% -10%, var(--glow-gold), transparent 15rem),
-      radial-gradient(circle at 70% 120%, var(--glow-lime), transparent 16rem),
+      radial-gradient(circle at 96% -20%, var(--glow-violet), transparent 18rem),
+      radial-gradient(circle at 0% 130%, var(--glow-cyan), transparent 16rem),
       var(--glass-fill-content);
     padding: 1.25rem;
     box-shadow: var(--glass-shadow);
@@ -434,6 +461,52 @@
     animation: clock-pulse 2s ease-out infinite;
   }
   .topbar-clock-colon { animation: clock-blink 2s steps(1, end) infinite; }
+
+  /* The open page in the sidebar ("pill" indicator): violet glass, a glowing left edge, a violet icon. */
+  .nav-active {
+    position: relative;
+    background: var(--nav-active-fill);
+    color: var(--sidebar-accent-foreground);
+    box-shadow: inset 0 0 0 1px var(--nav-active-edge);
+  }
+  .nav-active::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: 22%;
+    bottom: 22%;
+    width: 3px;
+    border-radius: 9999px;
+    background: var(--nav-active-icon);
+    box-shadow: 0 0 10px 1px var(--nav-active-icon);
+    animation: nav-mark var(--dur-base) var(--ease-out) backwards;
+  }
+  .nav-active svg { color: var(--nav-active-icon); }
+
+  /* Loading placeholders: a soft light sweep instead of a blink, so waiting reads as progress. */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--muted);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--foreground) 7%, transparent), transparent);
+    animation: skeleton-sweep 1.4s var(--ease-in-out) infinite;
+  }
+
+  /* A tile that opens something lifts a little and its edge takes its colour on hover (pointer devices only). */
+  @media (hover: hover) {
+    .tile-interactive:hover > [data-slot="card"],
+    [data-slot="card"].tile-interactive:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in oklab, var(--tone, var(--primary)) 38%, var(--glass-border));
+      box-shadow: inset 0 1px 0 var(--glass-highlight), 0 18px 40px -22px color-mix(in oklab, var(--tone, var(--primary)) 45%, transparent);
+    }
+  }
 
   /* Executive dashboard charts. Series pair validated for colour-vision deficiency in both themes. */
   .viz { --viz-1: #7b33c7; --viz-2: #eb6834; --viz-grid: color-mix(in oklab, var(--muted-foreground) 18%, transparent); }
@@ -536,7 +609,7 @@ main table tbody tr:hover {
 main [data-slot="card"] {
   position: relative;
   background: var(--glass-fill-content);
-  border-radius: 1.25rem;
+  border-radius: 1rem;
 }
 
 main [data-slot="card-header"] {
@@ -685,37 +758,52 @@ main input::-webkit-date-and-time-value {
   .topbar-clock-dot::after, .topbar-clock-colon { animation: none; }
 }
 
+/*
+ * Entrances (November 26, 2026): a short rise with a strong ease-out, cards following one another 35 ms apart.
+ * "backwards" fill (was "both") holds the start state only during the delay and keeps no transform afterwards, so a
+ * finished card is not left as the containing block of the fixed popups inside it.
+ */
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(6px);
   }
 }
 
 @keyframes card-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(8px) scale(0.995);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+}
+
+@keyframes nav-mark {
+  from { transform: scaleY(0.2); opacity: 0; }
+}
+
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
 }
 
 .app-content {
-  animation: page-enter 400ms ease-out both;
+  animation: page-enter var(--dur-slow) var(--ease-out) backwards;
 }
 
 main [data-slot="card"] {
-  animation: card-enter 450ms ease-out both;
+  animation: card-enter 380ms var(--ease-out) backwards;
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
   --tw-ring-color: transparent;
+  transition: transform var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+
+/* Popups, dialogs and panels from tw-animate land with the same ease-out; an explicit ease-* class still wins. */
+:where(.animate-in, .animate-out, [data-open], [data-closed]) {
+  --tw-ease: var(--ease-out);
+}
+
+main :is(input, select, textarea) {
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 /* Theme switch: no transition flash while the class flips. */
@@ -735,17 +823,12 @@ html[data-density="compact"] main table {
   font-size: 0.8125rem;
 }
 
-main [data-slot="card"]:nth-child(2) {
-  animation-delay: 45ms;
-}
-
-main [data-slot="card"]:nth-child(3) {
-  animation-delay: 90ms;
-}
-
-main [data-slot="card"]:nth-child(4) {
-  animation-delay: 135ms;
-}
+/* Stagger: a card, or the link or button that wraps a tile, waits 35 ms per place up to the sixth (210 ms in all). */
+main :is([data-slot="card"]:nth-child(2), :nth-child(2) > [data-slot="card"]:only-child) { animation-delay: 35ms; }
+main :is([data-slot="card"]:nth-child(3), :nth-child(3) > [data-slot="card"]:only-child) { animation-delay: 70ms; }
+main :is([data-slot="card"]:nth-child(4), :nth-child(4) > [data-slot="card"]:only-child) { animation-delay: 105ms; }
+main :is([data-slot="card"]:nth-child(5), :nth-child(5) > [data-slot="card"]:only-child) { animation-delay: 140ms; }
+main :is([data-slot="card"]:nth-child(n+6), :nth-child(n+6) > [data-slot="card"]:only-child) { animation-delay: 175ms; }
 
 /* Receipt entry forms repaint as local image previews are added. Keep these surfaces solid. */
 main [data-slot="card"].receipt-entry-card {

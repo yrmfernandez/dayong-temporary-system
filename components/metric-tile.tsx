@@ -17,8 +17,8 @@ type MetricTileProps = {
 /** KPI tile: the number reads first, a tinted icon and top accent say which family it belongs to. */
 export function MetricTile({ label, value, detail, icon: Icon, tone = "brand", href, onClick }: MetricTileProps) {
   const body = (
-    <div data-slot="card" className={`tone-${tone} group relative h-full overflow-hidden rounded-[1.25rem] p-4 transition-transform ${href || onClick ? "hover:-translate-y-0.5" : ""}`}>
-      <span className="tone-bar absolute inset-x-0 top-0 h-1 opacity-80" aria-hidden />
+    <div data-slot="card" className={`tone-${tone} group relative h-full overflow-hidden rounded-2xl p-4`}>
+      <span className="tone-bar absolute inset-x-0 top-0 h-0.5 opacity-80" aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
         {Icon && <span className="tone-soft flex size-9 shrink-0 items-center justify-center rounded-xl"><Icon className="size-4.5" /></span>}
@@ -27,6 +27,6 @@ export function MetricTile({ label, value, detail, icon: Icon, tone = "brand", h
       {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
     </div>
   );
-  if (onClick) return <button type="button" onClick={onClick} className="block w-full rounded-[1.25rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</button>;
-  return href ? <Link href={href} className="block rounded-[1.25rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link> : body;
+  if (onClick) return <button type="button" onClick={onClick} className="tile-interactive block w-full rounded-2xl text-left active:scale-[0.99] transition-transform duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</button>;
+  return href ? <Link href={href} className="tile-interactive block rounded-2xl active:scale-[0.99] transition-transform duration-(--dur-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link> : body;
 }
