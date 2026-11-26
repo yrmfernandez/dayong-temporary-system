@@ -181,10 +181,13 @@ export async function findExceptions({ includeLegacy = false } = {}) {
       if (short || overButNotPayoff) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: collectionTitle(row), problem: `${formatPeso(amount)} for ${months} month${months === 1 ? "" : "s"}; the program expects ${formatPeso(expected / 100)}${overButNotPayoff ? " (more is allowed only when it pays the program off exactly)" : ""}.`, date: text(row[9]).slice(0, 10), legacy: isLegacy(text(row[0])), entry: collectionEntry(row) });
     }
   }
-  // A New Sale on a program with a locked amount must be its fixed amount.
+  // A New Sale on a program with a locked amount must be its fixed amount; a Cash on spot sale pays the whole program
+  // instead (owner, November 26, 2026), found by its header since the column came after the sheet layout (migration 0059).
+  const cashOnSpotAt = sales[0]?.indexOf("cash_on_spot") ?? -1;
   for (const row of sales.slice(1).filter((item) => text(item[0]))) {
     const program = programById.get(text(row[21]));
     if (!program || program.newSaleAmountEditable || program.flexible) continue;
+    if (cashOnSpotAt >= 0 && isTrue(row[cashOnSpotAt])) continue;
     const fixed = fixedNewSaleAmount(program);
     if (fixed > 0 && toCents(number(row[26])) !== toCents(fixed)) add({ category: "amounts", key: `amounts-${text(row[0])}`, recordId: text(row[0]), title: saleTitle(row), problem: `Amount paid ${formatPeso(number(row[26]))}; ${program.name} is fixed at ${formatPeso(fixed)}.`, date: manilaDateOf(text(row[1])), legacy: isLegacy(text(row[0])), entry: saleEntry(row) });
   }

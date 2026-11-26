@@ -312,7 +312,7 @@ export async function addSale(
   sale: SaleSheetData,
   accountableEmployeeId: string,
   penalty: { amount: number; note: string } = { amount: 0, note: "" },
-  quote: { incentive: number; remittance: number; fidelity: number; forfeited?: number; noIncentiveReason?: string },
+  quote: { incentive: number; remittance: number; fidelity: number; forfeited?: number; noIncentiveReason?: string; cashOnSpot?: boolean },
 ) {
   await currentDb().insert(sales).values({
     sale_id: sale.saleId, date_created: optional(sale.dateCreated), branch: optional(sale.branch), mas: optional(sale.mas), date_remitted: optionalDate(sale.dateRemitted),
@@ -325,6 +325,8 @@ export async function addSale(
     backdate_reason: optional(sale.backdateReason), date_remitted_reason: optional(sale.dateRemittedReason), clearing_id: optional(sale.clearingId),
     // No incentive (owner, October 20, 2026): the incentive it would have earned is kept as forfeited.
     forfeited_incentive: quote.forfeited && quote.forfeited > 0 ? quote.forfeited : null, no_incentive_reason: optional(quote.noIncentiveReason),
+    // Cash on spot (owner, November 26, 2026): priced at 20% (lib/remittance.ts); repricing keeps it.
+    cash_on_spot: quote.cashOnSpot === true,
   });
 }
 

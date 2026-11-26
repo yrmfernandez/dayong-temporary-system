@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateRemittance, calculateSaleIncentive, differentLabel, differentRateOf, incentiveBasis, normalizeSaleIncentive, savedDifferentRate, tiersForBranch } from "../lib/remittance.ts";
+import { cashOnSpotAmount, cashOnSpotProblem } from "../lib/program-amount-lock.ts";
+import { calculateRemittance, calculateSaleIncentive, CASH_ON_SPOT_RATE, differentLabel, differentRateOf, incentiveBasis, normalizeSaleIncentive, savedDifferentRate, tiersForBranch } from "../lib/remittance.ts";
 // Remittance = ((base pay - mark-up) - incentive) + mark-up; incentive = fixed amount or % of (base pay - mark-up).
 const tier = { id: "T1", role: "MAS", fromMonth: 1, toMonth: 6, incentiveType: "percentage", markUp: 50, incentiveAmount: 50 };
 
@@ -65,6 +66,27 @@ test("New Sale without a registration fee uses the month-1 tier on the base pay"
   assert.deepEqual([calculateSaleIncentive(program, 400).incentive, calculateSaleIncentive(program, 400).remittance], [150, 250], "above one month is remitted in full");
   assert.equal(calculateSaleIncentive(program, 200).incentive, 0, "less than one month earns no incentive");
   assert.throws(() => calculateSaleIncentive({ ...program, incentiveTiers: [] }, 350), /NOP 1/);
+});
+
+test("Cash on spot: the whole program paid on the New Sale earns the MAS 20% of it, whatever the program's own rule", () => {
+  assert.equal(CASH_ON_SPOT_RATE, 20);
+  const program = { basePay: 350, registrationFeeRequired: false, incentiveTiers: [tier], saleIncentiveType: "", saleIncentiveAmount: 0, cashOnSpot: true };
+  const quote = calculateSaleIncentive(program, 21000);
+  assert.deepEqual([quote.incentive, quote.remittance], [4200, 16800]);
+  assert.match(quote.basis[0], /Cash on spot: 20% of the/);
+  assert.equal(calculateSaleIncentive({ ...program, incentiveTiers: [] }, 21000).incentive, 4200, "no tier needed");
+  assert.equal(calculateSaleIncentive(program, 333.33).incentive, 66.67, "rounded to the centavo");
+  assert.equal(calculateSaleIncentive({ ...program, cashOnSpot: false }, 21000).incentive, 150, "without it the month-1 tier applies");
+});
+
+test("Cash on spot needs a program with a Total amount payable and no registration fee, paid exactly", () => {
+  const program = { name: "D-350", registrationFeeRequired: false, payBalanceTotal: 21000 };
+  assert.equal(cashOnSpotAmount(program), 21000);
+  assert.equal(cashOnSpotProblem(program, 21000), "");
+  assert.match(cashOnSpotProblem(program, 350), /must be 21000.00/);
+  assert.equal(cashOnSpotAmount({ ...program, payBalanceTotal: 0 }), 0);
+  assert.match(cashOnSpotProblem({ ...program, payBalanceTotal: 0 }, 350), /no Total amount payable/);
+  assert.match(cashOnSpotProblem({ ...program, registrationFeeRequired: true }, 21000), /registration fee/);
 });
 
 test("New Sale incentive settings are validated", () => {

@@ -121,6 +121,8 @@ export type NewSale = {
   /** No incentive for the MAS on this sale, and why (owner, October 20, 2026): it is remitted whole. */
   noIncentive?: boolean;
   noIncentiveReason?: string;
+  /** Cash on spot (owner, November 26, 2026): the member pays the whole program now; the MAS keeps 20% (lib/remittance.ts). */
+  cashOnSpot?: boolean;
 
   dateRemitted: string;
 };

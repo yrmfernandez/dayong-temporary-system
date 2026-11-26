@@ -88,7 +88,16 @@ export function savedDifferentRate(row: { different_incentive?: unknown; differe
 
 /** A program's New Sale incentive for registration-fee programs (Programs Q type, R amount). Blank type = none. */
 export type SaleIncentiveSetting = { saleIncentiveType: "fixed" | "percentage" | ""; saleIncentiveAmount: number };
-export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[]; /** Flexible program: basePay is the minimum; incentives follow the amount paid. */ flexible?: boolean; maxMonthlyPayment?: number | null };
+export type SaleProgram = SaleIncentiveSetting & { basePay: number; registrationFeeRequired: boolean; incentiveTiers: IncentiveTier[]; /** Flexible program: basePay is the minimum; incentives follow the amount paid. */ flexible?: boolean; maxMonthlyPayment?: number | null;
+  /** Cash on spot (sales.cash_on_spot): the member paid the whole program on this New Sale; the MAS keeps CASH_ON_SPOT_RATE of it. */
+  cashOnSpot?: boolean };
+
+/**
+ * Cash on spot (owner, November 26, 2026): on a New Sale the member pays the program in full at once (its Total amount
+ * payable), so the account is Fully Paid from the start, and the MAS incentive is 20% of the amount paid, whatever the
+ * program's own New Sale incentive or month-1 tier says.
+ */
+export const CASH_ON_SPOT_RATE = 20;
 
 export function normalizeSaleIncentive(input: { registrationFeeRequired?: unknown; saleIncentiveType?: unknown; saleIncentiveAmount?: unknown; registrationAmount?: unknown }): SaleIncentiveSetting {
   const type = String(input.saleIncentiveType ?? "").trim();
@@ -139,6 +148,11 @@ export function calculateSaleIncentive(program: SaleProgram, amountPaid: number)
   const paidCents = Math.round(amountPaid * 100);
   if (!Number.isFinite(paidCents) || paidCents < 0) throw new Error("Enter a valid amount paid.");
   const none = (rule: string) => ({ incentive: 0, remittance: paidCents / 100, rule, basis: [rule] });
+  if (program.cashOnSpot) {
+    const incentiveCents = Math.round(paidCents * CASH_ON_SPOT_RATE / 100);
+    return { incentive: incentiveCents / 100, remittance: (paidCents - incentiveCents) / 100, rule: `Cash on spot: ${CASH_ON_SPOT_RATE}% of the amount paid`,
+      basis: [`Cash on spot: ${CASH_ON_SPOT_RATE}% of the ${pesos(paidCents / 100)} full payment = ${pesos(incentiveCents / 100)}`] };
+  }
   if (program.registrationFeeRequired) {
     if (!program.saleIncentiveType || !program.saleIncentiveAmount) return none("No New Sale incentive is set for this program.");
     const incentiveCents = program.saleIncentiveType === "percentage"

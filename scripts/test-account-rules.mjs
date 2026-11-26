@@ -214,3 +214,9 @@ test("a member who paid before the suspension needs no Waiver when the clerk mov
   validatePayment(paidSeptember, [], { ...payment, orDate: paidOn }, today);
   assert.throws(() => validatePayment(paidSeptember, [], { ...payment, orDate: today }, today), /Select Waiver/);
 });
+
+test("Cash on spot: a New Sale that pays the Total amount payable makes the account Fully Paid from the start", () => {
+  const full = { ...account, payBalanceTotal: 21000, saleCredit: 21000 };
+  assert.equal(accountState(full, [], "2026-01-15").status, "Fully Paid");
+  assert.equal(accountState({ ...full, saleCredit: 350 }, [], "2026-01-20").status, "NS", "one month paid is still a New Sale");
+});

@@ -32,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { SearchSelect } from "@/components/ui/search-select";
 
 import type { ProgramStanding } from "@/lib/account-data";
-import { defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { cashOnSpotAmount, defaultNewSaleAmount, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { AlreadySavedNote } from "@/components/already-saved-note";
@@ -46,7 +46,7 @@ import { scrollPageToTop } from "@/lib/scroll-top";
 import { returnedBatchUrl, useFormDraft } from "@/lib/use-form-draft";
 import { useSeenRejections } from "@/lib/use-seen-rejections";
 import { RemittanceSummary } from "@/components/remittance-summary";
-import { calculateSaleIncentive, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
+import { calculateSaleIncentive, CASH_ON_SPOT_RATE, NO_INCENTIVE_REASON_MIN, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import {
   Select,
   SelectContent,
@@ -391,7 +391,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // The sale's program: by ID, since two programs can share a code (DS-320 and D-320 are both 320); by code for older drafts.
   const programOf = (sale: (typeof sales)[number]) => (sale.program.programId && programs.find((item) => item.id === sale.program.programId)) || programs.find((item) => item.code === sale.program.programCode);
   const lockedProgram = (sale: (typeof sales)[number]) => { const program = programOf(sale); return program && !program.newSaleAmountEditable && !program.flexible ? program : null; };
-  const amountPaidOf = (sale: (typeof sales)[number]) => { const locked = lockedProgram(sale); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
+  // Cash on spot (owner, November 26, 2026): the whole program is paid now, its Total amount payable, at a 20% MAS incentive.
+  // Only a program with a Total amount payable and no registration fee takes it (lib/program-amount-lock.ts).
+  const cashOnSpotFull = (sale: (typeof sales)[number]) => { const program = programOf(sale); return program ? cashOnSpotAmount(program) : 0; };
+  const cashOnSpotOn = (sale: (typeof sales)[number]) => sale.cashOnSpot === true && cashOnSpotFull(sale) > 0;
+  const amountPaidOf = (sale: (typeof sales)[number]) => { if (cashOnSpotOn(sale)) return cashOnSpotFull(sale); const locked = lockedProgram(sale); return locked ? fixedNewSaleAmount(locked) : Number(sale.program.amountPaid) || 0; };
   const totalPaid = sales.reduce((sum, sale) => sum + Math.round(amountPaidOf(sale) * 100), 0) / 100;
 
   const [branches, setBranches] = useState<
@@ -402,12 +406,12 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // A branch's own incentive tiers replace the program's base tiers there.
   const branchId = branches.find((item) => item.name === branch)?.id ?? "";
   // Clerk saves only; a MAS submission has no No incentive choice.
-  const noIncentiveOn = (sale: (typeof sales)[number]) => !masMode && sale.noIncentive === true;
+  const noIncentiveOn = (sale: (typeof sales)[number]) => !masMode && sale.noIncentive === true && !cashOnSpotOn(sale);
   const saleQuotes = sales.map((sale) => {
     const program = programOf(sale);
     if (!program) return null;
     try {
-      const quote = calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId) }, amountPaidOf(sale));
+      const quote = calculateSaleIncentive({ basePay: program.basePay, flexible: program.flexible, maxMonthlyPayment: program.maxMonthlyPayment, registrationFeeRequired: program.registrationFeeRequired, saleIncentiveType: program.saleIncentiveType ?? "", saleIncentiveAmount: program.saleIncentiveAmount ?? 0, incentiveTiers: tiersForBranch(program.incentiveTiers ?? [], branchId), cashOnSpot: cashOnSpotOn(sale) }, amountPaidOf(sale));
       // No incentive (owner, October 20, 2026): remitted whole, as the server saves it.
       if (!noIncentiveOn(sale)) return quote;
       const kept = withoutIncentive(amountPaidOf(sale), quote.remittance);
@@ -1296,7 +1300,7 @@ Is this cash part of that handover?`) ? "same"
         ids: edit.ids, masEmployeeId, branch, dateRemitted, dateRemittedReason: dateRemittedChanged ? dateRemittedReason.trim() : "", paymentMethod, paymentReference: edit.paymentReference, collectedBy: "MAS",
         penalty: penaltyAmount, penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "", fidelity: fidelityAmount,
         entries: [...sales.map((sale) => ({ id: sale.id, applicationNumber: sale.applicationNumber, orDate: sale.orDate, amount: amountPaidOf(sale), backdateReason: sale.backdateReason ?? "", doiTime: sale.doiTime ?? "",
-          noIncentive: noIncentiveOn(sale), noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "", sale: details(sale) })),
+          noIncentive: noIncentiveOn(sale), noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "", cashOnSpot: cashOnSpotOn(sale), sale: details(sale) })),
           ...edit.ids.filter((id) => !stays.has(id)).map((id) => ({ id, remove: true }))],
       }) });
       const result = await response.json();
@@ -1338,12 +1342,12 @@ Is this cash part of that handover?`) ? "same"
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to open the batch.");
       const batch = result.batch;
       if (batch.kind !== "New Sale") throw new Error("This batch is Collections. Open it from My Entries.");
-      type Saved = { id: string; memberNumber: string; program: string; orDate: string; amount: number; backdateReason: string; noIncentiveReason: string; applicationNumber: string; doiTime: string;
+      type Saved = { id: string; memberNumber: string; program: string; orDate: string; amount: number; backdateReason: string; noIncentiveReason: string; cashOnSpot?: boolean; applicationNumber: string; doiTime: string;
         sale: { surname: string; firstName: string; middleName: string; nameExtension: string; birthdate: string; birthplace: string; gender: string; civilStatus: string; contactNumber: string; address: string; claimantName: string; claimantContact: string; claimantSameAddress: boolean; claimantAddress: string; programId: string;
           beneficiaries: Array<{ surname: string; firstName: string; middleName: string; birthdate: string; relationship: string }> } };
       const cards: NewSale[] = (batch.entries as Saved[]).map((entry) => {
         const blankSale = emptyNewSale(batch.branch, batch.person), details = entry.sale, program = programs.find((item) => item.id === details.programId);
-        return { ...blankSale, id: entry.id, applicationNumber: entry.applicationNumber, orDate: entry.orDate, doiTime: entry.doiTime, backdateReason: entry.backdateReason, noIncentive: Boolean(entry.noIncentiveReason), noIncentiveReason: entry.noIncentiveReason, dateRemitted: batch.dateRemitted,
+        return { ...blankSale, id: entry.id, applicationNumber: entry.applicationNumber, orDate: entry.orDate, doiTime: entry.doiTime, backdateReason: entry.backdateReason, noIncentive: Boolean(entry.noIncentiveReason), noIncentiveReason: entry.noIncentiveReason, cashOnSpot: entry.cashOnSpot === true, dateRemitted: batch.dateRemitted,
           member: { ...blankSale.member, phMemberNumber: entry.memberNumber, name: { surname: details.surname, firstName: details.firstName, middleName: details.middleName, nameExtension: details.nameExtension }, birthdate: details.birthdate, birthplace: details.birthplace, gender: details.gender, age: calculateAge(details.birthdate), civilStatus: details.civilStatus,
             contactNumber: details.contactNumber, address: { houseBlockLot: details.address }, claimant: { ...blankSale.member.claimant, completeName: details.claimantName, contactNumber: details.claimantContact, sameAsMemberAddress: details.claimantSameAddress, address: { houseBlockLot: details.claimantAddress } } },
           beneficiaries: details.beneficiaries.map((item) => ({ ...emptyBeneficiary(), ...item, age: calculateAge(item.birthdate) })),
@@ -1484,6 +1488,7 @@ Is this cash part of that handover?`) ? "same"
             backdateReason: sale.backdateReason ?? "",
             noIncentive: noIncentiveOn(sale),
             noIncentiveReason: noIncentiveOn(sale) ? (sale.noIncentiveReason ?? "").trim() : "",
+            cashOnSpot: cashOnSpotOn(sale),
             paymentMethod: masMode ? sale.program.modeOfPayment : paymentMethod,
             registrationFee: sale.program.withRegistrationFee ? "Yes" : "No",
             registrationAmount: String(sale.program.registrationAmount),
@@ -1993,8 +1998,20 @@ Is this cash part of that handover?`) ? "same"
                       {!masMode && saleQuotes[index] && !("error" in saleQuotes[index]!) && <div className="rounded-md bg-muted/40 p-2"><EntryFigures account="NS" nop={selectedProgram?.registrationFeeRequired ? "Registration" : "1"} collected={amountPaidOf(sale)} incentive={saleQuotes[index]!.incentive} remittance={saleQuotes[index]!.remittance} basis={saleQuotes[index]!.basis} incentiveLabel="MAS incentive" /></div>}
                       {/* The clerk sees this in the totals card; a MAS has no totals card, so it shows on the sale. */}
                       {masMode && saleQuotes[index] && "error" in saleQuotes[index]! && <p role="alert" className="text-sm text-destructive">Your incentive cannot be worked out: {(saleQuotes[index] as { error: string }).error} Ask the office.</p>}
+                      {/* CASH ON SPOT (owner, November 26, 2026): the member pays the whole program now; the MAS keeps 20%. */}
+                      {selectedProgram && <div className={`rounded-md border px-3 py-2 text-sm ${cashOnSpotOn(sale) ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30" : ""}`}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" size="sm" variant={cashOnSpotOn(sale) ? "default" : "outline"} aria-pressed={cashOnSpotOn(sale)} disabled={!cashOnSpotFull(sale)}
+                            onClick={() => updateSale(sale.id, (current) => cashOnSpotOn(current) ? { ...current, cashOnSpot: false } : { ...current, cashOnSpot: true, noIncentive: false })}>{cashOnSpotOn(sale) ? "Cash on spot ✓" : "Cash on spot"}</Button>
+                          <span className="text-xs text-muted-foreground">{!cashOnSpotFull(sale)
+                            ? (selectedProgram.registrationFeeRequired ? "Not for a program with a registration fee." : "This program has no Total amount payable in Programs, so it cannot be paid in full here.")
+                            : cashOnSpotOn(sale)
+                              ? `The member pays ${selectedProgram.name} in full now (${formatPeso(cashOnSpotFull(sale))}); the account is Fully Paid and the MAS incentive is ${CASH_ON_SPOT_RATE}%. Click again to undo.`
+                              : `Click when the member pays the whole program now (${formatPeso(cashOnSpotFull(sale))}); the MAS incentive is ${CASH_ON_SPOT_RATE}%.`}</span>
+                        </div>
+                      </div>}
                       {/* NO INCENTIVE (owner, October 20, 2026): this one sale earns the MAS nothing; it is remitted whole. */}
-                      {!masMode && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(sale) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
+                      {!masMode && !cashOnSpotOn(sale) && <div className={`rounded-md border px-3 py-2 text-sm ${noIncentiveOn(sale) ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2">
                           <Button type="button" size="sm" variant={noIncentiveOn(sale) ? "destructive" : "outline"} aria-pressed={noIncentiveOn(sale)} onClick={() => updateSale(sale.id, (current) => ({ ...current, noIncentive: !noIncentiveOn(current) }))}>{noIncentiveOn(sale) ? "No incentive ✓" : "No incentive"}</Button>
                           <span className="text-xs text-muted-foreground">{noIncentiveOn(sale) ? "The MAS earns no incentive on this sale; the whole amount is remitted. Click again to undo." : "Click when the MAS should not earn an incentive on this sale."}</span>
@@ -2015,8 +2032,8 @@ Is this cash part of that handover?`) ? "same"
                           inputMode="decimal"
                           enterKeyHint="next"
                           min="0"
-                          readOnly={Boolean(lockedProgram(sale))}
-                          className={lockedProgram(sale) ? "bg-muted/50" : undefined}
+                          readOnly={Boolean(lockedProgram(sale)) || cashOnSpotOn(sale)}
+                          className={lockedProgram(sale) || cashOnSpotOn(sale) ? "bg-muted/50" : undefined}
                           value={
                             amountPaidOf(sale) ||
                             ""
@@ -2043,7 +2060,8 @@ Is this cash part of that handover?`) ? "same"
                           }
                           placeholder="0.00"
                         />
-                        {lockedProgram(sale) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
+                        {cashOnSpotOn(sale) && <p className="text-xs text-muted-foreground">Cash on spot: the program&apos;s Total amount payable.</p>}
+                        {!cashOnSpotOn(sale) && lockedProgram(sale) && <p className="text-xs text-muted-foreground">Fixed by the program{lockedProgram(sale)?.registrationFeeRequired ? " (registration amount)" : " (first month's base pay)"}. An administrator can allow editing in Programs.</p>}
                       </div>
                         <div className="space-y-2">
                           <Label>
@@ -3181,7 +3199,7 @@ Is this cash part of that handover?`) ? "same"
         </CardContent>
       </Card>}
 
-      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatPeso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${formatPeso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
+      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}{cashOnSpotOn(sale) ? " · Cash on spot (paid in full)" : ""}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatPeso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${formatPeso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, saleTotalDue); return turnover ? <p className="font-semibold text-amber-700">Turnover sheet {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one only for a receipt that changed; a new photo sends the batch back for approval.</p>}

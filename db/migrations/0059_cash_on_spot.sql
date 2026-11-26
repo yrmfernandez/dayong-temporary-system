@@ -1,0 +1,1 @@
+ALTER TABLE "sales" ADD COLUMN "cash_on_spot" boolean DEFAULT false NOT NULL;

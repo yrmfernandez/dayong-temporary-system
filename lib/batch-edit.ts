@@ -16,7 +16,7 @@ import { addBeneficiaries, memberColumns, type MemberDetails } from "@/lib/membe
 import { anotherPersonProblem } from "@/lib/member-identity";
 import { ageOn, ageRestrictionError, isoDate } from "@/lib/program-age";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
-import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { createReadableId } from "@/lib/readable-id";
 import { recordCorrection } from "@/lib/record-corrections";
 import { loadWorkCalendar } from "@/lib/work-calendar";
@@ -97,6 +97,8 @@ export type EditableBatch = {
     orNumber: string; orDate: string; amount: number; backdateReason: string;
     /** Why it earns no incentive, when marked No incentive; blank otherwise. */
     noIncentiveReason: string;
+    /** New Sales: Cash on spot, the whole program paid on the sale at 20% (owner, November 26, 2026). */
+    cashOnSpot?: boolean;
     // Collections
     reactivation: boolean; transferred: boolean; waiver: boolean;
     /** Collections: Different incentives ticked, with the incentive typed for it (owner, November 6 and 9, 2026). */
@@ -194,7 +196,7 @@ export async function getReturnedBatch(ids: string[], by: By, branch = ""): Prom
       fidelity: rows.reduce((sum, row) => sum + Number(row.fidelity_amount ?? 0), 0),
       entries: rows.map((row) => ({
         ...blank, id: row.sale_id, memberNumber: text(row.member_number), memberName: `${text(row.first_name)} ${text(row.surname)}`.trim(), program: programName.get(row.program_id) ?? row.program_id,
-        orNumber: "", orDate: day(row.or_date), amount: Number(row.amount_paid ?? 0), backdateReason: text(row.backdate_reason), noIncentiveReason: text(row.no_incentive_reason),
+        orNumber: "", orDate: day(row.or_date), amount: Number(row.amount_paid ?? 0), backdateReason: text(row.backdate_reason), noIncentiveReason: text(row.no_incentive_reason), cashOnSpot: row.cash_on_spot === true,
         applicationNumber: text(row.application_no), notes: text(row.notes), doiTime: text(row.doi_time).slice(0, 5), sale: details(row),
       })),
     };
@@ -250,6 +252,8 @@ type EntryInput = {
   id: string; remove?: boolean; orNumber?: string; orDate?: string; amount?: number; monthTo?: string; backdateReason?: string; applicationNumber?: string; notes?: string; doiTime?: string; sale?: Partial<SaleDetails>;
   /** Left out: as encoded. */
   noIncentive?: boolean; noIncentiveReason?: string; reactivation?: boolean; transferred?: boolean; waiver?: boolean;
+  /** New Sales: Cash on spot. Left out: as encoded. */
+  cashOnSpot?: boolean;
   /** Different incentives and the incentive typed for it. Left out: as encoded. */
   differentIncentive?: boolean; differentIncentiveType?: string; differentIncentiveAmount?: number;
   /** Collections: another account of the member, for the `months` the receipt covers there. Left out: where it is. */
@@ -521,12 +525,18 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       if (ageError) throw new Error(`${label}: ${ageError}`);
     }
     if (!Number.isFinite(amount) || amount < 0) throw new Error(`${label}: enter a valid amount paid.`);
-    if (program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
-    if (!program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
-    const priced = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId) }, amount);
+    // Cash on spot (owner, November 26, 2026): stays the whole program's payment at 20%, so the amount must stay its Total amount payable.
+    const cashOnSpot = change.cashOnSpot === undefined ? row.cash_on_spot === true : change.cashOnSpot === true;
+    const cashOnSpotChanged = cashOnSpot !== (row.cash_on_spot === true);
+    const fullPaymentProblem = cashOnSpot ? cashOnSpotProblem(program, amount) : "";
+    if (fullPaymentProblem) throw new Error(`${label}: ${fullPaymentProblem}`);
+    if (!cashOnSpot && program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
+    if (!cashOnSpot && !program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${label}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program)}.`);
+    const priced = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, common.branchId), cashOnSpot }, amount);
     // No incentive (owner, October 20, 2026): still remitted whole; it can be marked or unmarked here.
     const noIncentiveReason = noIncentiveAfter(change, row.no_incentive_reason, label);
     const noIncentive = Boolean(noIncentiveReason), kept = withoutIncentive(amount, priced.remittance);
+    if (cashOnSpot && noIncentive) throw new Error(`${label}: choose Cash on spot or No incentive, not both.`);
     const incentiveMarkChanged = noIncentiveReason !== text(row.no_incentive_reason);
     const quote = noIncentive ? { incentive: 0, remittance: kept.remittance } : priced;
     let doi = day(row.doi);
@@ -541,6 +551,7 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       ...(row.clearing_id && (common.mas || common.branch || common.dateRemitted !== day(row.date_remitted)) ? { clearing_id: null } : {}),
       ...(noIncentive ? { forfeited_incentive: kept.forfeited > 0 ? kept.forfeited : null } : incentiveMarkChanged ? { forfeited_incentive: null } : {}),
       ...(incentiveMarkChanged ? { no_incentive_reason: noIncentiveReason || null } : {}),
+      ...(cashOnSpotChanged ? { cash_on_spot: cashOnSpot } : {}),
       penalty_amount: firstRow && common.penalty > 0 ? common.penalty : null, penalty_note: firstRow && common.penalty > 0 ? common.penaltyNote : null,
       fidelity_amount: firstRow && common.fidelity > 0 ? common.fidelity : null,
       program_id: details.programId, ...(programChanged ? registration : {}), ...memberAfter,
@@ -552,6 +563,7 @@ async function saveSales(tx: Transaction, rows: SaleRow[], changes: Map<string, 
       date_remitted: day(row.date_remitted), date_remitted_reason: row.date_remitted_reason || null, payment_method: row.payment_method, mas_incentive: Number(row.mas_incentive ?? 0), remittance_amount: Number(row.remittance_amount ?? 0),
       ...(noIncentive || incentiveMarkChanged ? { forfeited_incentive: row.forfeited_incentive === null ? null : Number(row.forfeited_incentive) } : {}),
       ...(incentiveMarkChanged ? { no_incentive_reason: row.no_incentive_reason || null } : {}),
+      ...(cashOnSpotChanged ? { cash_on_spot: row.cash_on_spot === true } : {}),
       penalty_amount: row.penalty_amount === null ? null : Number(row.penalty_amount), penalty_note: row.penalty_note || null, fidelity_amount: row.fidelity_amount === null ? null : Number(row.fidelity_amount),
       program_id: row.program_id, ...(programChanged ? { registration_fee: row.registration_fee, registration_amount: row.registration_amount === null ? null : Number(row.registration_amount) } : {}), ...memberBefore,
       ...(common.mas ? { mas: row.mas, accountable_employee_id: row.accountable_employee_id, mas_employee_id: row.mas_employee_id } : {}),

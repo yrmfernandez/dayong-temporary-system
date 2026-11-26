@@ -414,6 +414,13 @@
       "when": 1795675971560,
       "tag": "0058_deceased_review",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795678894329,
+      "tag": "0059_cash_on_spot",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { refuseOnDayOff } from "@/lib/day-off";
 import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, waitingBatchProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
-import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
@@ -23,6 +23,7 @@ import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutInc
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 import { anotherPersonProblem } from "@/lib/member-identity";
 import { manilaToday } from "@/lib/manila-date";
+import { recordFullPayment } from "@/lib/full-payments";
 import { phoneKey } from "@/lib/match-keys";
 
 
@@ -78,6 +79,8 @@ type SalePayloadItem = {
   /** No incentive for the MAS on this sale, and why (owner, October 20, 2026). */
   noIncentive?: boolean;
   noIncentiveReason?: string;
+  /** Cash on spot (owner, November 26, 2026): the member paid the whole program now; the MAS keeps 20% (lib/remittance.ts). */
+  cashOnSpot?: boolean;
 
   paymentMethod: string;
   registrationFee: string;
@@ -601,17 +604,22 @@ async function saveSales(request: Request, user: SessionUser) {
       try { checkBackdate(String(prepared.sale.orDate ?? "").trim(), String(prepared.sale.backdateReason ?? ""), `Sale #${index + 1}`, lateCheckDay(String(body.dateRemitted ?? "").trim(), dateRemittedReason), calendar); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Enter the reason for the late date." }, { status: 400 }); }
     }
-    const quotes: Array<{ incentive: number; remittance: number; forfeited: number; noIncentiveReason: string }> = [];
+    const quotes: Array<{ incentive: number; remittance: number; forfeited: number; noIncentiveReason: string; cashOnSpot: boolean }> = [];
     for (const [index, prepared] of preparedSales.entries()) {
       const program = programs.find((item) => item.id === prepared.sale.programId?.trim());
       const amountPaid = Number(prepared.sale.amountPaid);
       if (!program || !Number.isFinite(amountPaid) || amountPaid < 0) return NextResponse.json({ success: false, message: `Sale #${index + 1}: Enter a valid amount paid.` }, { status: 400 });
+      // Cash on spot (owner, November 26, 2026): the whole program is paid now, its Total amount payable, whatever the lock.
+      const cashOnSpot = prepared.sale.cashOnSpot === true;
+      const fullPaymentProblem = cashOnSpot ? cashOnSpotProblem(program, amountPaid) : "";
+      if (fullPaymentProblem) return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${fullPaymentProblem}` }, { status: 400 });
+      if (cashOnSpot && prepared.sale.noIncentive === true) return NextResponse.json({ success: false, message: `Sale #${index + 1}: choose Cash on spot or No incentive, not both.` }, { status: 400 });
       // Programs whose New Sale amount is locked accept only their fixed amount.
       // A flexible program takes any amount from its minimum (plus any registration fee).
-      if (program.flexible && Math.round(amountPaid * 100) < Math.round(fixedNewSaleAmount(program) * 100)) {
+      if (!cashOnSpot && program.flexible && Math.round(amountPaid * 100) < Math.round(fixedNewSaleAmount(program) * 100)) {
         return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} needs at least ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (the minimum monthly payment).` }, { status: 400 });
       }
-      if (!program.flexible && !program.newSaleAmountEditable && Math.round(amountPaid * 100) !== Math.round(fixedNewSaleAmount(program) * 100)) {
+      if (!cashOnSpot && !program.flexible && !program.newSaleAmountEditable && Math.round(amountPaid * 100) !== Math.round(fixedNewSaleAmount(program) * 100)) {
         return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${program.name} has a fixed amount of ${fixedNewSaleAmount(program).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}. Ask an administrator to allow editing in Programs if this receipt is different.` }, { status: 400 });
       }
       // A branch's own incentive tiers replace the program's base tiers there.
@@ -620,9 +628,9 @@ async function saveSales(request: Request, user: SessionUser) {
       try { noIncentiveReason = noIncentiveReasonOf(prepared.sale.noIncentive, prepared.sale.noIncentiveReason, `Sale #${index + 1}`); }
       catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "Give the reason it earns no incentive." }, { status: 400 }); }
       try {
-        const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? "") }, amountPaid);
+        const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, selectedBranch?.id ?? ""), cashOnSpot }, amountPaid);
         const kept = noIncentiveReason ? withoutIncentive(amountPaid, quote.remittance) : { remittance: quote.remittance, forfeited: 0 };
-        quotes.push({ incentive: Math.round((amountPaid - kept.remittance) * 100) / 100, remittance: kept.remittance, forfeited: kept.forfeited, noIncentiveReason });
+        quotes.push({ incentive: Math.round((amountPaid - kept.remittance) * 100) / 100, remittance: kept.remittance, forfeited: kept.forfeited, noIncentiveReason, cashOnSpot });
       }
       catch (error) { return NextResponse.json({ success: false, message: `Sale #${index + 1}: ${error instanceof Error ? error.message : "The incentive could not be calculated."}` }, { status: 400 }); }
     }
@@ -866,13 +874,24 @@ async function saveSales(request: Request, user: SessionUser) {
       variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 
+    // Cash on spot (owner, November 26, 2026): the account is paid in full by its New Sale, so its full payment is recorded
+    // now (dated the application date, with a certificate number to release) instead of waiting for the nightly status
+    // sync. After the save, so a branch without a certificate prefix never stops it; the nightly sync tries again.
+    const fullPaymentNotes: string[] = [];
+    for (const [index, saved] of savedSales.entries()) {
+      if (!quotes[index]?.cashOnSpot) continue;
+      const sale = preparedSales[index].sale;
+      try { await inTransaction((tx) => recordFullPayment(tx, { enrollmentId: saved.enrollmentId, paidOn: String(sale.orDate ?? "").trim() || manilaToday(), total: Number(sale.amountPaid), source: "Receipts" })); }
+      catch (error) { fullPaymentNotes.push(`Sale #${index + 1}: Fully Paid not recorded yet (${error instanceof Error ? error.message : "unknown error"}); the nightly status update records it.`); }
+    }
+
     // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
     const slips = await submitCashAfterSave(savedSales.map((saved) => saved.saleId));
     const recorded = variance as { id: string; difference: number } | null;
     return NextResponse.json({
       success: true,
       message:
-        `All new sales were saved successfully.${recorded ? ` Turnover sheet ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}`,
+        `All new sales were saved successfully.${recorded ? ` Turnover sheet ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}${fullPaymentNotes.length ? ` ${fullPaymentNotes.join(" ")}` : ""}`,
       savedSales,
       slips,
       varianceId: recorded?.id,

@@ -9,7 +9,7 @@ import { DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncomple
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { NO_LETTER_NOTE } from "@/lib/or-no-letter";
-import { fixedNewSaleAmount } from "@/lib/program-amount-lock";
+import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
 import { recordCorrection } from "@/lib/record-corrections";
 import { calculateRemittance, calculateSaleIncentive, savedDifferentRate, tiersForBranch } from "@/lib/remittance";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -204,7 +204,8 @@ export async function repriceSales(tx: Queryable, ids: string[]) {
     const amount = Number(row.amount_paid ?? 0);
     const branchId = row.branch_id || branches.find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id || "";
     let quote: ReturnType<typeof calculateSaleIncentive>;
-    try { quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount); }
+    // Cash on spot keeps its 20% (owner, November 26, 2026).
+    try { quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId), cashOnSpot: row.cash_on_spot === true }, amount); }
     catch (error) {
       // A sale saved before incentives existed (no company share): stays as it is, listed for review.
       if (row.remittance_amount === null) { unpriced.push(row.sale_id); continue; }
@@ -451,8 +452,12 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   if (orDate && (!validDate(orDate) || orDate > today)) throw new Error("Enter a valid application date, today or earlier.");
   if (dateRemitted && (!validDate(dateRemitted) || (orDate && dateRemitted < orDate))) throw new Error("The Date Remitted must be a valid date on or after the application date.");
   if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid amount paid.");
-  if (program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
-  if (!program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} has a fixed New Sale amount of ${fixedNewSaleAmount(program)}.`);
+  // Cash on spot (owner, November 26, 2026): stays the whole program's payment, so the amount must stay its Total amount payable.
+  const cashOnSpot = row.cash_on_spot === true;
+  const fullPaymentProblem = cashOnSpot ? cashOnSpotProblem(program, amount) : "";
+  if (fullPaymentProblem) throw new Error(fullPaymentProblem);
+  if (!cashOnSpot && program.flexible && toCents(amount) < toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} needs at least ${fixedNewSaleAmount(program)}.`);
+  if (!cashOnSpot && !program.flexible && !program.newSaleAmountEditable && toCents(amount) !== toCents(fixedNewSaleAmount(program))) throw new Error(`${program.name} has a fixed New Sale amount of ${fixedNewSaleAmount(program)}.`);
 
   // The account this New Sale opened: the member's account in the sale's program.
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
@@ -488,7 +493,7 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   } else if (changesProgram) accountNote = "no account was found for this New Sale; only the sale changed";
 
   const branchId = (await getBranches()).find((branch) => branch.name.trim().toLowerCase() === text(row.branch).toLowerCase())?.id ?? "";
-  const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId) }, amount);
+  const quote = calculateSaleIncentive({ ...program, incentiveTiers: tiersForBranch(program.incentiveTiers, branchId), cashOnSpot }, amount);
   const forfeited = Number(row.forfeited_incentive ?? 0) > 0 || Boolean(text(row.no_incentive_reason));
   // As for collections: worked out again only when the amount or program changed.
   const repriced = changesProgram || toCents(amount) !== toCents(Number(row.amount_paid ?? 0));
