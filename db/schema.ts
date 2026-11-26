@@ -721,6 +721,18 @@ export const deceased_claims = pgTable("deceased_claims", {
   full_payment_amount: money("full_payment_amount"),
   date_of_release: day("date_of_release"),
   remarks: text(),
+  /**
+   * Pending, Confirmed, Rejected (owner, November 26, 2026): an Administrator or Finance user confirms the record; only
+   * then is a picked member marked Deceased with the date of death. member_status_before and member_died_on_before keep
+   * what the member had, so reopening a confirmed record puts it back.
+   */
+  review_status: text().notNull().default("Pending"),
+  review_note: text(),
+  reviewed_by_employee_id: text(),
+  reviewed_by_name: text(),
+  reviewed_at: moment("reviewed_at"),
+  member_status_before: text(),
+  member_died_on_before: day("member_died_on_before"),
   /** Active, Removed */
   status: text().notNull().default("Active"),
   removed_reason: text(),
@@ -729,6 +741,7 @@ export const deceased_claims = pgTable("deceased_claims", {
   ...encoder(),
 }, (t) => [
   index("deceased_claims_clerk_idx").on(t.employee_id, t.status),
+  index("deceased_claims_review_idx").on(t.review_status, t.status),
   index("deceased_claims_branch_idx").on(t.branch, t.date_of_death),
 ]).enableRLS();
 

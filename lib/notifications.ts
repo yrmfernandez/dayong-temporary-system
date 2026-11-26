@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import { canAccessPath, canCorrectEntriesFor, hasRole, hrRoles } from "@/lib/access-control";
+import { canAccessPath, canCorrectEntriesFor, canOverseeDeceased, hasRole, hrRoles } from "@/lib/access-control";
 
 import type { SessionUser } from "@/lib/auth";
 import { systemAbsencesWaiting } from "@/lib/auto-absence";
@@ -26,6 +26,7 @@ import { manilaToday } from "@/lib/manila-date";
  *   /my-notices         the user's own Notices to Explain in force that they have not confirmed or not yet explained
  *   /dropouts           approvers (Administrators, HR, IT): dropout requests waiting; clerks: their branches' requests rejected in the last 2 days
  *   /employees          administrators: employees' explanations on Notices to Explain not yet marked reviewed
+ *   /deceased-members   Administrators and Finance: records waiting for confirmation (not their own); clerks: their own records rejected
  */
 export type NotificationCounts = Record<string, number>;
 
@@ -67,6 +68,11 @@ export async function getNotificationCounts(user: SessionUser): Promise<Notifica
     where status <> 'Withdrawn' and explanation is not null and reviewed_at is null`)]);
   // The same people and days Attendance Review lists as still waiting (lib/auto-absence.ts), so marking them clears it.
   if (can("/attendance-reviews")) tasks.push(["/attendance-reviews", systemAbsencesWaiting(manilaToday()).then((days) => days.reduce((sum, day) => sum + day.count, 0))]);
+
+  // Deceased Members (November 26, 2026): waiting for confirmation for Administrators and Finance; clerks: their records rejected.
+  if (can("/deceased-members") && me) tasks.push(["/deceased-members", canOverseeDeceased(user)
+    ? countOf(sql`select count(*)::int as count from deceased_claims where status = 'Active' and review_status = 'Pending' and employee_id <> ${me}`)
+    : countOf(sql`select count(*)::int as count from deceased_claims where status = 'Active' and review_status = 'Rejected' and employee_id = ${me}`)]);
 
   const counts: NotificationCounts = {};
   const results = await Promise.allSettled(tasks.map(([, task]) => task));

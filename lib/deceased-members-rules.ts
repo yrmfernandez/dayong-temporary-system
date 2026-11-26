@@ -39,8 +39,12 @@ export type DeceasedRecord = {
   requirements: string[]; requirementsOther: string; claims: string[]; claimsOther: string;
   service: string; serviceOther: string; fullPaymentAmount: number | null; dateOfRelease: string; remarks: string;
   status: "Active" | "Removed"; removedReason: string; removedAt: string; addedAt: string; updatedAt: string;
+  /** Pending until an Administrator or Finance user confirms it; a picked member is marked Deceased only then. */
+  reviewStatus: DeceasedReview; reviewNote: string; reviewedBy: string; reviewedAt: string;
   files: DeceasedFile[];
 };
+export type DeceasedReview = "Pending" | "Confirmed" | "Rejected";
+export const DECEASED_REVIEW_LABELS: Record<DeceasedReview, string> = { Pending: "Waiting for confirmation", Confirmed: "Confirmed", Rejected: "Rejected" };
 
 /** Requirements not handed in yet, out of the six listed ("Other" is extra and never missing). */
 export const missingRequirements = (record: Pick<DeceasedRecord, "requirements">) => DECEASED_REQUIREMENTS.filter((item) => !record.requirements.includes(item));

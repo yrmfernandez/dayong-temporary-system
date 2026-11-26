@@ -61,7 +61,7 @@ Workspaces are defined once in `lib/navigation.ts`. Each role's sidebar lists th
 
 Inventory (November 26, 2026): Entry Clerks, Finance-named roles and Administrators always have `/inventory` and its sidebar section, even when their pages were configured in Roles before it existed (`keepsInventory` in `lib/access-control.ts`); Administrators and Finance see every clerk's list (`canOverseeInventory`), everyone else only their own.
 
-Deceased Members (November 26, 2026): the same roles always have `/deceased-members` (`keepsDeceasedRecords`); Administrators and Finance see every record and open its files (`canOverseeDeceased`, view only); a clerk sees and changes only the records they encoded. Administrators find it under Master Data, Finance under Directory, Entry Clerks under Members.
+Deceased Members (November 26, 2026): the same roles always have `/deceased-members` (`keepsDeceasedRecords`); Administrators and Finance see every record, open its files and confirm, reject or reopen it (`canOverseeDeceased`; confirming marks the picked member Deceased, never on a record they encoded); a clerk sees and changes only the records they encoded. Administrators find it under Master Data, Finance under Directory, Entry Clerks under Members.
 
 Reports is one sidebar link; Daily, Weekly, Monthly, and Yearly are tabs on that page (`/reports?tab=…`). The old `/reports/daily`…`/reports/yearly` addresses redirect to their tab.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Download, FileText, Flower2, ImageIcon, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { Ban, ChevronDown, CircleCheck, Clock, Download, FileText, Flower2, ImageIcon, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Search, Trash2, Undo2, Upload, Users, X } from "lucide-react";
 
 import { confirmDialog, promptDialog } from "@/components/app-dialog";
 import { MetricTile } from "@/components/metric-tile";
@@ -15,15 +15,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { parseJsonResponse } from "@/lib/api-response";
 import { formatDate } from "@/lib/date-format";
 import {
-  DECEASED_FILE_ACCEPT, DECEASED_FILE_TYPES, listWithOther, MAX_DECEASED_FILE_BYTES, missingRequirements, serviceLabel,
-  type DeceasedFile, type DeceasedRecord,
+  DECEASED_FILE_ACCEPT, DECEASED_FILE_TYPES, DECEASED_REVIEW_LABELS, listWithOther, MAX_DECEASED_FILE_BYTES, missingRequirements, serviceLabel,
+  type DeceasedFile, type DeceasedRecord, type DeceasedReview,
 } from "@/lib/deceased-members-rules";
 import { formatPeso } from "@/lib/money";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 type Option = { id: string; name: string };
 type Data = {
-  success: boolean; message?: string; view: "mine" | "all"; canOversee: boolean; today: string; records: DeceasedRecord[];
+  success: boolean; message?: string; view: "mine" | "all"; canOversee: boolean; me: string; today: string; records: DeceasedRecord[];
   branches: string[]; primaryBranch: string; mas: Record<string, Option[]>; programs: Array<Option & { active: boolean }>;
   requirements: string[]; claims: string[]; services: string[];
 };
@@ -42,6 +42,7 @@ const OTHER_MAS = "__other_mas__";
 const csvCell = (value: string | number) => { const text = String(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
 const sizeLabel = (bytes: number) => bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
 const fileUrl = (id: string, download = false) => `/api/deceased-members/files?id=${encodeURIComponent(id)}${download ? "&download=1" : ""}`;
+const reviewTone = { Pending: "warning", Confirmed: "success", Rejected: "danger" } as const;
 
 const emptyDraft = (branch: string): Draft => ({
   branch, masEmployeeId: "", masName: "", memberId: "", deceasedName: "", programId: "", convertedToServices: "", nop: "", totalMonthlyDeposit: "", dateOfDeath: "",
@@ -153,7 +154,7 @@ export default function DeceasedMembersPage() {
 
     {!data ? <p className="p-6 text-sm text-muted-foreground">Loading Deceased Members...</p>
       : mode === "all"
-        ? <Overview data={data} showRemoved={showRemoved} setShowRemoved={setShowRemoved} />
+        ? <Overview data={data} showRemoved={showRemoved} setShowRemoved={setShowRemoved} say={say} reload={load} />
         : <MyRecords data={data} showRemoved={showRemoved} setShowRemoved={setShowRemoved} say={say} reload={load} busyRef={busyRef} />}
   </section>;
 }
@@ -211,8 +212,8 @@ function MyRecords({ data, showRemoved, setShowRemoved, say, reload, busyRef }: 
               actions={record.status === "Removed"
                 ? <Button type="button" size="sm" variant="outline" onClick={() => void restore(record)}><RotateCcw className="mr-2 size-4" />Restore</Button>
                 : <>
-                  <Button type="button" size="sm" variant="outline" onClick={() => open(record)}><Pencil className="mr-2 size-4" />Edit</Button>
-                  <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => void remove(record)}><Trash2 className="mr-2 size-4" />Remove</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => open(record)}><Pencil className="mr-2 size-4" />{record.reviewStatus === "Rejected" ? "Fix and send again" : "Edit"}</Button>
+                  {record.reviewStatus !== "Confirmed" && <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => void remove(record)}><Trash2 className="mr-2 size-4" />Remove</Button>}
                 </>} />)}
       </CardContent>
     </Card>
@@ -234,6 +235,8 @@ function RecordForm({ data, record, say, busyRef, onDone, onCancel }: {
   const members = useMemo(() => loaded.key === membersKey ? loaded.members : [], [loaded, membersKey]);
   const membersLoading = Boolean(membersKey) && loaded.key !== membersKey;
   const [typingName, setTypingName] = useState(Boolean(record && !record.memberId));
+  // A confirmed record keeps its member and date of death (the member is already marked Deceased); a reviewer reopens it to change them.
+  const locked = record?.reviewStatus === "Confirmed";
   const masList = useMemo(() => data.mas[draft.branch] ?? [], [data.mas, draft.branch]);
   const [otherMas, setOtherMas] = useState(Boolean(record && !record.masEmployeeId && record.masName));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
@@ -320,17 +323,19 @@ function RecordForm({ data, record, say, busyRef, onDone, onCancel }: {
     </div></CardHeader>
     <CardContent className="pt-4">
       <form onSubmit={(event) => void save(event)} className="space-y-6">
+        {record && <ReviewNote record={record} />}
         <FormSection title="Member">
           <div className="grid gap-3 md:grid-cols-12">
             <div className="space-y-1 md:col-span-3">
               <Label htmlFor="dm-branch">Branch</Label>
               {data.branches.length > 1
-                ? <select id="dm-branch" className={field} value={draft.branch} onChange={(event) => { setOtherMas(false); setDraft((current) => ({ ...current, branch: event.target.value, masEmployeeId: "", masName: "", memberId: "" })); }}>{data.branches.map((name) => <option key={name}>{name}</option>)}</select>
+                ? <select id="dm-branch" className={field} disabled={locked} value={draft.branch} onChange={(event) => { setOtherMas(false); setDraft((current) => ({ ...current, branch: event.target.value, masEmployeeId: "", masName: "", memberId: "" })); }}>{data.branches.map((name) => <option key={name}>{name}</option>)}</select>
                 : <Input id="dm-branch" value={draft.branch} readOnly className="h-9" />}
             </div>
             <div className="space-y-1 md:col-span-4">
               <Label htmlFor="dm-mas">MAS</Label>
-              {otherMas
+              {locked ? <Input id="dm-mas" className="h-9" value={draft.masName} disabled />
+                : otherMas
                 ? <div className="flex gap-1"><Input id="dm-mas" className="h-9" value={draft.masName} onChange={(event) => setDraft((current) => ({ ...current, masEmployeeId: "", masName: event.target.value, memberId: "" }))} placeholder="Type the MAS name" autoFocus={!record} />
                   <Button type="button" variant="ghost" size="sm" className="shrink-0 px-2 text-xs" onClick={() => { setOtherMas(false); setDraft((current) => ({ ...current, masEmployeeId: "", masName: "", memberId: "" })); }}>Back to list</Button></div>
                 : <select id="dm-mas" className={field} value={draft.masEmployeeId} onChange={(event) => pickMas(event.target.value)}>
@@ -341,13 +346,17 @@ function RecordForm({ data, record, say, busyRef, onDone, onCancel }: {
             </div>
             <div className="space-y-1 md:col-span-5">
               <div className="flex items-center justify-between gap-2"><Label htmlFor="dm-name">Name of the deceased member / beneficiary</Label>
-                <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => { setTypingName((current) => !current); setDraft((current) => ({ ...current, memberId: "" })); }}>{typingName ? "Pick from the list" : "Type the name instead"}</button></div>
-              {typingName
+                {!locked && <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => { setTypingName((current) => !current); setDraft((current) => ({ ...current, memberId: "" })); }}>{typingName ? "Pick from the list" : "Type the name instead"}</button>}</div>
+              {locked ? <Input id="dm-name" className="h-9" value={draft.deceasedName} disabled />
+                : typingName
                 ? <Input id="dm-name" className="h-9" value={draft.deceasedName} onChange={(event) => setDraft((current) => ({ ...current, memberId: "", deceasedName: event.target.value }))} placeholder="Surname, First name Middle name" />
                 : <SearchSelect id="dm-name" className="h-9" options={members.map((item) => ({ value: item.id, label: item.name, description: [item.number, item.statuses.filter(Boolean).join(", ")].filter(Boolean).join(" · ") }))}
                   value={draft.memberId} onValueChange={pickMember} disabled={!draft.masName}
                   placeholder={!draft.masName ? "Choose the MAS first" : membersLoading ? "Loading members..." : "Search the member"}
                   emptyText={membersLoading ? "Loading members..." : "No member found. Use Type the name instead."} />}
+              <p className="text-xs text-muted-foreground">{locked ? "Confirmed: this member is marked Deceased. Finance or an Administrator reopens the record to change the member or the date of death."
+                : draft.memberId ? "When Finance or an Administrator confirms this record, this member is marked Deceased."
+                  : typingName ? "A typed name is not linked to a member, so no member status changes. Pick from the list when the member is there." : ""}</p>
             </div>
             <div className="space-y-1 md:col-span-4">
               <Label htmlFor="dm-program">Program</Label>
@@ -358,7 +367,7 @@ function RecordForm({ data, record, say, busyRef, onDone, onCancel }: {
             </div>
             <div className="space-y-1 md:col-span-2"><Label htmlFor="dm-nop">NOP</Label><Input id="dm-nop" className="h-9" inputMode="numeric" value={draft.nop} onChange={(event) => set("nop", event.target.value.replace(/\D/g, ""))} placeholder="Number of payments" /></div>
             <div className="space-y-1 md:col-span-3"><Label htmlFor="dm-tmd">TMD (₱)</Label><Input id="dm-tmd" className="h-9" inputMode="decimal" value={draft.totalMonthlyDeposit} onChange={(event) => set("totalMonthlyDeposit", event.target.value.replace(/[^\d.,]/g, ""))} placeholder="Total monthly deposit" /></div>
-            <div className="space-y-1 md:col-span-3"><Label htmlFor="dm-death">Date of death</Label><Input id="dm-death" className="h-9" type="date" max={data.today} value={draft.dateOfDeath} onChange={(event) => set("dateOfDeath", event.target.value)} /></div>
+            <div className="space-y-1 md:col-span-3"><Label htmlFor="dm-death">Date of death</Label><Input id="dm-death" className="h-9" type="date" disabled={locked} max={data.today} value={draft.dateOfDeath} onChange={(event) => set("dateOfDeath", event.target.value)} /></div>
           </div>
         </FormSection>
 
@@ -474,7 +483,7 @@ function RecordRow({ record, showBranch, showClerk, actions }: { record: Decease
       </div>
       <span className="text-sm tabular-nums text-muted-foreground">Died {formatDate(record.dateOfDeath)}</span>
       <div className="flex flex-wrap items-center gap-1.5">
-        {removed && <StatusBadge status="Removed" tone="neutral" />}
+        {removed ? <StatusBadge status="Removed" tone="neutral" /> : <StatusBadge status={DECEASED_REVIEW_LABELS[record.reviewStatus]} tone={reviewTone[record.reviewStatus]} />}
         <StatusBadge status={record.convertedToServices ? serviceLabel(record) || "Services" : "Claims"} tone={record.convertedToServices ? "brand" : "teal"} />
         <StatusBadge status={missing.length ? `${missing.length} requirement${missing.length === 1 ? "" : "s"} missing` : "Requirements complete"} tone={missing.length ? "warning" : "success"} />
         {record.files.length > 0 && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Paperclip className="size-3.5" />{record.files.length}</span>}
@@ -482,6 +491,7 @@ function RecordRow({ record, showBranch, showClerk, actions }: { record: Decease
       <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform duration-(--dur-base) ${open ? "rotate-180" : ""}`} />
     </button>
     {open && <div className="space-y-4 border-t px-4 py-4 text-sm duration-200 animate-in fade-in-0 slide-in-from-top-1">
+      <ReviewNote record={record} />
       <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
         <Detail label="Branch" value={record.branch} />
         <Detail label="MAS" value={record.masName} />
@@ -515,6 +525,20 @@ function RecordRow({ record, showBranch, showClerk, actions }: { record: Decease
   </div>;
 }
 
+/** Where the record stands with Finance and the Administrators, and what it means for the member's status. */
+function ReviewNote({ record }: { record: DeceasedRecord }) {
+  if (record.status === "Removed") return null;
+  const by = record.reviewedBy ? ` by ${record.reviewedBy}${record.reviewedAt ? ` on ${formatDate(record.reviewedAt)}` : ""}` : "";
+  const linked = Boolean(record.memberId);
+  const text: Record<DeceasedReview, string> = {
+    Pending: `Waiting for Finance or an Administrator to confirm it.${linked ? " The member is marked Deceased once it is confirmed." : " The name was typed, so no member status will change."}${record.reviewNote ? ` Reopened${by}: ${record.reviewNote}` : ""}`,
+    Confirmed: `Confirmed${by}.${linked ? " The member is marked Deceased with this date of death." : ""}${record.reviewNote ? ` Note: ${record.reviewNote}` : ""}`,
+    Rejected: `Rejected${by}: ${record.reviewNote || "no reason given"}. The clerk fixes it and saves; it then goes back for confirmation.`,
+  };
+  const Icon = record.reviewStatus === "Confirmed" ? CircleCheck : record.reviewStatus === "Rejected" ? Ban : Clock;
+  return <p className={`tone-${reviewTone[record.reviewStatus]} tone-chip flex items-start gap-2 rounded-lg px-3 py-2`}><Icon className="mt-0.5 size-4 shrink-0" /><span>{text[record.reviewStatus]}</span></p>;
+}
+
 const Detail = ({ label, value }: { label: string; value: string }) => <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-medium">{value || "—"}</dd></div>;
 
 function TickList({ items, missing = [] }: { items: string[]; missing?: readonly string[] }) {
@@ -527,7 +551,40 @@ function TickList({ items, missing = [] }: { items: string[]; missing?: readonly
 
 // ---------------------------------------------------------------- every record (Administrators and Finance)
 
-function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemoved: boolean; setShowRemoved: (value: boolean) => void }) {
+function Overview({ data, showRemoved, setShowRemoved, say, reload }: { data: Data; showRemoved: boolean; setShowRemoved: (value: boolean) => void; say: Say; reload: () => Promise<void> }) {
+  const [review, setReview] = useState<"" | DeceasedReview>("");
+  const [busyId, setBusyId] = useState("");
+
+  /** Confirm marks a picked member Deceased; reject and reopen ask why. */
+  async function act(record: DeceasedRecord, action: "confirm" | "reject" | "reopen") {
+    let note = "";
+    if (action === "confirm") {
+      const question = record.memberId
+        ? `Confirm the record of ${record.deceasedName}? The member is marked Deceased (died ${formatDate(record.dateOfDeath)}): their open accounts stop taking payments and leave MAM.`
+        : `Confirm the record of ${record.deceasedName}? The name was typed, so no member status changes.`;
+      if (!(await confirmDialog(question, { title: "Confirm record" }))) return;
+    } else {
+      const answer = await promptDialog(action === "reject" ? `Reject the record of ${record.deceasedName}? Say what the clerk should fix.` : `Reopen the record of ${record.deceasedName}? ${record.memberId ? "The member's status goes back to what it was. " : ""}Say why.`, { placeholder: action === "reject" ? "Death certificate missing, wrong member..." : "Wrong member, wrong date..." });
+      if (answer === null) return;
+      note = answer;
+    }
+    setBusyId(record.id);
+    try {
+      const result = await sendJson("PATCH", { action, id: record.id, note });
+      say(result.ok, result.message); if (result.ok) await reload();
+    } finally { setBusyId(""); }
+  }
+  const reviewActions = (record: DeceasedRecord) => {
+    if (record.status !== "Active") return undefined;
+    const busy = busyId === record.id;
+    if (record.reviewStatus === "Confirmed") return <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act(record, "reopen")}><Undo2 className="mr-2 size-4" />Reopen</Button>;
+    if (record.reviewStatus !== "Pending") return undefined;
+    if (record.employeeId === data.me) return <span className="text-xs text-muted-foreground">You encoded this record, so another Administrator or Finance user confirms it.</span>;
+    return <>
+      <Button type="button" size="sm" disabled={busy} onClick={() => void act(record, "confirm")}><CircleCheck className="mr-2 size-4" />Confirm</Button>
+      <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => void act(record, "reject")}><Ban className="mr-2 size-4" />Reject</Button>
+    </>;
+  };
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("");
   const [clerk, setClerk] = useState("");
@@ -541,16 +598,16 @@ function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemov
   const shown = data.records.filter((record) => (!query || `${record.deceasedName} ${record.programName} ${record.masName} ${record.remarks} ${record.employeeName}`.toLowerCase().includes(query))
     && (!branch || record.branch === branch) && (!clerk || record.employeeId === clerk)
     && (!kind || (kind === "services") === record.convertedToServices) && (!missingOnly || missingRequirements(record).length > 0)
-    && (!from || record.dateOfDeath >= from) && (!to || record.dateOfDeath <= to));
-  const filtered = Boolean(query || branch || clerk || kind || missingOnly || from || to);
+    && (!from || record.dateOfDeath >= from) && (!to || record.dateOfDeath <= to) && (!review || (record.status === "Active" && record.reviewStatus === review)));
+  const filtered = Boolean(query || branch || clerk || kind || missingOnly || from || to || review);
   const active = shown.filter((record) => record.status === "Active");
   const fullPayments = active.reduce((total, record) => total + (record.fullPaymentAmount ?? 0), 0);
 
   function downloadCsv() {
-    const header = ["Record ID", "Branch", "MAS", "Deceased member / beneficiary", "Program", "Converted to services", "NOP", "TMD", "Date of death", "Requirements", "Missing requirements", "Claims", "Service", "Amount of full payment", "Date of release", "Remarks", "Files", "Encoded by", "Encoded on", "Status", "Removed reason"];
+    const header = ["Record ID", "Branch", "MAS", "Deceased member / beneficiary", "Program", "Converted to services", "NOP", "TMD", "Date of death", "Requirements", "Missing requirements", "Claims", "Service", "Amount of full payment", "Date of release", "Remarks", "Files", "Encoded by", "Encoded on", "Confirmation", "Reviewed by", "Review note", "Status", "Removed reason"];
     const lines = [header, ...shown.map((record) => [record.id, record.branch, record.masName, record.deceasedName, record.programName, record.convertedToServices ? "Yes" : "No", record.nop ?? "", record.totalMonthlyDeposit ?? "", record.dateOfDeath,
       listWithOther(record.requirements, record.requirementsOther).join("; "), missingRequirements(record).join("; "), listWithOther(record.claims, record.claimsOther).join("; "), serviceLabel(record), record.fullPaymentAmount ?? "", record.dateOfRelease,
-      record.remarks, record.files.length, record.employeeName, record.addedAt.slice(0, 10), record.status, record.removedReason])];
+      record.remarks, record.files.length, record.employeeName, record.addedAt.slice(0, 10), DECEASED_REVIEW_LABELS[record.reviewStatus], record.reviewedBy, record.reviewNote, record.status, record.removedReason])];
     const blob = new Blob([`﻿${lines.map((line) => line.map(csvCell).join(",")).join("\r\n")}`], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob); link.download = `deceased-members-${data.today}.csv`; link.click();
@@ -559,7 +616,7 @@ function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemov
 
   return <div className="space-y-6">
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricTile label="Deceased members" value={active.length} detail={filtered ? "matching the filters" : "encoded"} icon={Flower2} tone="brand" />
+      <MetricTile label="Waiting for confirmation" value={active.filter((record) => record.reviewStatus === "Pending").length} detail={`of ${active.length} record${active.length === 1 ? "" : "s"}${filtered ? " matching the filters" : ""}`} icon={Clock} tone="brand" onClick={() => setReview("Pending")} />
       <MetricTile label="Converted to services" value={active.filter((record) => record.convertedToServices).length} detail={`${formatPeso(fullPayments)} full payments`} icon={Users} tone="info" />
       <MetricTile label="Requirements missing" value={active.filter((record) => missingRequirements(record).length > 0).length} detail="records still lacking one" icon={FileText} tone="warning" onClick={() => setMissingOnly(true)} />
       <MetricTile label="Files attached" value={active.reduce((total, record) => total + record.files.length, 0)} detail="documents on the records" icon={Paperclip} tone="teal" />
@@ -569,7 +626,7 @@ function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemov
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>Every record <span className="font-normal text-muted-foreground">({shown.length})</span></CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            {filtered && <Button type="button" size="sm" variant="ghost" onClick={() => { setSearch(""); setBranch(""); setClerk(""); setKind(""); setMissingOnly(false); setFrom(""); setTo(""); }}>Clear filters</Button>}
+            {filtered && <Button type="button" size="sm" variant="ghost" onClick={() => { setSearch(""); setBranch(""); setClerk(""); setKind(""); setMissingOnly(false); setFrom(""); setTo(""); setReview(""); }}>Clear filters</Button>}
             <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={showRemoved} onChange={(event) => setShowRemoved(event.target.checked)} />Show removed</label>
             <Button type="button" size="sm" variant="outline" onClick={downloadCsv} disabled={!shown.length}><Download className="mr-2 size-4" />CSV</Button>
           </div>
@@ -579,6 +636,7 @@ function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemov
           <select className={`${field} w-auto`} value={branch} onChange={(event) => setBranch(event.target.value)} aria-label="Branch"><option value="">All branches</option>{branches.map((name) => <option key={name}>{name}</option>)}</select>
           <select className={`${field} w-auto`} value={clerk} onChange={(event) => setClerk(event.target.value)} aria-label="Clerk"><option value="">All clerks</option>{clerks.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
           <select className={`${field} w-auto`} value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} aria-label="Claims or services"><option value="">Claims and services</option><option value="claims">Claims (not converted)</option><option value="services">Converted to services</option></select>
+          <select className={`${field} w-auto`} value={review} onChange={(event) => setReview(event.target.value as typeof review)} aria-label="Confirmation"><option value="">Any confirmation</option>{(["Pending", "Confirmed", "Rejected"] as const).map((value) => <option key={value} value={value}>{DECEASED_REVIEW_LABELS[value]}</option>)}</select>
           <select className={`${field} w-auto`} value={missingOnly ? "missing" : ""} onChange={(event) => setMissingOnly(event.target.value === "missing")} aria-label="Requirements"><option value="">Any requirements</option><option value="missing">Requirements missing</option></select>
           <div className="flex items-center gap-1 text-sm text-muted-foreground"><span>Died</span><Input type="date" className="h-9 w-auto" value={from} onChange={(event) => setFrom(event.target.value)} aria-label="Died from" /><span>to</span><Input type="date" className="h-9 w-auto" value={to} onChange={(event) => setTo(event.target.value)} aria-label="Died to" /></div>
         </div>
@@ -586,7 +644,7 @@ function Overview({ data, showRemoved, setShowRemoved }: { data: Data; showRemov
       <CardContent className="space-y-2 pt-4">
         {!data.records.length ? <p className="py-6 text-center text-sm text-muted-foreground">No deceased member has been encoded yet.</p>
           : !shown.length ? <p className="py-6 text-center text-sm text-muted-foreground">No record matches the filters.</p>
-            : shown.map((record) => <RecordRow key={record.id} record={record} showBranch showClerk />)}
+            : shown.map((record) => <RecordRow key={record.id} record={record} showBranch showClerk actions={reviewActions(record)} />)}
       </CardContent>
     </Card>
   </div>;

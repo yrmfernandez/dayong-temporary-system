@@ -1,18 +1,20 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { isMasFamilyRole } from "@/lib/access-control";
-import { getDb, schema } from "@/lib/db";
+import { getDb, inTransaction, schema } from "@/lib/db";
 import {
   DECEASED_CLAIMS, DECEASED_FILE_TYPES, DECEASED_REQUIREMENTS, DECEASED_SERVICES, MAX_DECEASED_FILE_BYTES, MAX_DECEASED_FILES,
-  type DeceasedFile, type DeceasedRecord,
+  type DeceasedFile, type DeceasedRecord, type DeceasedReview,
 } from "@/lib/deceased-members-rules";
 import { getEncoder } from "@/lib/encoder-context";
 import { getEmployees } from "@/lib/employees";
 import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { inventoryBranches } from "@/lib/inventory";
 import { manilaToday } from "@/lib/manila-date";
+import { DECEASED_STATUS } from "@/lib/member-directory";
 import { readStoredFile, storePhoto } from "@/lib/photo-storage";
 import { createReadableId } from "@/lib/readable-id";
+import { recordCorrection } from "@/lib/record-corrections";
 
 /**
  * Deceased Members (owner, November 26, 2026: "for entry clerks, they encode the deceased members").
@@ -23,7 +25,14 @@ import { createReadableId } from "@/lib/readable-id";
  *   converted, date of release and remarks, and attaches any number of files.
  * - Only the clerk who encoded a record changes it; Administrators and Finance see every record (view only).
  * - The member can be picked from the branch and MAS list (any account status: a deceased member's account may already
- *   be marked Deceased) or the name typed. Encoding here does not change the member's account status.
+ *   be marked Deceased) or the name typed.
+ * - Review (owner, November 26, 2026: the member's status should change; chosen: after Admin/Finance confirms). A record
+ *   starts Pending. An Administrator or Finance user other than the clerk confirms it; a picked member is then marked
+ *   Deceased with the date of death, as an approved Dropout with reason Deceased does (a Member status correction is
+ *   recorded, and the member's open accounts stop taking collections and leave MAM: openAccountOfDeceased in
+ *   lib/account-deactivation.ts). So a clerk cannot end accounts alone. A rejected record goes back to Pending when the
+ *   clerk edits it. A confirmed record keeps its member and date of death and cannot be removed by the clerk; a
+ *   reviewer reopens it, which puts the member's status back.
  * - Removing a record keeps its row with the reason; a removed file keeps its stored file. The Audit Log has every
  *   change (attach_audit_triggers in migration 0057).
  */
@@ -46,7 +55,9 @@ const toRecord = (row: typeof claims.$inferSelect, attached: DeceasedFile[] = []
   service: text(row.service), serviceOther: text(row.service_other), fullPaymentAmount: row.full_payment_amount === null ? null : Number(row.full_payment_amount),
   dateOfRelease: text(row.date_of_release), remarks: text(row.remarks),
   status: row.status === "Removed" ? "Removed" : "Active", removedReason: text(row.removed_reason), removedAt: text(row.removed_at),
-  addedAt: text(row.encoded_at), updatedAt: text(row.updated_at), files: attached,
+  addedAt: text(row.encoded_at), updatedAt: text(row.updated_at),
+  reviewStatus: (["Pending", "Confirmed", "Rejected"].includes(row.review_status) ? row.review_status : "Pending") as DeceasedReview,
+  reviewNote: text(row.review_note), reviewedBy: text(row.reviewed_by_name), reviewedAt: text(row.reviewed_at), files: attached,
 });
 
 function wholeNumber(value: unknown, label: string) {
@@ -219,8 +230,12 @@ export async function updateDeceased(employeeId: string, id: string, input: Reco
   const row = await ownRecord(id, employeeId);
   if (row.status !== "Active") throw new Error("This record was removed. Restore it first.");
   const fields = await deceasedFields(input, await deceasedBranches(employeeId));
+  if (row.review_status === "Confirmed" && (text(fields.member_id) !== text(row.member_id) || fields.date_of_death !== text(row.date_of_death)))
+    throw new Error("This record is confirmed, so its member and date of death stay. Ask Finance or an Administrator to reopen it to change them.");
   await refuseDuplicate(fields, row.claim_id);
-  await getDb().update(claims).set({ ...fields, updated_at: getEncoder().encodedAt }).where(eq(claims.claim_id, row.claim_id));
+  // A rejected record goes back for confirmation once the clerk fixes it.
+  const review = row.review_status === "Rejected" ? { review_status: "Pending", reviewed_by_employee_id: null, reviewed_by_name: null, reviewed_at: null } : {};
+  await getDb().update(claims).set({ ...fields, ...review, updated_at: getEncoder().encodedAt }).where(eq(claims.claim_id, row.claim_id));
   return withFiles(row.claim_id);
 }
 
@@ -230,14 +245,71 @@ export async function setDeceasedRemoved(employeeId: string, id: string, removed
   const actor = getEncoder();
   if (removed) {
     if (row.status === "Removed") throw new Error("This record is already removed.");
+    if (row.review_status === "Confirmed") throw new Error("This record is confirmed. Ask Finance or an Administrator to reopen it before removing it.");
     if (text(reason).length < 3) throw new Error("Say why the record is removed (encoded twice, wrong person...).");
     await getDb().update(claims).set({ status: "Removed", removed_reason: text(reason).slice(0, 200), removed_at: actor.encodedAt, updated_at: actor.encodedAt }).where(eq(claims.claim_id, row.claim_id));
   } else {
     if (row.status === "Active") throw new Error("This record is not removed.");
     await refuseDuplicate({ deceased_name: row.deceased_name, date_of_death: text(row.date_of_death) }, row.claim_id);
-    await getDb().update(claims).set({ status: "Active", removed_reason: null, removed_at: null, updated_at: actor.encodedAt }).where(eq(claims.claim_id, row.claim_id));
+    await getDb().update(claims).set({ status: "Active", removed_reason: null, removed_at: null, review_status: "Pending", reviewed_by_employee_id: null, reviewed_by_name: null, reviewed_at: null, updated_at: actor.encodedAt }).where(eq(claims.claim_id, row.claim_id));
   }
   return withFiles(row.claim_id);
+}
+
+/**
+ * An Administrator or Finance user reviews a record (the route checks the role):
+ * - confirm: a Pending record, not one they encoded. A picked member is marked Deceased with the date of death.
+ * - reject: a Pending record, with the reason; the clerk fixes it (back to Pending) or removes it.
+ * - reopen: a Confirmed record, with the reason; back to Pending, and the member's status and date of death are put
+ *   back to what they were, unless they were changed by hand since (then they are left as they are).
+ */
+export async function reviewDeceased(reviewer: { employeeId: string; name: string }, id: string, action: "confirm" | "reject" | "reopen", note = "") {
+  // The record and its files are read after the transaction: inside it, only the transaction's own connection may be used.
+  const { claimId, notes } = await reviewInTransaction(reviewer, id, action, note);
+  return { record: await withFiles(claimId), notes };
+}
+
+async function reviewInTransaction(reviewer: { employeeId: string; name: string }, id: string, action: "confirm" | "reject" | "reopen", note: string) {
+  return inTransaction(async (tx) => {
+    const [row] = await tx.select().from(claims).where(eq(claims.claim_id, text(id))).for("update");
+    if (!row) throw new Error("Record not found. Refresh the list.");
+    if (row.status !== "Active") throw new Error("This record was removed.");
+    const actor = getEncoder();
+    const reviewed = { reviewed_by_employee_id: reviewer.employeeId, reviewed_by_name: reviewer.name, reviewed_at: actor.encodedAt, updated_at: actor.encodedAt };
+    const [member] = row.member_id ? await tx.select({ id: members.member_id, status: members.status, diedOn: members.died_on }).from(members).where(eq(members.member_id, row.member_id)).for("update") : [];
+    let notes = "";
+
+    if (action === "confirm") {
+      if (row.review_status !== "Pending") throw new Error(`This record is already ${row.review_status.toLowerCase()}.`);
+      if (row.employee_id === reviewer.employeeId) throw new Error("You encoded this record, so another Administrator or Finance user confirms it.");
+      if (row.member_id && !member) throw new Error("The member picked on this record no longer exists (merged or removed). Reject it so the clerk picks the member again.");
+      const before = member ? { status: member.status, diedOn: member.diedOn } : { status: null, diedOn: null };
+      if (member) {
+        await tx.update(members).set({ status: DECEASED_STATUS, died_on: row.date_of_death }).where(eq(members.member_id, member.id));
+        await recordCorrection("Member status", member.id, `Deceased (Deceased Members record ${row.claim_id}, confirmed by ${reviewer.name})`, before, { status: DECEASED_STATUS, diedOn: row.date_of_death });
+        notes = ` ${row.deceased_name} is now marked Deceased.`;
+      } else notes = " The name was typed, not picked from the members, so no member status was changed.";
+      await tx.update(claims).set({ ...reviewed, review_status: "Confirmed", review_note: text(note).slice(0, 300) || null, member_status_before: before.status, member_died_on_before: before.diedOn }).where(eq(claims.claim_id, row.claim_id));
+    } else if (action === "reject") {
+      if (row.review_status !== "Pending") throw new Error(`This record is already ${row.review_status.toLowerCase()}.`);
+      if (text(note).length < 3) throw new Error("Give the reason for rejecting it, so the clerk knows what to fix.");
+      await tx.update(claims).set({ ...reviewed, review_status: "Rejected", review_note: text(note).slice(0, 300) }).where(eq(claims.claim_id, row.claim_id));
+    } else {
+      if (row.review_status !== "Confirmed") throw new Error("Only a confirmed record is reopened.");
+      if (text(note).length < 3) throw new Error("Give the reason for reopening it.");
+      if (member) {
+        const unchanged = text(member.status).toLowerCase() === DECEASED_STATUS.toLowerCase() && text(member.diedOn) === text(row.date_of_death);
+        if (unchanged) {
+          const back = { status: text(row.member_status_before) || "Active", diedOn: row.member_died_on_before ?? null };
+          await tx.update(members).set({ status: back.status, died_on: back.diedOn }).where(eq(members.member_id, member.id));
+          await recordCorrection("Member status", member.id, `Reopened Deceased Members record ${row.claim_id} (${reviewer.name}): ${text(note)}`, { status: member.status, diedOn: member.diedOn }, back);
+          notes = ` The member status of ${row.deceased_name} is back to ${back.status}.`;
+        } else notes = ` The member status of ${row.deceased_name} was changed by hand since, so it was left as it is.`;
+      }
+      await tx.update(claims).set({ ...reviewed, review_status: "Pending", review_note: text(note).slice(0, 300), member_status_before: null, member_died_on_before: null }).where(eq(claims.claim_id, row.claim_id));
+    }
+    return { claimId: row.claim_id, notes };
+  });
 }
 
 /** Attaches one file to the clerk's own active record. */

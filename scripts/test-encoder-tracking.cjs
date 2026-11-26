@@ -6733,6 +6733,36 @@ test('Deceased Members: an Entry Clerk encodes records with checklists, services
   assert.equal(await (await fileRoute.GET(new Request(fileUrl(removedFile.record.files[0].id)))).text(), 'JPG bytes', 'Finance opens the files');
   assert.match((await patch({ action: 'update', id: record.id, ...base })).message, /Only the clerk who encoded/, 'Finance sees but does not change');
 
+  // Review (owner, November 26, 2026): the member is marked Deceased only when Finance or an Administrator confirms.
+  const memberRow = async () => (await query("select status, died_on::text as died_on from members where member_id = 'M1'"))[0];
+  assert.deepEqual([record.reviewStatus, (await memberRow()).status], ['Pending', null], 'saved as Pending; the member is not changed yet');
+  h.setUser(clerk);
+  assert.equal((await route.PATCH(request({ action: 'confirm', id: record.id }))).status, 403, 'a clerk does not confirm');
+  h.setUser(finance);
+  const confirmed = await patch({ action: 'confirm', id: record.id });
+  assert.equal(confirmed.success, true, confirmed.message);
+  assert.match(confirmed.message, /now marked Deceased/);
+  assert.deepEqual(await memberRow(), { status: 'Deceased', died_on: '2026-01-15' }, 'confirming marks the member Deceased with the date of death');
+  assert.deepEqual(await query("select reason, after_json->>'status' as status from record_corrections where module = 'Member status' and record_id = 'M1'"), [{ reason: `Deceased (Deceased Members record ${record.id}, confirmed by Fin Person)`, status: 'Deceased' }]);
+  assert.match((await patch({ action: 'confirm', id: record.id })).message, /already confirmed/);
+  assert.match((await patch({ action: 'reject', id: typed.record.id })).message, /reason/);
+  assert.equal((await patch({ action: 'reject', id: typed.record.id, note: 'Death certificate missing' })).record.reviewStatus, 'Rejected');
+
+  h.setUser(clerk);
+  assert.match((await patch({ action: 'remove', id: record.id, reason: 'Mistake' })).message, /confirmed/, 'a confirmed record is not removed by the clerk');
+  assert.match((await patch({ action: 'update', id: record.id, ...base, dateOfDeath: '2026-01-14' })).message, /member and date of death stay/);
+  const later = await patch({ action: 'update', id: record.id, ...base, claims: ['Flower'], dateOfRelease: '2026-01-22' });
+  assert.deepEqual([later.record.reviewStatus, later.record.claims], ['Confirmed', ['Flower']], 'other fields still change and it stays confirmed');
+  const fixed = await patch({ action: 'update', id: typed.record.id, ...base, masEmployeeId: '', masName: 'Old Mas', memberId: '', deceasedName: 'REYES, PEDRO', dateOfDeath: '2026-02-01', requirements: ['Certified true copy of death certificate'] });
+  assert.equal(fixed.record.reviewStatus, 'Pending', 'a fixed rejected record goes back for confirmation');
+
+  h.setUser(finance);
+  assert.match((await patch({ action: 'confirm', id: typed.record.id })).message, /no member status was changed/, 'a typed name changes no member');
+  assert.match((await patch({ action: 'reopen', id: record.id })).message, /reason/);
+  const reopened = await patch({ action: 'reopen', id: record.id, note: 'Wrong member' });
+  assert.equal(reopened.record.reviewStatus, 'Pending');
+  assert.deepEqual(await memberRow(), { status: 'Active', died_on: null }, 'reopening puts the member status back');
+
   h.setUser(mas);
   assert.equal((await route.GET(new Request('http://localhost/api/deceased-members'))).status, 403, 'a MAS has no Deceased Members');
   assert.equal((await route.POST(request(base))).status, 403);

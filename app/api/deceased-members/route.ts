@@ -2,7 +2,7 @@ import { canAccessPath, canOverseeDeceased } from "@/lib/access-control";
 import { getSessionUser } from "@/lib/auth-server";
 import {
   addDeceased, DECEASED_CLAIMS, DECEASED_REQUIREMENTS, DECEASED_SERVICES, deceasedBranches, deceasedFormOptions, deceasedMemberChoices,
-  listDeceased, setDeceasedRemoved, updateDeceased,
+  listDeceased, reviewDeceased, setDeceasedRemoved, updateDeceased,
 } from "@/lib/deceased-members";
 import { withEncoder } from "@/lib/encoder-context";
 import { manilaToday } from "@/lib/manila-date";
@@ -16,7 +16,9 @@ const denied = () => failure(null, "You do not have access to Deceased Members."
  * GET ?view=mine|all&removed=1: the signed-in clerk's own records with their branches and the form's choices, or, for
  * Administrators and Finance (canOverseeDeceased), every record (view only).
  * GET ?members=1&branch=&mas=: the members with an account under that branch and MAS, for the member field.
- * POST adds a record. PATCH { action: "update" | "remove" | "restore", id, ... } changes one's own records only.
+ * POST adds a record. PATCH { action: "update" | "remove" | "restore", id, ... } changes one's own records only;
+ * PATCH { action: "confirm" | "reject" | "reopen", id, note } is for Administrators and Finance (lib/deceased-members.ts
+ * reviewDeceased: confirming marks a picked member Deceased).
  * Files: app/api/deceased-members/files/route.ts.
  */
 export async function GET(request: Request) {
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
       deceasedFormOptions(own.names),
     ]);
     return Response.json({
-      success: true, view, canOversee, today: manilaToday(), records,
+      success: true, view, canOversee, me: user.employeeId, today: manilaToday(), records,
       branches: own.names, primaryBranch: own.primary, mas: options.mas, programs: options.programs,
       requirements: DECEASED_REQUIREMENTS, claims: DECEASED_CLAIMS, services: DECEASED_SERVICES,
     }, { headers: noStore });
@@ -51,7 +53,7 @@ export const POST = withEncoder(async (request: Request) => {
     const body = await request.json() as Record<string, unknown>;
     const own = await deceasedBranches(user.employeeId);
     const record = await addDeceased({ employeeId: user.employeeId, name: own.name || user.name }, body);
-    return Response.json({ success: true, record, message: `${record.deceasedName} saved.` });
+    return Response.json({ success: true, record, message: `${record.deceasedName} saved. Finance or an Administrator confirms it next${record.memberId ? "; the member is then marked Deceased" : ""}.` });
   } catch (error) { return failure(error, "Unable to save the record."); }
 });
 
@@ -72,7 +74,15 @@ export const PATCH = withEncoder(async (request: Request) => {
       }
       case "restore": {
         const record = await setDeceasedRemoved(user.employeeId, id, false);
-        return Response.json({ success: true, record, message: `${record.deceasedName} is back on the list.` });
+        return Response.json({ success: true, record, message: `${record.deceasedName} is back on the list, waiting for confirmation.` });
+      }
+      // Administrators and Finance: confirm (a picked member is marked Deceased), reject or reopen a record.
+      case "confirm": case "reject": case "reopen": {
+        if (!canOverseeDeceased(user)) return failure(null, "Only Finance or an Administrator confirms, rejects or reopens a record.", 403);
+        const own = await deceasedBranches(user.employeeId);
+        const { record, notes } = await reviewDeceased({ employeeId: user.employeeId, name: own.name || user.name }, id, body.action, String(body.note ?? ""));
+        const done = body.action === "confirm" ? "confirmed" : body.action === "reject" ? "rejected" : "reopened";
+        return Response.json({ success: true, record, message: `${record.deceasedName}: record ${done}.${notes}` });
       }
       default: throw new Error("Unknown action.");
     }
