@@ -141,6 +141,8 @@ export type PeriodView = {
   /** A returned weekly: which of its days the clerk may change (changeReturnedWeekly); null otherwise. */
   dates?: { canFrom: boolean; canTo: boolean; fromLimit: string; toLimit: string } | null;
   span: ReportSpan;
+  /** A past calendar week or month opened to look at, view only, submitted or not (app/api/clerk-report, &to=calendar). */
+  calendar?: boolean;
 };
 
 /**

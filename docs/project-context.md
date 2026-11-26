@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Reports: Entry Clerks open earlier weekly, monthly and yearly reports (2026-11-26)
+
+- **Asked (owner):** on the Entry Clerk's Reports, previous reports can be seen only in Daily, not in Weekly, Monthly and Yearly.
+- **Found:** Weekly and Monthly listed only the reports the clerk had submitted, so a week or month never submitted, including everything before the submission flow of October 30, 2026, could not be opened. Yearly was a number box that sent a broken date on each keystroke, so a year could not be typed in (only the small arrows worked, and phones do not show them). Production could not be checked from here (read-only access was refused); the code was enough to see both.
+- **Done:** `components/clerk-report.tsx`: Previous and Next on every tab (day, year, the submitted report before or after, or a week or month in the past view). Weekly and Monthly lists: **Past week, any (view only)** and **Past month, any (view only)** with a day or month picker; the past view says it is view only, and hides recording, Submit and the audit notice. Yearly: a year list from 2022. `app/api/clerk-report/route.ts`: `&to=calendar` builds the calendar week or month (`periodSpan`) and still returns the submitted list (`clerkPeriods`); `PeriodView.calendar` in `lib/report-periods.ts`. No migration. Docs: `docs/reports.md`.
+- **Status:** done: the change, a test, docs; in progress: none; to do: owner pushes (no migration for this change; Cash on spot still needs migration 0059 first) and tries it as a clerk in a browser (Previous on each tab, a past week and month, a year).
+- **Tested:** the weekly and monthly test now opens a past calendar week (seven days around the day chosen, the 3 submitted weeklies still listed), a past calendar month, and last year. All 368 tests pass; type check, lint (no errors) and build pass; not tried in a browser.
+
 ### Fidelity: Finance and Administrators add Fidelity to an employee by hand (2026-11-26)
 
 - **Asked (owner):** in Fidelity, allow Admin and Finance to add Fidelity to an employee manually.

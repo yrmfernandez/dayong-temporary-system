@@ -1,7 +1,7 @@
 "use client";
 
 import { promptDialog } from "@/components/app-dialog";
-import { AlertTriangle, ChevronDown, Eye, Printer, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Eye, Printer, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
@@ -28,10 +28,12 @@ type Remark = { id: string; comment: string; createdAt: string; encodedBy: strin
 type Result = { success: boolean; message?: string; report: Report; cashCounts?: CashCount[]; period: PeriodView | null; remarks: Remark[]; canChoose: boolean; isOwn: boolean; audit: ClerkAuditView; branch: string; branchChoices: string[]; masChoices: Array<{ id: string; name: string }>; clerks: Array<{ employeeId: string; name: string; branch: string }> };
 
 const money = (value: number) => (value ? new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "-");
-// The period input's value and the date sent to the server (any day inside the period).
-const inputType = (kind: Kind) => (kind === "monthly" ? "month" : kind === "yearly" ? "number" : "date");
-const toInput = (kind: Kind, date: string) => (kind === "monthly" ? date.slice(0, 7) : kind === "yearly" ? date.slice(0, 4) : date);
-const fromInput = (kind: Kind, value: string) => (kind === "monthly" ? `${value}-01` : kind === "yearly" ? `${value}-01-01` : value);
+// Moving a day, a week, a month or a year back or forward (Previous / Next, owner, November 26, 2026).
+const shiftDays = (date: string, days: number) => { const day = new Date(`${date}T00:00:00Z`); day.setUTCDate(day.getUTCDate() + days); return day.toISOString().slice(0, 10); };
+const shiftMonths = (date: string, months: number) => { const day = new Date(`${date.slice(0, 7)}-01T00:00:00Z`); day.setUTCMonth(day.getUTCMonth() + months); return day.toISOString().slice(0, 10); };
+/** The years a yearly report can be opened for: from the first year in the system to this year, newest first. */
+const FIRST_YEAR = 2022;
+const reportYears = () => Array.from({ length: Number(manilaToday().slice(0, 4)) - FIRST_YEAR + 1 }, (_, index) => String(Number(manilaToday().slice(0, 4)) - index));
 const field = "h-8 w-full rounded-md border bg-background px-2 text-sm";
 // Section colours from the company's report.
 const tone = {
@@ -49,6 +51,9 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   // of a new weekly, or the last weekly a new monthly covers; "" shows the report containing `date`.
   const [to, setTo] = useState(fixedTo ?? "");
   const submitted = kind === "weekly" || kind === "monthly";
+  // A past calendar week or month, view only (to = "calendar"; owner, November 26, 2026: clerks could open only their
+  // submitted weeklies and monthlies, so no earlier week or month).
+  const calendar = submitted && to === "calendar";
   const [employeeId, setEmployeeId] = useState(fixedEmployee ?? "");
   // Reports are per branch (owner, October 13, 2026): "" = the clerk's primary branch, "all" = every branch (Audits).
   // The tabs share the choice through `branch` / `onBranchChange`.
@@ -133,7 +138,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   };
 
   const report = data?.report;
-  const own = Boolean(data?.isOwn && !review);
+  const own = Boolean(data?.isOwn && !review && !calendar);
   // An approved report is locked for the clerk until an Administrator allows editing it (lib/daily-audit.ts).
   const editable = own && !data?.audit.lock;
   const entries = report ? filterEntries(report.entries, entryFilter) : [];
@@ -141,9 +146,16 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 print:hidden">
-        {submitted ? <PeriodPicker kind={kind} view={data?.period ?? null} fixed={Boolean(fixedDate)} onPick={(start, end) => { setDate(start); setTo(end); }} /> : <label className="text-sm">Period
-          <Input className="mt-1 w-44" type={inputType(kind)} min={kind === "yearly" ? 2000 : undefined} max={kind === "yearly" ? 2100 : undefined} value={toInput(kind, date)} disabled={Boolean(fixedDate)} onChange={(event) => event.target.value && setDate(fromInput(kind, event.target.value))} />
-        </label>}
+        {submitted ? <PeriodPicker kind={kind} view={data?.period ?? null} date={date} fixed={Boolean(fixedDate)} onPick={(start, end) => { setDate(start); setTo(end); }} />
+          : kind === "yearly" ? <label className="text-sm">Year
+            <select className="mt-1 block h-9 w-32 rounded-md border bg-background px-3 text-sm" value={date.slice(0, 4)} disabled={Boolean(fixedDate)} onChange={(event) => setDate(`${event.target.value}-01-01`)}>
+              {[...new Set([...reportYears(), date.slice(0, 4)])].sort().reverse().map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
+          : <label className="text-sm">Day
+            <Input className="mt-1 w-44" type="date" max={manilaToday()} value={date} disabled={Boolean(fixedDate)} onChange={(event) => event.target.value && setDate(event.target.value)} />
+          </label>}
+        {!fixedDate && <StepButtons kind={kind} date={date} to={to} view={data?.period ?? null} shown={report ? { from: report.from, to: report.to } : null} disabled={loading} onPick={(start, end) => { setDate(start); setTo(end); }} />}
         {data?.canChoose && !fixedEmployee && (
           <label className="text-sm">Entry Clerk
             <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={employeeId || report?.encoder.employeeId || ""} onChange={(event) => { setEmployeeId(event.target.value); setBranch(""); }}>
@@ -166,7 +178,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
       </div>
 
       {message && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">{message}</p>}
-      {data && submitted && data.period && <PeriodNotice kind={kind} view={data.period} own={own} saving={saving}
+      {data && calendar && <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm print:hidden">Viewing {report ? spanLabel(report.from, report.to) : "a past period"}: a calendar {kind === "weekly" ? "week" : "month"}, view only. Nothing can be recorded or submitted here; choose a report from the list to work on it.</p>}
+      {data && submitted && data.period && !calendar && <PeriodNotice kind={kind} view={data.period} own={own} saving={saving}
         onChangeDates={async (from, to) => { if (await act({ action: "change-period-dates", from, to })) { setDate(from); setTo(to); } }}
         onSubmit={async () => { const draft = data.period?.draft; if (!draft) return; if (await act({ action: "submit-period", from: draft.start, to: draft.end })) { setDate(draft.start); setTo(draft.end); } }}
         onResubmit={async (from, to) => { if (await act({ action: "resubmit-period", from, to }) && from && to) { setDate(from); setTo(to); } }} />}
@@ -352,20 +365,26 @@ const weekLabel = (period: { week: number; monthLabel: string }) => (period.week
  * weekly starts the day after the last (the first one on a day chosen) and ends on the day chosen, and is shown as the
  * Week N of its month it will be; a new monthly gathers the next month's weeklies, Week 1 to the last (November 12, 2026).
  */
-function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodView | null; fixed: boolean; onPick: (start: string, end: string) => void }) {
+function PeriodPicker({ kind, view, date, fixed, onPick }: { kind: Kind; view: PeriodView | null; date: string; fixed: boolean; onPick: (start: string, end: string) => void }) {
   const today = manilaToday();
-  const selected = view?.current ? `${view.current.start}|${view.current.end}` : "new";
+  const selected = view?.calendar ? "calendar" : view?.current ? `${view.current.start}|${view.current.end}` : "new";
   const draft = view?.draft;
   return <>
     <label className="text-sm">{kind === "weekly" ? "Weekly report" : "Monthly report"}
       <select className="mt-1 block h-9 rounded-md border bg-background px-3 text-sm" value={selected} disabled={fixed || !view}
-        onChange={(event) => { const [start, end] = event.target.value.split("|"); if (event.target.value === "new") onPick(today, "new"); else onPick(start, end); }}>
+        onChange={(event) => { const [start, end] = event.target.value.split("|"); if (event.target.value === "new") onPick(today, "new"); else if (event.target.value === "calendar") onPick(kind === "weekly" ? shiftDays(today, -7) : shiftMonths(today, -1), "calendar"); else onPick(start, end); }}>
         <option value="new">{kind === "weekly" ? "New weekly report (not submitted)" : "New monthly report (not submitted)"}</option>
+        <option value="calendar">{kind === "weekly" ? "Past week, any (view only)" : "Past month, any (view only)"}</option>
         {[...(view?.periods ?? [])].reverse().map((period) => <option key={period.id} value={`${period.start}|${period.end}`}>
           {kind === "monthly" && period.monthLabel ? `${monthLabelName(period.monthLabel)} · ` : ""}{kind === "weekly" && period.week ? `${weekLabel(period)} · ` : ""}{spanLabel(period.start, period.end)} · {PERIOD_STATUS(period)}
         </option>)}
       </select>
     </label>
+    {view?.calendar && !fixed && <label className="text-sm">{kind === "weekly" ? "Any day of the week" : "Month"}
+      {kind === "weekly"
+        ? <Input className="mt-1 w-40" type="date" max={today} value={date} onChange={(event) => event.target.value && onPick(event.target.value, "calendar")} />
+        : <Input className="mt-1 w-40" type="month" max={today.slice(0, 7)} value={date.slice(0, 7)} onChange={(event) => event.target.value && onPick(`${event.target.value}-01`, "calendar")} />}
+    </label>}
     {draft && !fixed && kind === "weekly" && <>
       <label className="text-sm">From
         {draft.chooseStart
@@ -378,6 +397,38 @@ function PeriodPicker({ kind, view, fixed, onPick }: { kind: Kind; view: PeriodV
       {draft.week > 0 && <span className="text-sm"><span className="block">This will be</span><span className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 font-semibold">{weekLabel(draft)}</span></span>}
     </>}
   </>;
+}
+
+/**
+ * Previous and Next (owner, November 26, 2026: clerks could not go back to an earlier weekly, monthly or yearly report).
+ * Daily: a day; yearly: a year; a past calendar week or month: a week or a month; a submitted weekly or monthly: the
+ * report before or after it in the list, Previous from the new report opening the latest submitted one and Next from the
+ * latest opening the new one.
+ */
+function StepButtons({ kind, date, to, view, shown, disabled, onPick }: { kind: Kind; date: string; to: string; view: PeriodView | null; shown: { from: string; to: string } | null; disabled: boolean; onPick: (start: string, end: string) => void }) {
+  const today = manilaToday();
+  const target = (direction: -1 | 1): [string, string] | null => {
+    if (kind === "daily") { const day = shiftDays(date, direction); return day > today ? null : [day, ""]; }
+    if (kind === "yearly") { const year = Number(date.slice(0, 4)) + direction; return year < FIRST_YEAR || year > Number(today.slice(0, 4)) ? null : [`${year}-01-01`, ""]; }
+    // A report week stops at the month's ends (Oct 1-4, 5-11 ... 26-31; lib/report-week.ts), so the next one starts the
+    // day after the week shown and the previous one ends the day before it.
+    if (to === "calendar") {
+      const day = kind === "monthly" ? shiftMonths(date, direction) : shown ? shiftDays(direction < 0 ? shown.from : shown.to, direction) : "";
+      return !day || day > today ? null : [day, "calendar"];
+    }
+    const periods = view?.periods ?? [];
+    const at = view?.current ? periods.findIndex((period) => period.id === view.current!.id) : periods.length;
+    const next = at + direction;
+    if (next < 0) return null;
+    if (next >= periods.length) return view?.current ? [today, "new"] : null;
+    return [periods[next].start, periods[next].end];
+  };
+  const back = target(-1), forward = target(1);
+  const unit = kind === "daily" ? "day" : kind === "yearly" ? "year" : to === "calendar" ? (kind === "weekly" ? "week" : "month") : "report";
+  return <div className="flex gap-1">
+    <Button type="button" variant="outline" size="sm" className="h-9" disabled={disabled || !back} onClick={() => back && onPick(...back)} title={`Previous ${unit}`}><ChevronLeft className="size-4" />Previous</Button>
+    <Button type="button" variant="outline" size="sm" className="h-9" disabled={disabled || !forward} onClick={() => forward && onPick(...forward)} title={`Next ${unit}`}>Next<ChevronRight className="size-4" /></Button>
+  </div>;
 }
 
 /** Where the weekly or monthly report stands: not submitted (with Submit), submitted, returned (with Submit again), approved. */

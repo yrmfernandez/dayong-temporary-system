@@ -62,8 +62,13 @@ export async function GET(request: Request) {
     const own = await clerkBranches(clerk.employeeId);
     const asked = params.get("branch")?.trim() ?? "";
     const branch = asked.toLowerCase() === "all" ? "" : asked || own.primary || own.names[0] || "";
-    const period = isPeriodKind(kind) ? await periodView(kind, clerk.employeeId, date, params.get("to")?.trim() ?? "") : null;
-    const report = await buildClerkReport(kind, period?.span.start ?? date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch, period?.span);
+    // &to=calendar (owner, November 26, 2026): any past calendar week or month, view only, whether or not the clerk
+    // submitted it; the submitted reports are still listed for the picker.
+    const calendar = isPeriodKind(kind) && params.get("to")?.trim() === "calendar";
+    const period = !isPeriodKind(kind) ? null
+      : calendar ? { kind, periods: await clerkPeriods(clerk.employeeId, kind), current: null, draft: null, span: periodSpan(kind, date), calendar: true }
+      : await periodView(kind, clerk.employeeId, date, params.get("to")?.trim() ?? "");
+    const report = await buildClerkReport(kind, period?.span.start ?? date, { ...clerk, branch: own.primary || ("branch" in clerk ? clerk.branch : "") }, branch, calendar ? undefined : period?.span);
     const branchChoices = [...new Map([...own.names, ...(branch ? [branch] : [])].map((name) => [name.toLowerCase(), name])).values()];
     // Remarks left on this clerk's report for the same period.
     const remarks = (await getReportRemarks(report.from, report.to)).filter((remark) => remark.scope === report.encoder.name);

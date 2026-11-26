@@ -2643,6 +2643,15 @@ test('weekly and monthly reports are submitted by the clerk over their own dates
   // The next weekly is Week 1 of November (a fixed last day, so it does not run on to today).
   const novemberDraft = (await get('kind=weekly&date=2026-11-05&to=2026-11-08')).period.draft;
   assert.deepEqual([novemberDraft.start, novemberDraft.week, novemberDraft.monthLabel], ['2026-11-02', 1, '2026-11']);
+  // Any past calendar week or month, view only, submitted or not (owner, November 26, 2026); the submitted ones still listed.
+  const pastWeek = await get('kind=weekly&date=2026-09-16&to=calendar');
+  assert.deepEqual([pastWeek.success, pastWeek.period.calendar, pastWeek.period.current, pastWeek.period.draft, pastWeek.period.periods.length], [true, true, null, null, 3]);
+  assert.ok(pastWeek.report.from <= '2026-09-16' && '2026-09-16' <= pastWeek.report.to, 'the calendar week of the day chosen');
+  assert.equal((Date.parse(pastWeek.report.to) - Date.parse(pastWeek.report.from)) / 86400000, 6, 'seven days');
+  const pastMonth = await get('kind=monthly&date=2026-09-01&to=calendar');
+  assert.deepEqual([pastMonth.period.calendar, pastMonth.report.from, pastMonth.report.to, pastMonth.period.periods.map((period) => period.monthLabel)], [true, '2026-09-01', '2026-09-30', ['2026-10']]);
+  const lastYear = await get('kind=yearly&date=2025-01-01');
+  assert.deepEqual([lastYear.success, lastYear.report.from, lastYear.report.to], [true, '2025-01-01', '2025-12-31'], 'an earlier year');
   asHr();
   const monthAudits = await (await audit.GET(new Request('http://localhost/api/audit?period=monthly&date=2026-10-01'))).json();
   assert.deepEqual([monthAudits.audits.map((row) => row.period.monthLabel), monthAudits.notSubmitted], [['2026-10'], []]);
