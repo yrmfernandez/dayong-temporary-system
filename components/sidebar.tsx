@@ -104,7 +104,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, count
         </div>}
       </div>
 
-      <nav className={`flex-1 overflow-y-auto overscroll-contain py-3 [scrollbar-color:var(--sidebar-scrollbar)_transparent] ${collapsed ? "md:px-2" : "px-3"}`} aria-label={`${activeRole || "User"} workspace`}>
+      <nav className={`flex-1 overflow-y-auto overscroll-contain py-3 ${collapsed ? "md:px-2" : "px-3"}`} aria-label={`${activeRole || "User"} workspace`}>
         {!sections.length && <div className="space-y-2 px-1" aria-hidden>{Array.from({ length: 6 }, (_, index) => <div key={index} className="skeleton h-9 rounded-lg" />)}</div>}
         {!!sections.length && !filtered.length && <p className="px-3 py-6 text-center text-xs text-sidebar-muted">No page matches &ldquo;{query}&rdquo;.</p>}
         <div className="space-y-5">

@@ -43,6 +43,13 @@ The owner asked again what to improve; the first list is all built. These come f
 - **Status:** done: the change, tests, docs; in progress: none; to do: **owner migrates staging and production before pushing** (`npm run db:migrate` for staging; `npm run prod -- npm run db:migrate`, then `npm run prod -- node scripts/check-database.mjs`; migration 0056; the staging migrate from this session was blocked by the permission check), pushes, tries the page in a browser as an Entry Clerk and as Finance, then announces the two System Updates drafts above.
 - **Tested:** new route test (own list per branch, primary branch by default, duplicate and invalid input refused, quantity, condition, cost cleared, check per branch, another clerk and Finance cannot change it, remove and restore, Finance sees every list, MAS refused), access test and sidebar test.
 
+### Design: slim glass scrollbars (2026-11-26)
+
+- **Asked (owner):** the scrollbar at the side looked ugly.
+- **Done (`app/globals.css`):** every scroll area has a slim rounded thumb on a clear track with no arrow buttons, soft grey on light and cool white on dark (`--scrollbar-thumb`), brighter under the pointer (`--scrollbar-thumb-hover`). The page's bar keeps 20 px clear of the window's rounded corners from tablets up. Chrome, Edge and Safari use `::-webkit-scrollbar`; Firefox gets `scrollbar-width: thin` and `scrollbar-color` only inside `@supports not selector(::-webkit-scrollbar)`, because since Chrome 121 a `scrollbar-color` on an element switches the webkit rules off. For the same reason the sidebar's own `scrollbar-color` was removed (`components/sidebar.tsx`). **Rule:** do not put `scrollbar-color` or `scrollbar-width` on an element, or Chrome falls back to its plain bar there.
+- **Status:** done: the change, docs; in progress: none; to do: owner checks it in a browser (page, sidebar, a wide table), then pushes.
+- **Tested:** type check, lint (no errors) and build pass; not tried in a browser; no migration.
+
 ### Design: the app floats as one glass window; Inventory quantity and category (2026-11-26)
 
 - **Asked (owner, after pushing the navy glass design):** make the main card float like the reference, so the website feels like iOS. Also in Inventory: the quantity plus and minus were too big, and the Category dropdown did not match the Condition dropdown.

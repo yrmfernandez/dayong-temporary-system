@@ -172,6 +172,8 @@
   --sidebar-border: rgb(29 21 40 / 8%);
   --sidebar-ring: #7b33c7;
   --sidebar-scrollbar: rgb(29 21 40 / 18%);
+  --scrollbar-thumb: rgb(29 21 40 / 16%);
+  --scrollbar-thumb-hover: rgb(29 21 40 / 32%);
 
   /* Glass: translucent fill, heavy blur, a light edge that catches the top-left light, soft elevation. */
   --glass-fill: linear-gradient(135deg, rgb(255 255 255 / 66%), rgb(255 255 255 / 40%));
@@ -286,6 +288,8 @@
   --sidebar-border: rgb(220 235 255 / 10%);
   --sidebar-ring: #b98cff;
   --sidebar-scrollbar: rgb(220 235 255 / 16%);
+  --scrollbar-thumb: rgb(220 235 255 / 14%);
+  --scrollbar-thumb-hover: rgb(220 235 255 / 30%);
 
   /*
    * Dark glass from the November 26, 2026 reference: a faint white film (about 4.5%) over translucent navy, thin
@@ -581,6 +585,33 @@
 @keyframes frame-enter {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
 }
+
+/*
+ * Scrollbars (owner, November 26, 2026: the page's scrollbar looked ugly against the glass). Every scroll area gets a
+ * slim rounded thumb on a clear track, with no arrow buttons; it brightens under the pointer. Chrome, Edge and Safari
+ * draw it from ::-webkit-scrollbar. Since Chrome 121 a scrollbar-color on an element switches those rules off, so the
+ * standard properties are given only to browsers without ::-webkit-scrollbar (Firefox). The page's own bar keeps
+ * clear of the window's rounded corners.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+}
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); border-width: 2px; }
+::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-hover); }
+@media (min-width: 768px) {
+  .app-main::-webkit-scrollbar-track { margin-block: 1.25rem; }
+}
+.glass-sidebar ::-webkit-scrollbar { width: 10px; }
 
 .app-main {
   scrollbar-gutter: stable;
