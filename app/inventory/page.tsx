@@ -253,11 +253,9 @@ function AddItemForm({ data, categories, say, reload }: { data: Data; categories
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor="inv-qty">Quantity</Label>
-            <div className="flex">
-              <Button type="button" variant="outline" size="icon" className="rounded-r-none" aria-label="Less" onClick={() => setDraft((current) => ({ ...current, quantity: String(Math.max(0, quantity - 1)) }))}><Minus className="size-4" /></Button>
-              <Input id="inv-qty" inputMode="numeric" className="rounded-none text-center tabular-nums" value={draft.quantity} onChange={(event) => setDraft((current) => ({ ...current, quantity: event.target.value.replace(/\D/g, "") }))} />
-              <Button type="button" variant="outline" size="icon" className="rounded-l-none" aria-label="More" onClick={() => setDraft((current) => ({ ...current, quantity: String(quantity + 1) }))}><Plus className="size-4" /></Button>
-            </div>
+            <Stepper className="flex w-full" lessLabel="Less" moreLabel="More" onLess={() => setDraft((current) => ({ ...current, quantity: String(Math.max(0, quantity - 1)) }))} onMore={() => setDraft((current) => ({ ...current, quantity: String(quantity + 1) }))}>
+              <input id="inv-qty" inputMode="numeric" className={stepperInput} value={draft.quantity} onChange={(event) => setDraft((current) => ({ ...current, quantity: event.target.value.replace(/\D/g, "") }))} />
+            </Stepper>
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor="inv-unit">Unit</Label>
@@ -266,8 +264,7 @@ function AddItemForm({ data, categories, say, reload }: { data: Data; categories
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor="inv-category">Category</Label>
-            <Input id="inv-category" list="inv-categories" value={draft.category} onChange={set("category")} placeholder="Choose or type" />
-            <datalist id="inv-categories">{categories.map((name) => <option key={name} value={name} />)}</datalist>
+            <CategoryField id="inv-category" value={draft.category} categories={categories} onChange={(category) => setDraft((current) => ({ ...current, category }))} />
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor="inv-condition">Condition</Label>
@@ -331,9 +328,9 @@ function ItemRow({ item, data, showBranch, onQuantity, onCondition, onEdit, onRe
       ? <Button type="button" size="sm" variant="outline" onClick={onRestore}><RotateCcw className="mr-2 size-4" />Restore</Button>
       : <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center" aria-label={`Quantity of ${item.name}`}>
-          <Button type="button" variant="outline" size="icon" className="rounded-r-none" aria-label={`One less ${item.name}`} disabled={item.quantity <= 0} onClick={() => onQuantity(item.quantity - 1)}><Minus className="size-4" /></Button>
-          <QuantityInput value={item.quantity} onChange={onQuantity} label={item.name} />
-          <Button type="button" variant="outline" size="icon" className="rounded-l-none" aria-label={`One more ${item.name}`} onClick={() => onQuantity(item.quantity + 1)}><Plus className="size-4" /></Button>
+          <Stepper className="inline-flex w-[6.75rem]" lessLabel={`One less ${item.name}`} moreLabel={`One more ${item.name}`} lessDisabled={item.quantity <= 0} onLess={() => onQuantity(item.quantity - 1)} onMore={() => onQuantity(item.quantity + 1)}>
+            <QuantityInput value={item.quantity} onChange={onQuantity} label={item.name} />
+          </Stepper>
           <span className="ml-2 w-14 text-sm text-muted-foreground">{item.unit || "pcs"}</span>
         </div>
         <select className={`${field} w-36`} value={item.condition} onChange={(event) => onCondition(event.target.value)} aria-label={`Condition of ${item.name}`}>
@@ -345,11 +342,46 @@ function ItemRow({ item, data, showBranch, onQuantity, onCondition, onEdit, onRe
   </div>;
 }
 
+/*
+ * Quantity: one rounded box the height of the other fields, with small − and + inside (owner, November 26, 2026: the
+ * separate 40 px buttons were too big). Taller on phones so a thumb still hits them.
+ */
+const stepperInput = "h-full min-w-0 flex-1 border-0 bg-transparent! p-0 text-center text-sm tabular-nums shadow-none! outline-none min-h-0!";
+const stepButton = "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-muted hover:text-foreground active:scale-90 disabled:pointer-events-none disabled:opacity-40 max-md:size-9";
+
+function Stepper({ className, lessLabel, moreLabel, lessDisabled, onLess, onMore, children }: { className: string; lessLabel: string; moreLabel: string; lessDisabled?: boolean; onLess: () => void; onMore: () => void; children: React.ReactNode }) {
+  return <div className={`${className} h-9 items-center gap-0.5 rounded-md border border-input bg-background px-1 focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/20 max-md:h-11`}>
+    <button type="button" className={stepButton} aria-label={lessLabel} disabled={lessDisabled} onClick={onLess}><Minus className="size-3.5" /></button>
+    {children}
+    <button type="button" className={stepButton} aria-label={moreLabel} onClick={onMore}><Plus className="size-3.5" /></button>
+  </div>;
+}
+
+const NEW_CATEGORY = "__new_category__";
+
+/**
+ * Category: the same dropdown as Condition (owner, November 26, 2026), listing the categories already in use;
+ * "New category…" turns it into a box to type one, and "Back to list" returns.
+ */
+function CategoryField({ id, value, categories, onChange }: { id: string; value: string; categories: string[]; onChange: (value: string) => void }) {
+  const [typing, setTyping] = useState(false);
+  const listed = !value || categories.includes(value);
+  if (typing || !listed) return <div className="flex gap-1">
+    <Input id={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder="New category" autoFocus={typing} className="h-9" />
+    <Button type="button" variant="ghost" size="sm" className="shrink-0 px-2 text-xs" onClick={() => { setTyping(false); if (!categories.includes(value)) onChange(""); }}>Back to list</Button>
+  </div>;
+  return <select id={id} className={field} value={value} onChange={(event) => { if (event.target.value === NEW_CATEGORY) { setTyping(true); onChange(""); } else onChange(event.target.value); }}>
+    <option value="">No category</option>
+    {categories.map((name) => <option key={name} value={name}>{name}</option>)}
+    <option value={NEW_CATEGORY}>New category…</option>
+  </select>;
+}
+
 /** The quantity, typed directly; saved when the field is left or Enter is pressed. */
 function QuantityInput({ value, onChange, label }: { value: number; onChange: (next: number) => void; label: string }) {
   const [typed, setTyped] = useState<string | null>(null);
   const commit = () => { if (typed !== null && typed !== "" && Number(typed) !== value) onChange(Number(typed)); setTyped(null); };
-  return <Input inputMode="numeric" aria-label={`Quantity of ${label}`} className="h-8 w-16 rounded-none text-center font-semibold tabular-nums"
+  return <input inputMode="numeric" aria-label={`Quantity of ${label}`} className={`${stepperInput} font-semibold`}
     value={typed ?? String(value)} onFocus={(event) => event.target.select()} onChange={(event) => setTyped(event.target.value.replace(/\D/g, ""))}
     onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commit(); (event.target as HTMLInputElement).blur(); } if (event.key === "Escape") setTyped(null); }} />;
 }
@@ -369,7 +401,7 @@ function EditItem({ item, data, categories, onDone, say }: { item: InventoryItem
   return <form onSubmit={(event) => void save(event)} className="space-y-3 bg-muted/30 p-3">
     <div className="grid gap-3 md:grid-cols-12">
       <div className="space-y-1 md:col-span-4"><Label htmlFor={`e-name-${item.id}`}>Item</Label><Input id={`e-name-${item.id}`} value={draft.name} onChange={set("name")} required minLength={2} autoFocus /></div>
-      <div className="space-y-1 md:col-span-3"><Label htmlFor={`e-cat-${item.id}`}>Category</Label><Input id={`e-cat-${item.id}`} list="inv-categories-edit" value={draft.category} onChange={set("category")} /><datalist id="inv-categories-edit">{categories.map((name) => <option key={name} value={name} />)}</datalist></div>
+      <div className="space-y-1 md:col-span-3"><Label htmlFor={`e-cat-${item.id}`}>Category</Label><CategoryField id={`e-cat-${item.id}`} value={draft.category} categories={categories} onChange={(category) => setDraft((current) => ({ ...current, category }))} /></div>
       <div className="space-y-1 md:col-span-1"><Label htmlFor={`e-unit-${item.id}`}>Unit</Label><Input id={`e-unit-${item.id}`} list="inv-units-edit" value={draft.unit} onChange={set("unit")} /><datalist id="inv-units-edit">{data.units.map((unit) => <option key={unit} value={unit} />)}</datalist></div>
       <div className="space-y-1 md:col-span-2"><Label htmlFor={`e-min-${item.id}`}>Alert at or below</Label><Input id={`e-min-${item.id}`} inputMode="numeric" value={draft.minQuantity} onChange={(event) => setDraft((current) => ({ ...current, minQuantity: event.target.value.replace(/\D/g, "") }))} placeholder="none" /></div>
       <div className="space-y-1 md:col-span-2"><Label htmlFor={`e-cost-${item.id}`}>Unit cost (₱)</Label><Input id={`e-cost-${item.id}`} inputMode="decimal" value={draft.unitCost} onChange={(event) => setDraft((current) => ({ ...current, unitCost: event.target.value.replace(/[^\d.]/g, "") }))} placeholder="none" /></div>

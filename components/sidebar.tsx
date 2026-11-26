@@ -79,7 +79,7 @@ export function Sidebar({ sections, roles, activeRole, onRoleChange, user, count
 
     <aside
       aria-label="Main navigation"
-      className={`glass-sidebar fixed inset-y-2 left-2 z-50 flex w-[min(18rem,86vw)] shrink-0 flex-col overflow-hidden rounded-2xl transition-[width,translate] duration-300 ease-(--ease-drawer) md:duration-200 md:static md:m-3 md:mr-0 md:h-[calc(100dvh-1.5rem)] md:translate-x-0 ${collapsed ? "md:w-[4.5rem]" : "md:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1rem)]"}`}
+      className={`glass-sidebar fixed inset-y-2 left-2 z-50 flex w-[min(18rem,86vw)] shrink-0 flex-col overflow-hidden rounded-2xl transition-[width,translate] duration-300 ease-(--ease-drawer) md:duration-200 md:static md:m-3 md:mr-0 md:h-[calc(100%-1.5rem)] md:translate-x-0 ${collapsed ? "md:w-[4.5rem]" : "md:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1rem)]"}`}
     >
       <div className={`flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border ${collapsed ? "md:justify-center md:px-2" : "px-4"}`}>
         <Link href="/" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring md:flex-none" aria-label="Dayong Monitoring System home">

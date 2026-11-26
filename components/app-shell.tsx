@@ -140,7 +140,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (isLogin) return <>{children}</>;
 
   return (
-    <div className="flex h-dvh min-h-0 w-full overflow-hidden">
+    // The app floats as one rounded glass window over the page light from tablets up (.app-stage/.app-frame in
+    // app/globals.css, November 26, 2026); on a phone the frame takes the whole screen as before.
+    <div className="app-stage h-dvh min-h-0 w-full overflow-hidden">
+    <div className="app-frame flex h-full min-h-0 w-full overflow-hidden">
       <Sidebar sections={sections} roles={roles} activeRole={activeRole} onRoleChange={chooseRole} user={user} counts={counts} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <main className="app-main min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
         <Topbar sections={sections} activeRole={activeRole} user={user} waiting={sections.flatMap((section) => section.items.flatMap((item) => [item, ...(item.children ?? [])])).reduce((total, item, index, all) => all.findIndex((other) => other.href === item.href) === index ? total + (counts[item.href] ?? 0) : total, 0)} onMenu={() => setMobileOpen(true)} />
@@ -152,6 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+    </div>
       {/* Day-end Clearing review for the Entry Clerk (components/clearing-day-end.tsx). */}
       {user && <ClearingDayEndPrompt />}
       <SaveQueueNotice />

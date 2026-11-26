@@ -204,10 +204,17 @@
    * right, a faint violet haze at the top. Pastel here; the dark theme uses the same layout, stronger.
    */
   --page-mesh:
-    radial-gradient(ellipse 48% 58% at 4% 50%, rgb(56 205 214 / 24%) 0, transparent 70%),
-    radial-gradient(ellipse 52% 60% at 96% 94%, rgb(167 92 240 / 30%) 0, transparent 70%),
-    radial-gradient(ellipse 46% 36% at 62% -4%, rgb(187 151 234 / 26%) 0, transparent 70%),
-    linear-gradient(160deg, #f4f1fb 0%, #f2f4f9 55%, #f3effa 100%);
+    radial-gradient(circle at 10% 8%, rgb(56 205 214 / 30%) 0, transparent 26%),
+    radial-gradient(circle at 90% 12%, rgb(140 110 245 / 30%) 0, transparent 28%),
+    radial-gradient(circle at 18% 92%, rgb(120 100 240 / 26%) 0, transparent 26%),
+    radial-gradient(circle at 70% 96%, rgb(56 205 214 / 24%) 0, transparent 26%),
+    radial-gradient(ellipse 48% 58% at 4% 50%, rgb(56 205 214 / 16%) 0, transparent 70%),
+    radial-gradient(ellipse 52% 60% at 96% 94%, rgb(167 92 240 / 24%) 0, transparent 70%),
+    linear-gradient(160deg, #f1eef9 0%, #eef0f7 55%, #f0ecf8 100%);
+  /* The floating window (.app-frame): a thin white sheet, a bright top edge, a long soft violet-tinted shadow. */
+  --frame-fill: linear-gradient(160deg, rgb(255 255 255 / 52%), rgb(255 255 255 / 30%));
+  --frame-border: rgb(255 255 255 / 70%);
+  --frame-shadow: inset 0 1px 0 rgb(255 255 255 / 85%), 0 2px 6px rgb(60 30 110 / 5%), 0 40px 90px -30px rgb(60 30 110 / 32%);
 }
 
 .dark {
@@ -310,10 +317,16 @@
   --nav-active-icon: #c9a6ff;
   /* Broad blurred cyan (left middle) and violet (lower right) light on near-black navy, as in the reference. */
   --page-mesh:
-    radial-gradient(ellipse 46% 60% at 2% 48%, rgb(0 200 220 / 26%) 0, transparent 70%),
-    radial-gradient(ellipse 54% 64% at 98% 96%, rgb(177 77 255 / 34%) 0, transparent 70%),
-    radial-gradient(ellipse 44% 34% at 60% -6%, rgb(123 51 199 / 16%) 0, transparent 70%),
-    linear-gradient(180deg, #111926 0%, #0e141e 100%);
+    radial-gradient(circle at 10% 10%, rgb(0 200 170 / 30%) 0, transparent 24%),
+    radial-gradient(circle at 88% 10%, rgb(110 90 255 / 36%) 0, transparent 26%),
+    radial-gradient(circle at 20% 92%, rgb(100 80 240 / 32%) 0, transparent 24%),
+    radial-gradient(circle at 68% 96%, rgb(0 190 210 / 26%) 0, transparent 24%),
+    radial-gradient(ellipse 46% 60% at 2% 48%, rgb(0 200 220 / 14%) 0, transparent 70%),
+    radial-gradient(ellipse 54% 64% at 98% 96%, rgb(177 77 255 / 22%) 0, transparent 70%),
+    linear-gradient(180deg, #0f1622 0%, #0b111a 100%);
+  --frame-fill: linear-gradient(160deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1.5%)), rgb(13 19 30 / 58%);
+  --frame-border: rgb(220 235 255 / 16%);
+  --frame-shadow: inset 0 1px 0 rgb(255 255 255 / 9%), 0 2px 8px rgb(0 0 0 / 30%), 0 50px 110px -30px rgb(0 0 0 / 80%);
 }
 
 @layer base {
@@ -521,6 +534,32 @@
 @media (prefers-reduced-transparency: reduce) {
   .glass-sidebar, .glass-bar, .glass-card, main [data-slot="card"], .page-hero,
   .app-content section > :is(div, header):first-child:has(h1) { backdrop-filter: none; background: var(--card); }
+}
+
+/*
+ * The floating window (owner, November 26, 2026: "the website is floating and feels like iOS"). From tablets up the
+ * whole app sits in one rounded glass sheet, inset from the screen so the page light shows around it. The sheet has
+ * no backdrop-filter: a blurred parent would become the backdrop root and the sidebar and top bar inside it could no
+ * longer blur, and it keeps no transform after it opens, so fixed popups still place against the screen.
+ */
+@media (min-width: 768px) {
+  .app-stage { padding: 0.75rem; }
+  .app-frame {
+    max-width: 2000px;
+    margin-inline: auto;
+    border-radius: 1.75rem;
+    background: var(--frame-fill);
+    border: 1px solid var(--frame-border);
+    box-shadow: var(--frame-shadow);
+    animation: frame-enter 560ms var(--ease-out) backwards;
+  }
+  .app-main { border-radius: 0 1.75rem 1.75rem 0; }
+}
+@media (min-width: 1024px) { .app-stage { padding: 1.25rem 1.5rem; } }
+@media (min-width: 1536px) { .app-stage { padding: 2rem 2.75rem; } }
+
+@keyframes frame-enter {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
 }
 
 .app-main {
@@ -851,8 +890,9 @@ main [data-slot="card"].receipt-entry-card {
 @media print {
   @page { size: landscape; margin: 10mm; }
   html { color-scheme: light; }
-  body, body > div, main { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
-  body > div > aside, .app-topbar { display: none !important; }
+  body, body > div, .app-frame, main { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
+  .app-stage, .app-frame { padding: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; animation: none !important; }
+  .app-frame > aside, .app-topbar { display: none !important; }
   .page-hero, main [data-slot="card"] { box-shadow: none !important; background: #fff !important; backdrop-filter: none !important; }
   .mam-scroll { overflow: visible !important; }
   /* CEO/President dashboard: keep each card and chart whole on a page; editing controls are not printed. */
