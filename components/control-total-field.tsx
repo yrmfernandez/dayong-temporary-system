@@ -1,8 +1,12 @@
 "use client";
 
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cashCountTotal, controlTotalStatus, DENOMINATIONS, TURNOVER_NOTE_MAX, type CashCounts } from "@/lib/entry-controls";
+import { cashCountTotal, controlTotalStatus, DENOMINATIONS, TURNOVER_NOTE_MAX, varianceLabel, type CashCounts } from "@/lib/entry-controls";
 
 const TONE = { problem: "text-red-700", match: "text-emerald-700", variance: "text-amber-700" } as const;
 
@@ -35,43 +39,64 @@ export function ControlTotalField({ id, title, value, onChange, note, onNoteChan
 }
 
 const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+const BILLS = DENOMINATIONS.filter((denomination) => denomination >= 20);
+const COINS = DENOMINATIONS.filter((denomination) => denomination < 20);
 
 /**
  * Cash counted by denomination (owner, November 27, 2026): how many ₱1,000, ₱500, ₱100 … the MAS handed over for the
- * batch, with Fidelity and any penalty in it. Each row shows its subtotal; the total is compared with the expected cash.
+ * batch, with Fidelity and any penalty in it. It sits in the sticky save bar, so it stays one line there (total counted,
+ * expected cash, short / over) and the counter opens above it on Count cash: bills and coins in two even columns, every
+ * subtotal always shown so nothing jumps while typing, whole pieces only (digits).
  */
 function CashCountField({ id, counts, onCountsChange, note, onNoteChange, expected }: {
   id: string; counts: CashCounts; onCountsChange: (counts: CashCounts) => void;
   note: string; onNoteChange: (value: string) => void; expected: number | null;
 }) {
+  const [open, setOpen] = useState(false);
   const total = cashCountTotal(counts);
   const status = total ? controlTotalStatus(total, expected, true) : null;
+  const short = status?.tone === "variance" ? varianceLabel(status.difference) : status?.tone === "match" ? "Matches" : "";
+  const row = (denomination: number) => {
+    const key = String(denomination), pieces = Number(counts[key]) || 0;
+    return (
+      <label key={key} className="grid grid-cols-[3.75rem_4.5rem_minmax(0,1fr)] items-center gap-2 text-sm">
+        <span className="text-right font-medium tabular-nums">₱{denomination.toLocaleString("en-PH")}</span>
+        <Input id={denomination === 1000 ? `${id}-1000` : undefined} type="text" inputMode="numeric" autoComplete="off" maxLength={6} className="h-8 px-2 text-right tabular-nums" value={String(counts[key] ?? "")} placeholder="0"
+          onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value.replace(/\D/g, "") })} aria-label={`Pieces of ₱${denomination}`} />
+        <span className={`text-right tabular-nums ${pieces ? "" : "text-muted-foreground/60"}`}>{peso(pieces * denomination)}</span>
+      </label>
+    );
+  };
   return (
-    <fieldset className="space-y-2 rounded-lg border p-2">
-      <legend className="px-1 text-sm font-medium" title="Count the cash the MAS handed over for this batch, with Fidelity and any penalty: type how many of each bill and coin.">Cash counted *</legend>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-5">
-        {DENOMINATIONS.map((denomination) => {
-          const key = String(denomination), pieces = Number(counts[key]) || 0;
-          return (
-            <label key={key} className="flex items-center gap-1 text-xs">
-              <span className="w-12 shrink-0 text-right font-medium tabular-nums">₱{denomination.toLocaleString("en-PH")}</span>
-              <span className="text-muted-foreground">×</span>
-              <Input id={denomination === 1000 ? id : undefined} type="number" min="0" step="1" inputMode="numeric" className="h-8 w-16 px-2" value={String(counts[key] ?? "")} placeholder="0"
-                onWheel={(event) => event.currentTarget.blur()} onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value })} aria-label={`Pieces of ₱${denomination}`} />
-              {pieces > 0 && <span className="truncate text-muted-foreground tabular-nums">{peso(pieces * denomination)}</span>}
-            </label>
-          );
-        })}
+    <div className="w-full space-y-2 lg:w-auto">
+      {open && (
+        <div className="max-h-[55vh] overflow-y-auto rounded-lg border bg-background p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Count the cash by denomination</p>
+            <span className="flex gap-1">
+              <Button type="button" size="sm" variant="ghost" disabled={!total} onClick={() => onCountsChange({})}>Clear</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>Done</Button>
+            </span>
+          </div>
+          <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+            <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Bills</p>{BILLS.map(row)}</div>
+            <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coins</p>{COINS.map(row)}</div>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Everything the MAS handed over for this batch, with Fidelity and any penalty.</p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <Label htmlFor={open ? `${id}-1000` : id} className="whitespace-nowrap">Cash counted *</Label>
+        <Button id={id} type="button" size="sm" variant={total ? "outline" : "default"} aria-expanded={open} onClick={() => setOpen((value) => !value)} className="tabular-nums">
+          {total ? peso(total) : "Count cash"}{open ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+        </Button>
+        {expected !== null && <span className="whitespace-nowrap text-muted-foreground">Expected <strong className="tabular-nums text-foreground">{peso(expected)}</strong></span>}
+        {short && <span className={`whitespace-nowrap font-medium ${TONE[status!.tone]}`} title={status!.text}>{short}</span>}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span>Total counted <strong className="tabular-nums">{peso(total)}</strong></span>
-        {expected !== null && <span className="text-muted-foreground">Expected cash <strong className="tabular-nums text-foreground">{peso(expected)}</strong></span>}
-        {!total && <span className="text-xs text-red-700">Count the cash by denomination.</span>}
-        {status && <span className={`max-w-96 text-xs ${TONE[status.tone]}`}>{status.text}</span>}
-      </div>
+      {status?.tone === "variance" && <p className={`text-xs ${TONE.variance}`}>{status.text}</p>}
       {status?.tone === "variance" && (
         <Input aria-label="Cash count note" className="w-full max-w-md" maxLength={TURNOVER_NOTE_MAX} value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Note on the short/over (optional), e.g. MAS to pay tomorrow" />
       )}
-    </fieldset>
+    </div>
   );
 }

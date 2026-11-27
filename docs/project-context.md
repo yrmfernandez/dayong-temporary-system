@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### New Sales and Collections: Cash counted layout fixed (2026-11-27)
+
+- **Reported (owner):** the Cash counted UI is buggy.
+- **Found:** the ten denomination boxes sat inside the sticky save bar; on New Sales the bar puts totals, the field and buttons side by side, so the grid was squeezed and overlapped; subtotals appeared and disappeared while typing, so rows jumped; number boxes had spinners and took decimals.
+- **Done:** `components/control-total-field.tsx`: in the bar, one line (Cash counted, the total or a Count cash button, Expected, Matches / Short / Over); Count cash opens the counter above it: Bills and Coins in two even columns (one column on a phone), every subtotal always shown, digits only, Clear and Done, scrolls inside itself on a short screen. `components/new-sales-form.tsx`: the bar wraps on a Cash batch so the field gets its own line. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, docs; in progress: none; to do: owner checks it in a browser (not seen here: running the app locally connects to the live database).
+
 ### New Sales and Collections: the cash is counted by denomination (2026-11-27)
 
 - **Asked (owner):** the cash count means how many ₱1,000, ₱500, ₱100 and so on, not one amount.

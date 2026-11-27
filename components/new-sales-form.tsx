@@ -3219,7 +3219,7 @@ Is this cash part of that handover?`) ? "same"
       {/* SAVE BAR (October 9, 2026): fixed to the bottom of the screen with the totals, the control total and Save, so a
           batch is finished without scrolling to the end of the page. */}
       <div className="sticky bottom-0 z-20 rounded-t-xl border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+        <div className={`flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3 ${allCash && !masMode && !returnedEdit ? "lg:flex-wrap" : ""}`}>
           <div className="min-w-0 flex-1 text-sm">
             {/* MAS on a phone: three short columns, as on Submit Collections, so the bar leaves the form its room. */}
             {masMode ? <dl className="grid grid-cols-3 gap-2 text-center md:flex md:flex-wrap md:items-baseline md:gap-x-4 md:gap-y-1 md:text-left">
