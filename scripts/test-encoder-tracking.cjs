@@ -1045,6 +1045,16 @@ test('an Administrator deletes one account entered by mistake; the member and th
   assert.equal((await query("select module from record_corrections where record_id = 'ENR-2'"))[0].module, 'Delete account');
 });
 
+test('an inactive program takes no new sale from a MAS submission (owner, November 27, 2026)', () => {
+  const h = harness();
+  const { inactiveProgramProblem } = h.load('lib/sale-submissions.ts');
+  const programs = [{ id: 'P1', code: 'A', name: 'Plan A', status: 'active' }, { id: 'P2', code: 'B', name: 'Plan B', status: 'inactive' }];
+  assert.equal(inactiveProgramProblem([{ program: { programId: 'P1' } }, { program: { programCode: 'A' } }], programs), '', 'active programs pass, by id or by code');
+  assert.match(inactiveProgramProblem([{ program: { programId: 'P1' } }, { program: { programId: 'P2' } }], programs), /^Sale #2: Plan B is inactive/);
+  assert.match(inactiveProgramProblem([{ program: { programCode: 'B' } }], programs), /inactive/, 'older cards name the program by code');
+  assert.equal(inactiveProgramProblem([{ program: {} }, { program: { programId: 'NONE' } }], programs), '', 'no program, or one not found, is left to the clerk');
+});
+
 test('renumbering starts from the first payment of the account, never from the DOI', () => {
   const h = harness();
   const { renumber, numberingStart } = h.load('lib/entry-edit.ts');

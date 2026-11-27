@@ -34,6 +34,19 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Clerk report: finance wording and a cash position statement from December 1, 2026 (2026-11-27)
+
+- **Asked (owner):** simplify the report, especially the cash summary, without losing any function, in finance / accounting wording; a mockup first (`clerk-report-mockup.html` in the owner's Downloads, approved), then use it only from December 1.
+- **Done:** `components/clerk-report.tsx`: `finWording` (report period starting on or after `CARRY_START`, December 1, 2026) switches the report to the mockup's wording; earlier reports are unchanged. `CashPosition` shows Opening cash balance + Cash receipts − Cash disbursements = Ending cash on hand with the same figures, adds Total cash receipts and Net cash flow, drops TOTALS (it repeated Total Cash In), moves bank / e-wallet and non-cash records to a memo, and keeps Give to Finance and the opening-balance notes. Section titles, columns, remark boxes, the MAS summary (COLLECTION EFFICIENCY) and the record tabs and their form labels follow. No server change, no migration. Docs: `docs/system-guide.md`, `docs/reports.md`. A CSV Download tried first by mistake was removed before commit.
+- **Status:** done: the change, docs; in progress: none; to do: owner checks a December report in a browser on December 1 (a November report still shows the old names).
+
+### Programs: an inactive program is no longer sold, but still collected (2026-11-27)
+
+- **Asked (owner):** check that an inactive program cannot be sold again; if not, make it so, but keep it collectable.
+- **Found:** already refused by the clerk's New Sales save (`app/api/sales/route.ts`) and the returned-batch editor (`lib/batch-edit.ts`); Collections and Collector submissions never check the program status, so it was already collectable. Three gaps: the New Sales program list offered inactive programs; a MAS could submit a sale on one (the clerk was then stuck at save); Edit / Corrections could move a sale onto one (its screen hid them, the server did not).
+- **Done:** `components/new-sales-form.tsx` lists only active programs (a card already on an inactive one shows it marked Inactive with a note); `lib/sale-submissions.ts` `inactiveProgramProblem` refuses a MAS submission with an inactive program (a card with no program or one not found is left to the clerk); `lib/entry-edit.ts` refuses moving a sale onto an inactive program (a sale already on one may still be corrected). Test in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, a test, docs; in progress: none; to do: owner tries it in a browser (set a program inactive, check New Sales and a collection on one of its accounts).
+
 ### Reports: Entry Clerks open earlier weekly, monthly and yearly reports (2026-11-26)
 
 - **Asked (owner):** on the Entry Clerk's Reports, previous reports can be seen only in Daily, not in Weekly, Monthly and Yearly.

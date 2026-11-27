@@ -7,7 +7,7 @@ import { coveredKinds, type ClearingCovers } from "@/lib/clearing-kinds";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
 import { getEmployees } from "@/lib/employees";
 import { getEncoder } from "@/lib/encoder-context";
-import { getBranches } from "@/lib/google-sheets-data";
+import { getBranches, getPrograms } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { submissionDeadlines } from "@/lib/work-calendar";
@@ -123,6 +123,20 @@ export async function listMySubmissions(user: SessionUser) {
 }
 
 /**
+ * The first sale card whose program is not active, as a message; "" when every card's program is active. A card names
+ * its program by id, or by code on older cards. A card with no program, or one not found, is left to the clerk's checks.
+ */
+export function inactiveProgramProblem(sales: Array<{ program?: Record<string, unknown> }>, programs: Array<{ id: string; code?: string; name: string; status: string }>) {
+  for (const [index, sale] of sales.entries()) {
+    const id = text(sale.program?.programId), code = text(sale.program?.programCode);
+    if (!id && !code) continue;
+    const program = programs.find((item) => (id && item.id === id) || (!id && code && item.code === code));
+    if (program && program.status !== "active") return `Sale #${index + 1}: ${program.name} is inactive and takes no new sales. Choose an active program.`;
+  }
+  return "";
+}
+
+/**
  * Saves a MAS's sale cards as a new submission, or submits again one returned before November 3, 2026. Each card's
  * Date Enrolled is the submission day, and its branch and MAS are the submitter's. The clerk checks and corrects every detail when saving.
  */
@@ -139,6 +153,9 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
     return { ...sale, program: { ...sale.program, dateEnrolled: today, branch: branch.name, mas: profile.name } };
   });
   await refuseAnotherPerson(sales);
+  // An inactive program takes no new sales (owner, November 27, 2026); its existing accounts are still collected.
+  const inactive = inactiveProgramProblem(sales, await getPrograms());
+  if (inactive) throw new Error(inactive);
   const totalAmount = Math.round(sales.reduce((sum, sale) => sum + (Number(sale.program.amountPaid) || 0), 0) * 100) / 100;
   const actor = getEncoder();
   const values = { branch_id: branch.id, branch: branch.name, mas_employee_id: profile.employeeId, mas: profile.name, status: "Submitted", sales, sale_count: sales.length, total_amount: totalAmount, submitted_at: actor.encodedAt, return_reason: null, reviewed_by_employee_id: null, reviewed_by_name: null, reviewed_at: null };

@@ -154,7 +154,7 @@ A program contains a stable ID, code/name, monthly `basePay`, status, descriptio
 
 **Search and bulk edit (October 7, 2026).** The Program List has a search box (code, name, ID, category, status, description; every word must match). **Filters (November 6, 2026):** Status, Category (or No category), Fixed or Flexible, and Registration fee, combined with the search; the line under them counts the programs shown and clears everything. People who manage configuration can tick programs, use **Select all** (it selects the programs the search and filters show), then **Edit selected**: tick only the settings to change (category, status, New Sale / Collection amount editable, flexible payments, monthly maximum, registration fee, age restriction, New Sale incentive) and apply them to every selected program. Each program is checked with the same rules as a single edit; if one fails (for example a monthly maximum below its base pay) nothing is saved and the error names that program. Code, name, base pay, total payable and incentive periods stay per program. Route: `PATCH /api/programs` → `updateProgramsBulk` in `lib/master-data-crud.ts`.
 
-Program categories organize plans; they do not change the payment math. Inactive programs are excluded from new enrollment selection. Age-restricted enrollment uses age in whole years **today**, not the stored age text: subtract one year if the birthday has not occurred yet. A restricted program needs a minimum age; its maximum can be blank. Both limits are inclusive.
+Program categories organize plans; they do not change the payment math. Inactive programs are excluded from new enrollment selection. **An inactive program is no longer sold, but its accounts are still collected (checked November 27, 2026):** the New Sales program list offers only active programs (a returned MAS card already on an inactive one shows it marked Inactive, with a note to choose an active program); the clerk's New Sales save, the returned-batch editor, a MAS submission (`inactiveProgramProblem` in [sale-submissions.ts](../lib/sale-submissions.ts)) and Edit / Corrections moving a sale onto another program ([entry-edit.ts](../lib/entry-edit.ts)) all refuse it. A sale already on an inactive program may still be corrected. Collections and Collector submissions never check the program's status, only the member's account (Deactivated accounts and Deceased members take none), so existing accounts in an inactive program keep being collected. Age-restricted enrollment uses age in whole years **today**, not the stored age text: subtract one year if the birthday has not occurred yet. A restricted program needs a minimum age; its maximum can be blank. Both limits are inclusive.
 
 ### Amount locking
 
@@ -724,6 +724,33 @@ Remaining Cash on Hand = Total Cash In − Total Cash Out
 Cash Beg        = the Cash Beg the clerk typed for this report; zero when none is typed
                   (from December 1, 2026: the cash held at the start, carried from Finance-confirmed cash counts)
 ```
+
+**Finance wording from December 1, 2026 (owner, November 27, 2026, approved from a mockup; `finWording` and `CashPosition` in [clerk-report.tsx](../components/clerk-report.tsx)).** Reports whose period starts on or after December 1, 2026 show the cash summary as a **cash position statement**; earlier reports keep the names above. Same figures, nothing removed except the repeated TOTALS:
+
+```text
+Opening cash balance                      (was Cash Beg/Pending COH; carried from the cash count, or typed)
+Cash receipts
+  New membership sales                    (was Sales Net, net of incentives)
+  Collections on accounts                 (was Collection Net, net of incentives, cash only)
+  Fidelity bond contributions             (was Fidelity Bond)
+  Penalties collected                     (was Penalty)
+  Cash short / over on turnover           (was Turnover short/over)      shown when not zero or with a turnover batch
+  Short / over settled                    (was Turnover settled)         shown when not zero
+  Cash received, not yet recorded         (was Pending cash, to be encoded)  shown when not zero
+Total cash receipts                       new: Total cash available − Opening cash balance
+Total cash available                      (was Total Cash In)
+Cash disbursements
+  Operating expenses                      (was Expenses)
+  Bank deposits                           (was Cash forwarded to bank)
+  Cash remitted to Finance                (was Cash turned over to Finance)  shown when not zero
+Total cash disbursements                  (was Total Cash Out/Expense)
+Net cash flow for the day/week/month/year new: Total cash receipts − Total cash disbursements
+Ending cash on hand                       (was Remaining Cash on Hand) = Opening cash balance + Net cash flow
+Memo: not counted in cash                 Bank / e-wallet receipts, Non-cash transfers recorded
+TOTALS                                    dropped (it repeated Total Cash In)
+```
+
+The rest of those reports follows: New Membership Sales, Collections on Accounts (columns Accounts, Gross, Incentives, Net, Fidelity bond, Penalty), Operating Expenses, Bank Deposits and Cash Remitted to Finance, Fidelity Bond Contributions Received, Cash Short / Over on Turnover (Turnover sheet, Encoded), the boxes Remarks, Open items, Other notes, the MAS summary's COLLECTION EFFICIENCY (Accounts due, Amount due, Collected %), and the record tabs Expenses, Bank deposit, Remit to Finance, Opening balance (with their form labels).
 
 **The real cash held, carried from cash counts (owner, November 24, 2026; from December 1, 2026; `lib/cash-position.ts`).** The goal: the weekly, monthly and yearly Remaining Cash on Hand is the real cash the clerk holds for the branch.
 - **Cash count:** on the report's **Cash count** tab the clerk records the cash physically held for the branch at the start of a day (amount, optional denominations, note); the first on December 1, 2026, again whenever the cash is counted. **Finance or an Administrator confirms** it on Remittances → **Cash counts** (not their own), seeing what the system expected that day (from the previous confirmed count) and the difference; a difference needs a note. A rejected count is counted again.

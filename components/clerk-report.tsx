@@ -138,6 +138,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   };
 
   const report = data?.report;
+  // Finance wording (owner, November 27, 2026, from the approved mockup): reports from December 1, 2026; earlier ones keep the old names.
+  const fin = Boolean(report && finWording(report));
   const own = Boolean(data?.isOwn && !review && !calendar);
   // An approved report is locked for the clerk until an Administrator allows editing it (lib/daily-audit.ts).
   const editable = own && !data?.audit.lock;
@@ -192,13 +194,13 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
             <ReportHeader report={report} />
 
             <div className="grid gap-3 xl:grid-cols-2 print:grid-cols-2">
-              <EntryTable title="New Sales Section" color={tone.sales} groupLabel={report.groupLabel} rows={report.newSales.rows} total={report.newSales.total} />
-              <EntryTable title="Collections Section" color={tone.collections} groupLabel={report.groupLabel} rows={report.collection.rows} total={report.collection.total} />
+              <EntryTable title={fin ? "New Membership Sales" : "New Sales Section"} fin={fin} color={tone.sales} groupLabel={report.groupLabel} rows={report.newSales.rows} total={report.newSales.total} />
+              <EntryTable title={fin ? "Collections on Accounts" : "Collections Section"} fin={fin} color={tone.collections} groupLabel={report.groupLabel} rows={report.collection.rows} total={report.collection.total} />
             </div>
 
             <div className="grid gap-3 xl:grid-cols-2 print:grid-cols-2">
-              <Grid title="Expenses/Other Cash Out Section" color={tone.expenses}
-                headers={["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
+              <Grid title={fin ? "Operating Expenses" : "Expenses/Other Cash Out Section"} color={tone.expenses}
+                headers={fin ? ["Expense account", report.whenLabel, "Amount", "Receipt / voucher no.", "Purpose", "Remarks"] : ["Account Name/Type of Expense", report.whenLabel, "Amount", "Receipt/CV", "Purpose", "Rmks"]}
                 rows={report.expenses.map((item) => [item.account === BURIAL_ACCOUNT && item.payee ? `${item.account}: ${item.payee}` : item.account, item.when, money(item.amount), item.receipt, item.purpose, item.remarks])}
                 total={report.expenseTotal}
                 action={(index) => <span className="flex flex-wrap items-center justify-center gap-2 print:hidden">
@@ -207,8 +209,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   {!report.expenses[index].photoIds.length && <span className="text-xs text-amber-700 dark:text-amber-400">No receipt photo</span>}
                   {editable && <><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingExpense(report.expenses[index]); setTimeout(() => document.getElementById("expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this expense being deleted?", { required: true }); if (reason) void act({ action: "delete-expense", id: report.expenses[index].id, reason }); }}>Delete</button></>}
                 </span>} />
-              <Grid title="Cash Flow Transaction and Other Cash Ins" color={tone.cashFlow}
-                headers={["Bank Account / Received by", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
+              <Grid title={fin ? "Bank Deposits and Cash Remitted to Finance" : "Cash Flow Transaction and Other Cash Ins"} color={tone.cashFlow}
+                headers={fin ? ["Bank account / received by", report.whenLabel, "Amount", "Transfer type", "MAS", "Remarks"] : ["Bank Account / Received by", report.whenLabel, "Amount", "Type of Transfer", "MAS", "Rmks"]}
                 rows={report.cashFlowTotals
                   // Monthly and yearly: the total of each week / month (owner, October 20, 2026); deposits are edited on the daily or weekly report.
                   ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
@@ -219,8 +221,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
             {(report.fidelityReceived.length > 0 || own) && (
               // Every Fidelity received: with a batch, or handed in after encoding; the total is the Fidelity Bond line.
-              <Grid title="Fidelity received" color={tone.cashFlow}
-                headers={["MAS", report.whenLabel, "Amount", "Status", "Rmks", "Ref"]}
+              <Grid title={fin ? "Fidelity Bond Contributions Received" : "Fidelity received"} color={tone.cashFlow}
+                headers={["MAS", report.whenLabel, "Amount", "Status", fin ? "Remarks" : "Rmks", "Ref"]}
                 rows={report.fidelityReceived.map((item) => [item.masName, item.when, money(item.amount), item.status, item.remarks, item.id])}
                 total={report.cash.fidelity}
                 action={editable ? (index) => { const item = report.fidelitySlips.find((slip) => slip.id === report.fidelityReceived[index].id); return item && ["Pending Approval", "Discrepancy"].includes(item.status) ? <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingFidelity(item); setTimeout(() => document.getElementById("fidelity-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this Fidelity entry being voided?", { required: true }); if (reason) void act({ action: "void-fidelity", id: item.id, reason }); }}>Void</button></span> : null; } : undefined} />
@@ -228,8 +230,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
 
             {(report.turnover.encoded.length > 0 || report.turnover.settled.length > 0) && (
               // Each turnover difference behind the Turnover lines; an open one stops the audit approval.
-              <Grid title={`Turnover short/over${report.turnover.openCount ? ` (${report.turnover.openCount} not settled: the report cannot be approved yet)` : ""}`} color={tone.cashFlow}
-                headers={["MAS", "Batch", "Sheet", "Entries", "Short/over", "Status", "Rmks", "Ref"]}
+              <Grid title={`${fin ? "Cash Short / Over on Turnover" : "Turnover short/over"}${report.turnover.openCount ? ` (${report.turnover.openCount} not settled: the report cannot be approved yet)` : ""}`} color={tone.cashFlow}
+                headers={fin ? ["MAS", "Batch", "Turnover sheet", "Encoded", "Short / over", "Status", "Remarks", "Ref"] : ["MAS", "Batch", "Sheet", "Entries", "Short/over", "Status", "Rmks", "Ref"]}
                 rows={[
                   ...report.turnover.encoded.map((item) => [item.mas, `${item.kind} ${showDate(item.dateRemitted)}`, money(item.controlTotal), money(item.systemTotal), money(item.difference), item.status === "Open" ? "Not settled" : item.settlement || "Settled", item.resolution || item.note, item.id]),
                   ...report.turnover.settled.map((item) => [item.mas, `Settled ${showDate(item.settledOn)}`, "", "", money(item.amount), item.settlement, item.resolution, item.id]),
@@ -238,6 +240,8 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
             )}
 
             <div className="grid gap-3 lg:grid-cols-[1.1fr_0.8fr_1.6fr] print:grid-cols-[1.1fr_0.8fr_1.6fr]">
+              {fin ? <CashPosition report={report} giveToFinance={editable && data?.branch !== "all" && report.cash.remainingCashOnHand > 0
+                ? () => { setFinanceRequest((count) => count + 1); setTimeout(() => document.getElementById("finance-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); } : null} /> :
               <dl className="space-y-0.5">
                 <Cash label={report.cash.carries && !report.cash.openingMissing ? "Cash on hand at start (carried)" : "Cash Beg/Pending COH"} value={report.cash.cashBeg} color={tone.cashBeg} />
                 {/* From December 1, 2026 the opening cash is carried from Finance-confirmed cash counts (lib/cash-position.ts). */}
@@ -266,18 +270,18 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                   <Button type="button" size="sm" variant="outline" onClick={() => { setFinanceRequest((count) => count + 1); setTimeout(() => document.getElementById("finance-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }}
                     title="Record cash you hand to Finance; change the amount if you give less and the rest is carried to the next day">Give to Finance</Button></div>}
                 <div className="flex justify-end gap-6 pt-3 font-bold italic"><span>TOTALS</span><span className="w-28 text-right">{money(report.cash.totals)}</span></div>
-              </dl>
-              <NoteBox title="Specific Rmks" text={report.notes.specificRemarks} />
+              </dl>}
+              <NoteBox title={fin ? "Remarks" : "Specific Rmks"} text={report.notes.specificRemarks} />
               <div className="space-y-3">
-                <NoteBox title="Pending Transactions:" text={report.notes.pendingTransactions} />
-                <NoteBox title="Other Comments/Rmks" text={report.notes.otherComments} />
+                <NoteBox title={fin ? "Open items" : "Pending Transactions:"} text={report.notes.pendingTransactions} />
+                <NoteBox title={fin ? "Other notes" : "Other Comments/Rmks"} text={report.notes.otherComments} />
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {report && kind !== "daily" && <MasSummary report={report} />}
+      {report && kind !== "daily" && <MasSummary report={report} fin={fin} />}
 
       {report && editable && data?.branch !== "all" && <RecordPanel key={`${report.kind}-${report.from}-${report.branch}-${editingDeposit?.id ?? ""}-${editingFidelity?.id ?? ""}-${editingExpense?.id ?? ""}`} report={report} cashCounts={data?.cashCounts ?? []} act={act} saved={saved} saving={saving} editing={editingDeposit} onEditDone={() => setEditingDeposit(null)}
         editingExpense={editingExpense} onExpenseDone={() => setEditingExpense(null)}
@@ -572,14 +576,14 @@ function ReportHeader({ report }: { report: Report }) {
   );
 }
 
-function EntryTable({ title, color, groupLabel, rows, total }: { title: string; color: string; groupLabel: string; rows: ReportLine[]; total: ReportLine }) {
+function EntryTable({ title, fin, color, groupLabel, rows, total }: { title: string; fin: boolean; color: string; groupLabel: string; rows: ReportLine[]; total: ReportLine }) {
   const cells = (line: ReportLine) => [String(line.accounts || "-"), money(line.gross), money(line.incentives), money(line.net), money(line.fidelity), money(line.penalty)];
   const filler = Math.max(0, 5 - rows.length);
   return (
     <table className="w-full border-collapse border text-[12px]">
       <thead>
         <tr><th colSpan={7} className={`p-1 text-center font-bold ${color}`}>{title}</th></tr>
-        <tr className="border-b">{[groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond", "Penalty"].map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
+        <tr className="border-b">{(fin ? [groupLabel, "Accounts", "Gross", "Incentives", "Net", "Fidelity bond", "Penalty"] : [groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond", "Penalty"]).map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
       </thead>
       <tbody>
         {rows.map((line) => <tr key={line.label} className="border-b"><td className="break-words border-r p-1 font-medium">{line.label}</td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
@@ -607,6 +611,75 @@ function Grid({ title, color, headers, rows, total, action }: { title: string; c
   );
 }
 
+/**
+ * The finance wording and the cash position statement (owner, November 27, 2026, from the approved mockup): reports
+ * from December 1, 2026, the day the opening cash is carried from cash counts (CARRY_START). Earlier reports keep the old names.
+ */
+function finWording(report: Report) { return report.from >= CARRY_START; }
+
+/**
+ * The cash summary as a cash position statement: Opening cash balance + Cash receipts − Cash disbursements = Ending cash
+ * on hand. Same figures as the old box (lib/clerk-report.ts); Total cash receipts and Net cash flow are added, TOTALS
+ * (it repeated Total Cash In) is dropped, and bank / e-wallet and non-cash records move to a memo, not counted.
+ */
+function CashPosition({ report, giveToFinance }: { report: Report; giveToFinance: (() => void) | null }) {
+  const cash = report.cash;
+  const receipts = Math.round((cash.totalCashIn - cash.cashBeg) * 100) / 100;
+  const net = Math.round((receipts - cash.totalCashOut) * 100) / 100;
+  const period = report.kind === "daily" ? "day" : report.kind === "weekly" ? "week" : report.kind === "monthly" ? "month" : "year";
+  const head = (text: string) => <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{text}</p>;
+  const line = (label: string, value: number, note = "", color = "") => (
+    <div className="flex items-start justify-between gap-3 pl-3">
+      <dt>{label}{note && <span className="block text-[11px] text-muted-foreground">{note}</span>}</dt>
+      <dd className={`w-28 shrink-0 px-1 text-right tabular-nums ${color}`}>{money(value)}</dd>
+    </div>
+  );
+  const total = (label: string, value: number, color = "", note = "") => (
+    <div className="flex items-start justify-between gap-3 border-t pt-0.5 font-bold">
+      <dt>{label}{note && <span className="block text-[11px] font-normal text-muted-foreground">{note}</span>}</dt>
+      <dd className={`w-28 shrink-0 px-1 text-right tabular-nums ${color}`}>{money(value)}</dd>
+    </div>
+  );
+  const memo = cash.nonCashNet !== 0 || cash.nonCashRecorded !== 0;
+  return (
+    <dl className="space-y-0.5">
+      <div className="flex items-start justify-between gap-3 font-bold"><dt>Opening cash balance</dt><dd className={`w-28 shrink-0 px-1 text-right tabular-nums ${tone.cashBeg}`}>{money(cash.cashBeg)}</dd></div>
+      {cash.carries && cash.carriedFrom.length > 0 && <p className="text-right text-[11px] text-muted-foreground">Carried from the cash count{cash.carriedFrom.length > 1 ? "s" : ""} {cash.carriedFrom.map((count) => `${count.branch} ${showDate(count.date)} ${money(count.amount)}`).join("; ")}</p>}
+      {cash.openingMissing && <p className="text-right text-[11px] font-semibold text-amber-700 dark:text-amber-400">No cash count confirmed yet for this branch: record your count on the Cash count tab. Until Finance confirms it, the typed opening balance is used.</p>}
+      {cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {cash.cashBegEdit.updatedBy}: {cash.cashBegEdit.reason}</p>}
+
+      {head("Cash receipts")}
+      {line("New membership sales", cash.salesNet, "net of incentives")}
+      {line("Collections on accounts", cash.collectionNet, cash.nonCashNet ? "net of incentives, cash only" : "net of incentives")}
+      {line("Fidelity bond contributions", cash.fidelity)}
+      {line("Penalties collected", cash.penalty)}
+      {(cash.turnoverShortOver !== 0 || report.turnover.encoded.length > 0) && line("Cash short / over on turnover", cash.turnoverShortOver, "short is negative, over is positive", cash.turnoverShortOver ? "text-amber-700 dark:text-amber-400" : "")}
+      {cash.turnoverSettled !== 0 && line("Short / over settled", cash.turnoverSettled)}
+      {cash.pendingCash !== 0 && line("Cash received, not yet recorded", cash.pendingCash, "typed by the clerk; to be encoded")}
+      {total("Total cash receipts", receipts)}
+      {total("Total cash available", cash.totalCashIn, tone.cashIn, "opening balance + total receipts")}
+
+      {head("Cash disbursements")}
+      {line("Operating expenses", cash.expenses)}
+      {line("Bank deposits", cash.forwardedToBank)}
+      {(cash.turnedOverToFinance ?? 0) !== 0 && line("Cash remitted to Finance", cash.turnedOverToFinance)}
+      {total("Total cash disbursements", cash.totalCashOut, tone.cashOut)}
+
+      {head("Closing")}
+      {line(`Net cash flow for the ${period}`, net, "receipts − disbursements")}
+      {total("Ending cash on hand", cash.remainingCashOnHand, tone.remaining, report.kind === "daily" ? "becomes the next day's opening balance" : "")}
+      {giveToFinance && <div className="flex justify-end print:hidden">
+        <Button type="button" size="sm" variant="outline" onClick={giveToFinance} title="Record cash you hand to Finance; change the amount if you give less and the rest is carried to the next day">Give to Finance</Button></div>}
+
+      {memo && <div className="mt-2 rounded border border-dashed p-2 text-xs text-muted-foreground">
+        <p className="font-semibold">Memo: not counted in cash</p>
+        {cash.nonCashNet !== 0 && <p className="flex justify-between gap-3"><span>Bank / e-wallet receipts</span><span className="tabular-nums">{money(cash.nonCashNet)}</span></p>}
+        {cash.nonCashRecorded !== 0 && <p className="flex justify-between gap-3"><span>Non-cash transfers recorded</span><span className="tabular-nums">{money(cash.nonCashRecorded)}</span></p>}
+      </div>}
+    </dl>
+  );
+}
+
 function Cash({ label, value, color, strong }: { label: string; value: number; color?: string; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -630,7 +703,7 @@ function Check({ label, value }: { label: string; value: string }) {
 }
 
 /** The summary sheet: New Member and Collection by Marketing Account Staff for the period. */
-function MasSummary({ report }: { report: Report }) {
+function MasSummary({ report, fin }: { report: Report; fin: boolean }) {
   const line = (sales: ReportLine, collections: ReportLine) => [String(sales.accounts || ""), money(sales.gross), money(sales.incentives), String(collections.accounts || ""), money(collections.gross), money(collections.incentives)];
   // CVE (%): accounts due and amount due in the period, and Collection GROSS ÷ CVE GROSS (the sheet's G/J).
   const cve = (value: { accounts: number; gross: number; percent: number | null }) => [String(value.accounts || ""), value.gross ? money(value.gross) : "", value.percent === null ? "—" : `${value.percent.toFixed(2)}%`];
@@ -650,8 +723,8 @@ function MasSummary({ report }: { report: Report }) {
         </div>
         <table className="w-full border-collapse border text-[11px] sm:text-[12px]">
           <thead>
-            <tr><th rowSpan={2} className="border p-1">No.</th><th rowSpan={2} className="border p-1">Marketing Account Staff</th><th colSpan={3} className="border bg-orange-200 p-1 text-orange-950">NEW SALES</th><th colSpan={3} className="border bg-blue-200 p-1 text-blue-950">COLLECTION</th><th colSpan={3} className="border bg-green-200 p-1 text-green-950">CVE (%)</th></tr>
-            <tr>{["ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "CVE%"].map((header, index) => <th key={`${header}-${index}`} className="border p-1 text-[11px]">{header}</th>)}</tr>
+            <tr><th rowSpan={2} className="border p-1">No.</th><th rowSpan={2} className="border p-1">Marketing Account Staff</th><th colSpan={3} className="border bg-orange-200 p-1 text-orange-950">NEW SALES</th><th colSpan={3} className="border bg-blue-200 p-1 text-blue-950">COLLECTION</th><th colSpan={3} className="border bg-green-200 p-1 text-green-950">{fin ? "COLLECTION EFFICIENCY" : "CVE (%)"}</th></tr>
+            <tr>{(fin ? ["Accounts", "Gross", "Incentives", "Accounts", "Gross", "Incentives", "Accounts due", "Amount due", "Collected %"] : ["ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "INC.", "ACCTS", "GROSS", "CVE%"]).map((header, index) => <th key={`${header}-${index}`} className="border p-1 text-[11px]">{header}</th>)}</tr>
           </thead>
           <tbody>
             {report.masSummary.rows.map((row, index) => (
@@ -716,11 +789,12 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
     if (!editingTurnover) setTurnover((current) => ({ ...current, date: report.from === report.to ? report.from : report.to, amount: remainingText, receivedBy: current.receivedBy || lastFinanceReceiver() }));
   }
   const textarea = "min-h-20 w-full rounded-md border bg-background p-2 text-sm";
+  const fin = finWording(report);
 
   return (
     <div className="rounded-xl border print:hidden">
       <div className="overflow-x-auto border-b px-2"><div className="flex min-w-max gap-1" role="tablist" aria-label="Record for this report">
-        {RECORD_SECTIONS.filter(([id]) => (id !== "cashBeg" || !report.cash.carries || report.cash.openingMissing) && (id !== "count" || report.to >= CARRY_START)).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
+        {RECORD_SECTIONS.filter(([id]) => (id !== "cashBeg" || !report.cash.carries || report.cash.openingMissing) && (id !== "count" || report.to >= CARRY_START)).map(([id, label]) => [id, fin ? FIN_SECTION_LABELS[id] ?? label : label] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
           className={`border-b-2 px-3 py-3 text-sm font-medium ${section === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
       </div></div>
       <div className="p-4">
@@ -788,7 +862,7 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
             ? <Input type="date" value={report.from} readOnly title="This report's day. Open another day's report to record a handover there." />
             : <Input type="date" min={report.from} max={report.to} value={turnover.date} onChange={(event) => setTurnover({ ...turnover, date: event.target.value })} />}</Field>
           <Field label="Amount"><Input type="number" min="0" step="0.01" placeholder="0.00" value={turnover.amount} onChange={(event) => setTurnover({ ...turnover, amount: event.target.value })} />
-            {!editingTurnover && report.cash.remainingCashOnHand > 0 && turnover.amount !== remainingText && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setTurnover({ ...turnover, amount: remainingText })}>Use Remaining Cash on Hand ({money(report.cash.remainingCashOnHand)})</button>}</Field>
+            {!editingTurnover && report.cash.remainingCashOnHand > 0 && turnover.amount !== remainingText && <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setTurnover({ ...turnover, amount: remainingText })}>Use {fin ? "Ending cash on hand" : "Remaining Cash on Hand"} ({money(report.cash.remainingCashOnHand)})</button>}</Field>
           <Field label="Received by (Finance) *"><Input value={turnover.receivedBy} onChange={(event) => setTurnover({ ...turnover, receivedBy: event.target.value })} placeholder="Who in Finance received the cash" /></Field>
           <Field label="MAS"><Input list="report-mas" value={turnover.mas} onChange={(event) => setTurnover({ ...turnover, mas: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input value={turnover.remarks} onChange={(event) => setTurnover({ ...turnover, remarks: event.target.value })} placeholder="e.g. Nov 23 collections, acknowledgement no." /></Field>
@@ -843,9 +917,9 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
 
       {/* Cash Beg is the cash received (owner, October 13, 2026): the clerk types it, with the reason; blank = zero. */}
       {section === "cashBeg" && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-cash-beg", cashBeg: cashBeg.amount === "" ? "" : Number(cashBeg.amount), reason: cashBeg.reason }); }}>
-        <FormTitle title="Cash Beg for this report" note="The cash you actually received at the start of this report. It applies to this report only; left blank, Cash Beg is zero." />
+        <FormTitle title={fin ? "Opening cash balance for this report" : "Cash Beg for this report"} note={fin ? "The cash you actually held at the start of this report. It applies to this report only; left blank, the opening balance is zero." : "The cash you actually received at the start of this report. It applies to this report only; left blank, Cash Beg is zero."} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Cash received (Cash Beg)"><Input type="number" min="0" step="0.01" placeholder="0.00" value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Field>
+          <Field label={fin ? "Opening cash balance" : "Cash received (Cash Beg)"}><Input type="number" min="0" step="0.01" placeholder="0.00" value={cashBeg.amount} onChange={(event) => setCashBeg({ ...cashBeg, amount: event.target.value })} /></Field>
           {cashBeg.amount !== "" ? <Field label="Reason *"><Input maxLength={300} placeholder="e.g. Counted cash on hand" value={cashBeg.reason} onChange={(event) => setCashBeg({ ...cashBeg, reason: event.target.value })} /></Field> : <div className="hidden sm:block" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -858,11 +932,11 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
       {section === "notes" && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void act({ action: "save-notes", ...notes, pendingCash: Number(notes.pendingCash) || 0 }); }}>
         <FormTitle title="Notes for this report" note="Shown in the report's remark boxes, and to reviewers and auditors." />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Pending cash, to be encoded"><Input type="number" min="0" step="0.01" placeholder="0.00" value={notes.pendingCash} onChange={(event) => setNotes({ ...notes, pendingCash: event.target.value })} /></Field>
+          <Field label={fin ? "Cash received, not yet recorded" : "Pending cash, to be encoded"}><Input type="number" min="0" step="0.01" placeholder="0.00" value={notes.pendingCash} onChange={(event) => setNotes({ ...notes, pendingCash: event.target.value })} /></Field>
           <div className="hidden sm:block" />
-          <Field label="Specific remarks" wide><textarea className={textarea} value={notes.specificRemarks} onChange={(event) => setNotes({ ...notes, specificRemarks: event.target.value })} /></Field>
-          <Field label="Pending transactions"><textarea className={textarea} value={notes.pendingTransactions} onChange={(event) => setNotes({ ...notes, pendingTransactions: event.target.value })} /></Field>
-          <Field label="Other comments / remarks"><textarea className={textarea} value={notes.otherComments} onChange={(event) => setNotes({ ...notes, otherComments: event.target.value })} /></Field>
+          <Field label={fin ? "Remarks" : "Specific remarks"} wide><textarea className={textarea} value={notes.specificRemarks} onChange={(event) => setNotes({ ...notes, specificRemarks: event.target.value })} /></Field>
+          <Field label={fin ? "Open items" : "Pending transactions"}><textarea className={textarea} value={notes.pendingTransactions} onChange={(event) => setNotes({ ...notes, pendingTransactions: event.target.value })} /></Field>
+          <Field label={fin ? "Other notes" : "Other comments / remarks"}><textarea className={textarea} value={notes.otherComments} onChange={(event) => setNotes({ ...notes, otherComments: event.target.value })} /></Field>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={saving}>{saving ? "Saving..." : "Save notes"}</Button>
@@ -875,6 +949,8 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
   );
 }
 
+/** The record tabs in finance wording, from December 1, 2026 (finWording). */
+const FIN_SECTION_LABELS: Partial<Record<RecordSection, string>> = { expense: "Expenses", deposit: "Bank deposit", finance: "Remit to Finance", cashBeg: "Opening balance" };
 const RECORD_SECTIONS = [["expense", "Expense"], ["deposit", "Cash to bank"], ["finance", "Cash to Finance"], ["fidelity", "Fidelity"], ["count", "Cash count"], ["cashBeg", "Cash Beg"], ["notes", "Notes"]] as const;
 type RecordSection = (typeof RECORD_SECTIONS)[number][0];
 

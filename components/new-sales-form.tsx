@@ -598,13 +598,13 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   }, []);
 
   /*
-   * =========================================================
-   * ALL PROGRAMS
-   * =========================================================
-   *
-   * Active AND Inactive are intentionally available.
+   * Only active programs are offered for a New Sale (owner, November 27, 2026: an inactive program is no longer sold, but
+   * its existing accounts are still collected). A card that already carries an inactive program (a returned MAS
+   * submission) still shows it, marked Inactive, so the clerk can see it and choose an active one; the server refuses it.
    */
-  const availablePrograms = programs;
+  const isActiveProgram = (program: (typeof programs)[number]) => String(program.status ?? "").trim().toLowerCase() === "active";
+  const availablePrograms = programs.filter(isActiveProgram);
+  const programChoices = (sale: (typeof sales)[number]) => { const current = programOf(sale); return current && !isActiveProgram(current) ? [current, ...availablePrograms] : availablePrograms; };
 
   /*
    * =========================================================
@@ -1943,7 +1943,7 @@ Is this cash part of that handover?`) ? "same"
                             value={programOf(sale)?.id ?? ""}
                             disabled={programLoading || availablePrograms.length === 0}
                             placeholder={programLoading ? "Loading programs..." : "Search program code or name"}
-                            options={availablePrograms.map((program) => ({ value: program.id, label: program.name && program.name !== program.code ? `${program.code} - ${program.name}` : program.code }))}
+                            options={programChoices(sale).map((program) => ({ value: program.id, label: `${program.name && program.name !== program.code ? `${program.code} - ${program.name}` : program.code}${isActiveProgram(program) ? "" : " (Inactive)"}` }))}
                             onValueChange={(id) => {
                               const chosen = availablePrograms.find((program) => program.id === id);
                               updateSale(sale.id, (current) => ({
@@ -1978,12 +1978,16 @@ Is this cash part of that handover?`) ? "same"
                             availablePrograms.length ===
                               0 && (
                               <p className="text-xs text-destructive">
-                                No program found.
+                                No active program found.
                               </p>
                             )}
                           {selectedProgram && (
                             <p className="text-xs text-muted-foreground">
-                              {selectedProgram.name} · base pay ₱{Number(monthlyPay(selectedProgram)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}{String(selectedProgram.status ?? "").trim().toLowerCase() === "active" ? "" : ` · ${String(selectedProgram.status ?? "Unknown")}`}
+                              {selectedProgram.name} · base pay ₱{Number(monthlyPay(selectedProgram)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
+                          )}
+                          {selectedProgram && !isActiveProgram(selectedProgram) && (
+                            <p className="text-xs text-destructive">
+                              {selectedProgram.name} is inactive: it takes no new sales. Choose an active program. Its existing accounts are still collected.
                             </p>
                           )}
                         </div>

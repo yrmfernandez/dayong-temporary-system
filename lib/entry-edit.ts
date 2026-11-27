@@ -462,6 +462,8 @@ async function editSale(tx: Transaction, input: EntryEditInput): Promise<Outcome
   // The account this New Sale opened: the member's account in the sale's program.
   const [account] = await tx.select().from(memberPrograms).where(and(eq(memberPrograms.member_number, text(row.member_number)), eq(memberPrograms.program_id, row.program_id))).for("update");
   const changesProgram = programId !== row.program_id;
+  // Moving a sale onto an inactive program would sell it again (owner, November 27, 2026); a sale already on one may stay.
+  if (changesProgram && program.status !== "active") throw new Error(`${program.name} is inactive and takes no new sales. Choose an active program.`);
   let accountNote = "", status: string | null = null, doi = day(account?.doi), mergeTarget = "";
   // Moving to another program: with a different monthly pay each receipt is counted again at the new pay (as a program
   // transfer does); with a different registration fee the NOPs shift by one so the months stay (saleNops).
