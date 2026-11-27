@@ -111,6 +111,21 @@ export const cashCountNote = (counted: unknown, penalty: number, note: string, c
 /** The longest note kept with a short or over turnover sheet (lib/turnover-variance.ts). */
 export const TURNOVER_NOTE_MAX = 300;
 
+/**
+ * The reference no. of a bank or e-wallet batch (owner, November 27, 2026): required on New Sales and Collections
+ * when the remittance method is not cash, with a number in it (the transaction or deposit slip number), as the
+ * remarks of a bank deposit. From December 1, 2026 the batch is recorded in Bank Deposits with this reference.
+ */
+export const PAYMENT_REFERENCE_MAX = 100;
+export function paymentReferenceProblem(value: unknown, method = "") {
+  const reference = String(value ?? "").trim();
+  const name = method ? `${method} reference no.` : "reference no.";
+  if (!reference) return `Enter the ${name}: the transaction or deposit slip number.`;
+  if (!/\d/.test(reference)) return `The ${name} needs a number; letters only are not accepted.`;
+  if (reference.length > PAYMENT_REFERENCE_MAX) return `The ${name} must be ${PAYMENT_REFERENCE_MAX} characters or fewer.`;
+  return "";
+}
+
 /** "Short by ₱50.00" / "Over by ₱50.00" for a difference (control total − total remittance). */
 export const varianceLabel = (difference: number) => `${difference < 0 ? "Short" : "Over"} by ${Math.abs(difference).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}`;
 

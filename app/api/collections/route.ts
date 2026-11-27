@@ -4,7 +4,8 @@ import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
-import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, checkBackdate, controlTotalProblem, expectedCash, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, checkBackdate, controlTotalProblem, expectedCash, lateCheckDay, lateEntryReason, PAYMENT_REFERENCE_MAX, paymentReferenceProblem } from "@/lib/entry-controls";
+import { recordBatchTransfer } from "@/lib/clerk-cash";
 import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
@@ -122,8 +123,10 @@ async function saveCollections(request: Request, user: SessionUser) {
     const originalMas = collectedBy === "Collector" || (collectedBy === "DTO" && !sameName(memberMas, mas)) ? memberMas : "";
     const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
     const paymentReference = String(body.paymentReference ?? "").trim();
-    // The reference number is optional (October 8, 2026): the receipt photo attached in My Entries is the proof.
-    if (paymentReference.length > 100) throw new Error("The payment reference must be 100 characters or fewer.");
+    // Required again when the method is not cash (owner, November 27, 2026; optional from October 8): it is the remarks
+    // of the batch's Bank Deposits record (lib/clerk-cash.ts recordBatchTransfer). Cash batches send none.
+    const referenceProblem = paymentMethod.isCash ? (paymentReference.length > PAYMENT_REFERENCE_MAX ? `The payment reference must be ${PAYMENT_REFERENCE_MAX} characters or fewer.` : "") : paymentReferenceProblem(paymentReference, paymentMethod.name);
+    if (referenceProblem) throw new Error(referenceProblem);
     // A remittance penalty is charged to the accountable MAS/Collector (paid from their own money), not to members.
     // It is added once to the batch's total remittance and stored on the batch's first Collection row.
     const penalty = Math.round((Number(body.penalty) || 0) * 100) / 100;
@@ -251,6 +254,8 @@ async function saveCollections(request: Request, user: SessionUser) {
       await commitCollections(tx, rows, [...touched.values()], payments);
       const ids = rows.map((row) => row.collection_id);
       if (submissionId) await markCollectionSubmissionSaved(submissionId, ids);
+      // A bank or e-wallet batch is recorded in Bank Deposits (non-cash) with its MAS and reference, from December 1, 2026.
+      if (!paymentMethod.isCash) await recordBatchTransfer({ kind: "Collections", branch: selectedBranch.name, mas: accountable.name, method: paymentMethod.name, reference: paymentReference, amount: totalRemittance + penalty, entryIds: [batchId] });
       const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: cashCount ? cashCountNote(counted, penalty, controlNote, body.cashCount) : controlNote });
       return { ids, grossCents, variance, cashCount };
     });

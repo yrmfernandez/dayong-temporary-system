@@ -34,6 +34,12 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Bank / e-wallet batches: reference no. required, recorded in Bank Deposits, labels on the report; Remitted to Finance (2026-11-27)
+
+- **Asked (owner):** when the remittance method is not cash, make the reference no. required, and have it show in the report remarks as the batch goes to Bank Deposits and Cash Remitted to Finance, with the MAS filled in by itself; add the method label on report rows as in the mockup; rename Give to Finance to Remitted to Finance.
+- **Done:** `paymentReferenceProblem` (`lib/entry-controls.ts`), checked in `app/collections/page.tsx`, `components/new-sales-form.tsx` (new reference field under the remittance method), `app/api/collections/route.ts` and `app/api/sales/route.ts`. `recordBatchTransfer` (`lib/clerk-cash.ts`) adds a non-cash deposit inside the batch's save, from December 1, 2026: method as bank account and transfer type, the MAS, total remittance + penalty, remarks `Ref … · Collections CBT-…`. `lib/clerk-report.ts`: `ReportLine.nonCash` (net per method); `components/clerk-report.tsx`: `NonCashLabels` on New Sales and Collections rows, cash only note on either line; the button and tab are now Remitted to Finance. Tests updated and added in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration: a sale has no reference column, so a New Sales reference is kept on its Bank Deposits record only.
+- **Status:** done: the change, tests, docs; in progress: none; to do: owner tries a GCash batch in a browser on or after December 1; decide whether Fidelity and penalty on a non-cash batch should leave the cash summary too (today they still count as cash).
+
 ### New Sales and Collections: Cash counted layout fixed (2026-11-27)
 
 - **Reported (owner):** the Cash counted UI is buggy.

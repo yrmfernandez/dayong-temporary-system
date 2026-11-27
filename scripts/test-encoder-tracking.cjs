@@ -1189,7 +1189,7 @@ test('Clearing: no encoding without it, and its time is when the cash was receiv
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
   // ₱350 at a ₱50 mark-up and 50% MAS incentive: the MAS keeps ₱150 and remits ₱200. Paid by GCash, so it waits for
   // its receipt photo (cash would go to approval at once).
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] };
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 200, collections: [entry] };
   const route = h.load('app/api/collections/route.ts');
   globalThis.dayongClearingNotRequired = false;
   try {
@@ -1265,9 +1265,9 @@ test('collection batch is encoded atomically without creating a remittance', asy
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today };
   const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'GCash', paymentReference: 'GC-778899', controlTotal: 580, collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B' }] };
   const route = h.load('app/api/collections/route.ts');
-  // The reference number is optional since October 8, 2026 (the receipt photo is the proof): a GCash batch without one is
-  // not refused for it, and fails only on a later check (here the missing turnover total).
-  assert.doesNotMatch((await (await route.POST(request({ ...batch, paymentReference: '', controlTotal: '' }))).json()).message, /reference number/);
+  // Required again for a method that is not cash (owner, November 27, 2026), with a number in it: it goes to Bank Deposits.
+  assert.match((await (await route.POST(request({ ...batch, paymentReference: '' }))).json()).message, /Enter the GCash reference no\./);
+  assert.match((await (await route.POST(request({ ...batch, paymentReference: 'GCASH' }))).json()).message, /GCash reference no\. needs a number/);
   assert.match((await (await route.POST(request({ ...batch, autoApproveRemittance: true, cashReceived: 400 }))).json()).message, /verified in Remittances/);
   // A remittance penalty needs a note saying what it is for.
   assert.match((await (await route.POST(request({ ...batch, penalty: 50, penaltyNote: '' }))).json()).message, /what the penalty is for/);
@@ -2441,6 +2441,10 @@ test('a Cash batch takes the cash counted instead of the control total, with the
   assert.equal(controls.cashCountNote(380, 50, 'MAS to pay Monday'), 'Cash counted ₱380.00 incl. penalty ₱50.00: MAS to pay Monday');
   assert.equal(controls.varianceSource(controls.cashCountNote(380, 0, '')), 'Cash count');
   assert.equal(controls.varianceSource('Member to bring the rest'), 'Turnover sheet');
+  // The reference no. of a bank or e-wallet batch: required, with a number (owner, November 27, 2026).
+  assert.match(controls.paymentReferenceProblem('', 'GCash'), /Enter the GCash reference no\./);
+  assert.match(controls.paymentReferenceProblem('ABC', 'GCash'), /needs a number/);
+  assert.equal(controls.paymentReferenceProblem('7712039', 'GCash'), '');
   // Counted by denomination: the pieces of each bill and coin, the total worked out from them.
   assert.equal(controls.cashCountTotal({ 1000: '3', 500: '1', 20: '2', 0.25: '4' }), 3541);
   assert.equal(controls.cashCountTotal({}), 0);
@@ -3068,7 +3072,7 @@ test('No incentive on one collection of a batch: only that one is remitted whole
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today, noIncentive: true, noIncentiveReason: '' };
   const tiers = [{ role: 'MAS', fromMonth: 1, toMonth: 999, incentiveType: 'percentage', markUp: 50, incentiveAmount: 50 }];
   const share = h.load('lib/remittance.ts').calculateRemittance(350, tiers, 'MAS', 3, 3, 350).remittance;
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 350 + share,
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 350 + share,
     collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B', noIncentive: false }] };
   const route = h.load('app/api/collections/route.ts');
   assert.match((await (await route.POST(request(batch))).json()).message, /reason it earns no incentive/);
@@ -3119,7 +3123,7 @@ test('a Returned Collections batch on the full form: a collection goes to anothe
     { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 }]);
   const collections = h.load('app/api/collections/route.ts');
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
-  const saved = await collections.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  const saved = await collections.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 200, collections: [entry] }));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
   const [{ collection_id: id, collection_batch_id: batchId }] = await query('select collection_id, collection_batch_id from collections');
   await query("update collections set remittance_status = 'Returned', linked_remittance_id = null");
@@ -3131,7 +3135,7 @@ test('a Returned Collections batch on the full form: a collection goes to anothe
   const lookup = async (except) => (await (await collections.GET(new Request(`http://localhost/api/collections?memberId=MEM-1&programId=DP-1&branch=BR-1&mas=MAS-2${except}`))).json()).account.nextNop;
   assert.deepEqual([await lookup(''), await lookup(`&except=${id}`)], [3, 2]);
 
-  const batch = { ids: [id], dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS' };
+  const batch = { ids: [id], dateRemitted: today, paymentMethod: 'GCash', paymentReference: 'GC-778800', collectedBy: 'MAS' };
   const kept = { id, orNumber: '1001 C', orDate: today, amount: 350, months: 1 };
   const addition = { accountId: 'ENR-1', orNumber: '1002 C', orDate: today, amount: 350, monthFrom: next, monthTo: next, nopFrom: 2, nopTo: 2 };
   const post = (body) => route.POST(request({ ...batch, ...body }));
@@ -3183,7 +3187,7 @@ test('Different incentives: the clerk ticks them on a collection of a MAS batch 
     { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 },
   ]);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 B', orDate: today, differentIncentive: true, differentIncentiveType: 'percentage', differentIncentiveAmount: 10 };
-  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 520,
+  const batch = { branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 520,
     collections: [entry, { ...entry, monthFrom: afterNext, monthTo: afterNext, nopFrom: 3, nopTo: 3, orNumber: '1002 B', differentIncentive: false }] };
   const route = h.load('app/api/collections/route.ts');
 
@@ -3209,10 +3213,10 @@ test('Different incentives: the clerk ticks them on a collection of a MAS batch 
   const edits = h.load('app/api/my-entries/batch/route.ts');
   const loaded = await (await edits.GET(new Request(`http://localhost/api/my-entries/batch?ids=${ids.join(',')}`))).json();
   assert.deepEqual(loaded.batch?.entries.map((item) => [item.differentIncentive, item.differentIncentiveType, item.differentIncentiveAmount]), [[true, 'percentage', 10], [false, '', 0]], JSON.stringify(loaded).slice(0, 300));
-  const fixed = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: true, differentIncentiveType: 'fixed', differentIncentiveAmount: 50 }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
+  const fixed = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', paymentReference: 'GC-778800', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: true, differentIncentiveType: 'fixed', differentIncentiveAmount: 50 }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
   assert.equal(fixed.status, 200, JSON.stringify(await fixed.clone().json()));
   assert.deepEqual((await state())[0], { or_number: '1001 B', share: 300, different_incentive: true, type: 'fixed', rate: 50 });
-  const undone = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: false }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
+  const undone = await edits.POST(request({ ids, dateRemitted: today, paymentMethod: 'GCash', paymentReference: 'GC-778800', collectedBy: 'MAS', entries: [{ id: ids[0], orNumber: '1001 B', orDate: today, amount: 350, monthTo: next, differentIncentive: false }, { id: ids[1], orNumber: '1002 B', orDate: today, amount: 350, monthTo: afterNext }] }));
   assert.equal(undone.status, 200, JSON.stringify(await undone.clone().json()));
   assert.deepEqual((await state())[0], { or_number: '1001 B', share: 200, different_incentive: false, type: null, rate: null });
 });
@@ -3712,6 +3716,24 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   assert.deepEqual([withFinance.cash.forwardedToBank, withFinance.cash.turnedOverToFinance, withFinance.cash.totalCashOut, withFinance.cash.remainingCashOnHand], [700, 200, 900, 120], 'no reference number needed; out of the cash on hand');
   assert.deepEqual(withFinance.deposits.map((item) => [item.amount, item.transferType, item.bankAccount]), [[700, 'RCBC', 'DSRDPI'], [200, FINANCE_TURNOVER, 'Finance Officer']]);
   await assert.rejects(() => asSystem(() => addDeposit({ date: '2026-09-03', amount: 50, transferType: 'RCBC', bankAccount: 'DSRDPI', remarks: 'no number' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' })), /need a number/, 'a bank deposit still needs its reference');
+  // A bank or e-wallet batch goes to Bank Deposits by itself (owner, November 27, 2026), non-cash, with its MAS and
+  // reference, from December 1, 2026 only.
+  const { recordBatchTransfer } = h.load('lib/clerk-cash.ts');
+  const { withEncoder: encoding } = h.load('lib/encoder-context.ts');
+  const transfer = { kind: 'Collections', branch: 'AGDAO', mas: 'Lopez, Ana', method: 'GCash', reference: '7712039', amount: 450, entryIds: ['CBT-1'] };
+  const RealDate = Date;
+  const at = (iso) => class extends RealDate { constructor(...args) { super(...(args.length ? args : [RealDate.parse(iso)])); } static now() { return RealDate.parse(iso); } };
+  const ids = [];
+  h.setUser({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk' });
+  try {
+    globalThis.Date = at('2026-11-30T03:00:00Z');
+    await encoding(async () => { ids.push(await recordBatchTransfer(transfer)); return Response.json({}); })(request());
+    globalThis.Date = at('2026-12-02T03:00:00Z');
+    await encoding(async () => { ids.push(await recordBatchTransfer({ ...transfer, entryIds: ['SALE-1', 'SALE-2'], kind: 'New Sales' })); return Response.json({}); })(request());
+  } finally { globalThis.Date = RealDate; }
+  assert.equal(ids[0], null, 'before December 1 nothing is recorded');
+  const [auto] = await query("select deposit_date::text as date, bank_account_name, amount::float8 as amount, transfer_type, mas, remarks, non_cash from bank_deposits where deposit_id = '" + ids[1] + "'");
+  assert.deepEqual(auto, { date: '2026-12-02', bank_account_name: 'GCash', amount: 450, transfer_type: 'GCash', mas: 'Lopez, Ana', remarks: 'Ref 7712039 · New Sales SALE-1 +1', non_cash: true });
   const [handover] = (await query("select deposit_id from bank_deposits where transfer_type = '" + FINANCE_TURNOVER + "'"));
   await asSystem(() => h.load('lib/clerk-cash.ts').voidDeposit(handover.deposit_id, 'Test handover', { employeeId: 'DPE-7', isAdmin: false }));
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
@@ -4045,12 +4067,12 @@ test('a returned Collections batch can be edited by its clerk, and only while it
   await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 },
     { incentive_id: 'I2', program_id: 'DP-1', role: 'Collector', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 20 }]);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
-  const saved = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  const saved = await h.load('app/api/collections/route.ts').POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 200, collections: [entry] }));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
   const [{ collection_id: id }] = await query('select collection_id from collections');
   const route = h.load('app/api/my-entries/batch/route.ts');
   const open = async () => route.GET(new Request(`http://localhost/api/my-entries/batch?ids=${id}`));
-  const edit = (changes, batch = {}) => route.POST(request({ ids: [id], dateRemitted: today, paymentMethod: 'GCash', collectedBy: 'MAS', ...batch, entries: [{ id, ...changes }] }));
+  const edit = (changes, batch = {}) => route.POST(request({ ids: [id], dateRemitted: today, paymentMethod: 'GCash', paymentReference: 'GC-778800', collectedBy: 'MAS', ...batch, entries: [{ id, ...changes }] }));
 
   // Not returned: nothing can be edited.
   assert.match((await (await open()).json()).message, /Only a batch the approver returned/);
@@ -4403,7 +4425,7 @@ test('Collections find the account when its MAS name differs only in capitals', 
   const found = await route.GET(new Request(`http://localhost/api/collections?memberId=MEM-1&programId=DP-1&branch=BR-1&mas=MAS-2`));
   assert.equal(found.status, 200, JSON.stringify(await found.clone().json()));
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '1001 C', orDate: today };
-  const saved = await route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 200, collections: [entry] }));
+  const saved = await route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 200, collections: [entry] }));
   assert.equal(saved.status, 201, JSON.stringify(await saved.clone().json()));
 });
 
@@ -4422,7 +4444,7 @@ test('a Waiver on the first receipt of a suspended account covers its later rece
   await seed('program_incentives', [{ incentive_id: 'I1', program_id: 'DP-1', role: 'MAS', from_month: 1, to_month: 999, incentive_type: 'percentage', mark_up: 50, incentive_amount: 50 }]);
   const route = h.load('app/api/collections/route.ts');
   const receipt = (month, nop, orNumber, ifSuspended = '') => ({ memberNumber: 'PH-1', programId: 'DP-1', monthFrom: month, monthTo: month, amountCollected: 350, nopFrom: nop, nopTo: nop, orNumber, orDate: today, ifSuspended });
-  const save = (collections) => route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', controlTotal: 400, collections }));
+  const save = (collections) => route.POST(request({ branch: 'BR-1', mas: 'MAS-2', accountableEmployeeId: 'DPE-0002', dateRemitted: today, collectedBy: 'MAS', paymentMethod: 'GCash', paymentReference: 'GC-778800', controlTotal: 400, collections }));
   const refused = await (await save([receipt(first, 2, '1001 C'), receipt(second, 3, '1002 C')])).json();
   assert.match(refused.message, /Select Waiver/, 'a suspended account still needs a Waiver');
   const saved = await save([receipt(first, 2, '1001 C', 'Waiver'), receipt(second, 3, '1002 C')]);

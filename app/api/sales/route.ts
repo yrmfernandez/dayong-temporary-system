@@ -4,7 +4,8 @@ import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, pickedClea
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, type CashCounts, checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, expectedCash, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, type CashCounts, checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, expectedCash, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason, paymentReferenceProblem } from "@/lib/entry-controls";
+import { recordBatchTransfer } from "@/lib/clerk-cash";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -52,6 +53,8 @@ type SalePayload = {
   fidelityAmount?: number;
   /** Set when the clerk saves a MAS submission (lib/sale-submissions.ts); it is marked Saved in the same transaction. */
   submissionId?: string;
+  /** Required when the batch's remittance method is not cash (owner, November 27, 2026); kept on its Bank Deposits record. */
+  paymentReference?: string;
 };
 
 type SalePayloadItem = {
@@ -649,6 +652,12 @@ async function saveSales(request: Request, user: SessionUser) {
     const cashCount = (body.cashCount !== undefined || body.cashCounted !== undefined) && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
     const countsProblem = cashCount && body.cashCount !== undefined ? cashCountsProblem(body.cashCount) : "";
     if (countsProblem) return NextResponse.json({ success: false, message: countsProblem }, { status: 400 });
+    // Bank or e-wallet batch (owner, November 27, 2026): the reference no. is required and goes to Bank Deposits with the
+    // batch (lib/clerk-cash.ts recordBatchTransfer, from December 1, 2026).
+    const transferMethod = body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames)) ? "" : String(body.sales[0]?.paymentMethod ?? "").trim();
+    const paymentReference = String(body.paymentReference ?? "").trim();
+    const referenceProblem = transferMethod ? paymentReferenceProblem(paymentReference, transferMethod) : "";
+    if (referenceProblem) return NextResponse.json({ success: false, message: referenceProblem }, { status: 400 });
     const counted = body.cashCount !== undefined ? cashCountTotal(body.cashCount) : Number(body.cashCounted);
     const controlProblem = cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
@@ -885,6 +894,7 @@ async function saveSales(request: Request, user: SessionUser) {
         });
       }
       if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch);
+      if (transferMethod) await recordBatchTransfer({ kind: "New Sales", branch: body.branch.trim(), mas: body.mas.trim(), method: transferMethod, reference: paymentReference, amount: totalRemittance + penalty, entryIds: savedSales.map((saved) => saved.saleId) });
       variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 

@@ -73,7 +73,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
   const [editingDeposit, setEditingDeposit] = useState<Report["deposits"][number] | null>(null);
   // An expense opened for editing (owner, October 16, 2026: edit or delete expenses on the report, as deposits).
   const [editingExpense, setEditingExpense] = useState<Report["expenses"][number] | null>(null);
-  // Give to Finance (owner, November 25, 2026): opens Cash to Finance with the Remaining Cash on Hand filled in.
+  // Remitted to Finance (owner, November 25, 2026; called Give to Finance until November 27): opens Cash to Finance with the Remaining Cash on Hand filled in.
   const [financeRequest, setFinanceRequest] = useState(0);
   // A Fidelity entry (handed in after encoding) opened for editing (October 13, 2026).
   const [editingFidelity, setEditingFidelity] = useState<Report["fidelitySlips"][number] | null>(null);
@@ -268,7 +268,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 <Cash label="Remaining Cash on Hand" value={report.cash.remainingCashOnHand} color={tone.remaining} strong />
                 {editable && data?.branch !== "all" && report.cash.remainingCashOnHand > 0 && <div className="flex justify-end print:hidden">
                   <Button type="button" size="sm" variant="outline" onClick={() => { setFinanceRequest((count) => count + 1); setTimeout(() => document.getElementById("finance-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }}
-                    title="Record cash you hand to Finance; change the amount if you give less and the rest is carried to the next day">Give to Finance</Button></div>}
+                    title="Opens the Remitted to Finance tab with the ending cash on hand filled in: type who in Finance received it and save; change the amount if you remit less and the rest is carried to the next day">Remitted to Finance</Button></div>}
                 <div className="flex justify-end gap-6 pt-3 font-bold italic"><span>TOTALS</span><span className="w-28 text-right">{money(report.cash.totals)}</span></div>
               </dl>}
               <NoteBox title={fin ? "Remarks" : "Specific Rmks"} text={report.notes.specificRemarks} />
@@ -586,12 +586,23 @@ function EntryTable({ title, fin, color, groupLabel, rows, total }: { title: str
         <tr className="border-b">{(fin ? [groupLabel, "Accounts", "Gross", "Incentives", "Net", "Fidelity bond", "Penalty"] : [groupLabel, "Accts", "Gross", "Inc", "Net", "Fid/ bond", "Penalty"]).map((header, index) => <th key={header} className={`border-r p-1 font-semibold ${index ? "text-right" : "text-left"} ${index === 5 ? "text-[10px] italic" : ""}`}>{header}</th>)}</tr>
       </thead>
       <tbody>
-        {rows.map((line) => <tr key={line.label} className="border-b"><td className="break-words border-r p-1 font-medium">{line.label}</td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
+        {rows.map((line) => <tr key={line.label} className="border-b"><td className="break-words border-r p-1 font-medium">{line.label}<NonCashLabels line={line} /></td>{cells(line).map((value, index) => <td key={index} className="border-r p-1 text-right tabular-nums">{value}</td>)}</tr>)}
         {Array.from({ length: filler }, (_, index) => <tr key={`filler-${index}`} className="h-6 border-b">{Array.from({ length: 7 }, (__, cell) => <td key={cell} className="border-r" />)}</tr>)}
         <tr className={`font-bold ${color}`}><td className="p-1.5 text-center">Total</td>{cells(total).map((value, index) => <td key={index} className="p-1.5 text-right tabular-nums">{value}</td>)}</tr>
       </tbody>
     </table>
   );
+}
+
+/**
+ * The bank or e-wallet label on a row (owner, November 27, 2026, as in the approved mockup): each method that paid part
+ * of the row and its net, e.g. GCash 400.00. That part is in the row's figures but not in the cash summary (memo).
+ */
+function NonCashLabels({ line }: { line: ReportLine }) {
+  const methods = Object.entries(line.nonCash ?? {}).filter(([, net]) => net !== 0);
+  if (!methods.length) return null;
+  return <>{methods.map(([method, net]) => <span key={method} title={`${money(net)} of this row was paid by ${method}: not cash, so it is left out of the cash summary (see the memo).`}
+    className="ml-1 inline-block whitespace-nowrap rounded border border-sky-300 bg-sky-50 px-1 text-[10px] font-semibold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300 print:border-neutral-500 print:bg-transparent print:text-black">{method} {money(net)}</span>)}</>;
 }
 
 function Grid({ title, color, headers, rows, total, action }: { title: string; color: string; headers: string[]; rows: string[][]; total: number; action?: (index: number) => React.ReactNode }) {
@@ -649,8 +660,8 @@ function CashPosition({ report, giveToFinance }: { report: Report; giveToFinance
       {cash.cashBegEdit && <p className="text-right text-[11px] text-muted-foreground">Typed by {cash.cashBegEdit.updatedBy}: {cash.cashBegEdit.reason}</p>}
 
       {head("Cash receipts")}
-      {line("New membership sales", cash.salesNet, "net of incentives")}
-      {line("Collections on accounts", cash.collectionNet, cash.nonCashNet ? "net of incentives, cash only" : "net of incentives")}
+      {line("New membership sales", cash.salesNet, Object.keys(report.newSales.total.nonCash ?? {}).length ? "net of incentives, cash only" : "net of incentives")}
+      {line("Collections on accounts", cash.collectionNet, Object.keys(report.collection.total.nonCash ?? {}).length ? "net of incentives, cash only" : "net of incentives")}
       {line("Fidelity bond contributions", cash.fidelity)}
       {line("Penalties collected", cash.penalty)}
       {(cash.turnoverShortOver !== 0 || report.turnover.encoded.length > 0) && line("Cash short / over on turnover", cash.turnoverShortOver, "short is negative, over is positive", cash.turnoverShortOver ? "text-amber-700 dark:text-amber-400" : "")}
@@ -669,7 +680,7 @@ function CashPosition({ report, giveToFinance }: { report: Report; giveToFinance
       {line(`Net cash flow for the ${period}`, net, "receipts − disbursements")}
       {total("Ending cash on hand", cash.remainingCashOnHand, tone.remaining, report.kind === "daily" ? "becomes the next day's opening balance" : "")}
       {giveToFinance && <div className="flex justify-end print:hidden">
-        <Button type="button" size="sm" variant="outline" onClick={giveToFinance} title="Record cash you hand to Finance; change the amount if you give less and the rest is carried to the next day">Give to Finance</Button></div>}
+        <Button type="button" size="sm" variant="outline" onClick={giveToFinance} title="Opens the Remitted to Finance tab with the ending cash on hand filled in: type who in Finance received it and save; change the amount if you remit less and the rest is carried to the next day">Remitted to Finance</Button></div>}
 
       {memo && <div className="mt-2 rounded border border-dashed p-2 text-xs text-muted-foreground">
         <p className="font-semibold">Memo: not counted in cash</p>
@@ -780,7 +791,7 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
   const masNames = report.masSummary.rows.map((row) => row.name);
   // One form at a time, in tabs (owner, October 14, 2026: the side-by-side forms were messy). Editing opens its tab.
   const [section, setSection] = useState<RecordSection>(editingTurnover ? "finance" : editing ? "deposit" : editingFidelity ? "fidelity" : "expense");
-  // Give to Finance pressed: open the tab with the Remaining Cash on Hand as the amount (the clerk lowers it if they give less).
+  // Remitted to Finance pressed: open the tab with the Remaining Cash on Hand as the amount (the clerk lowers it if they give less).
   const [seenFinanceRequest, setSeenFinanceRequest] = useState(financeRequest);
   const remainingText = String(Math.max(0, report.cash.remainingCashOnHand));
   if (financeRequest !== seenFinanceRequest) {
@@ -950,7 +961,7 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
 }
 
 /** The record tabs in finance wording, from December 1, 2026 (finWording). */
-const FIN_SECTION_LABELS: Partial<Record<RecordSection, string>> = { expense: "Expenses", deposit: "Bank deposit", finance: "Remit to Finance", cashBeg: "Opening balance" };
+const FIN_SECTION_LABELS: Partial<Record<RecordSection, string>> = { expense: "Expenses", deposit: "Bank deposit", finance: "Remitted to Finance", cashBeg: "Opening balance" };
 const RECORD_SECTIONS = [["expense", "Expense"], ["deposit", "Cash to bank"], ["finance", "Cash to Finance"], ["fidelity", "Fidelity"], ["count", "Cash count"], ["cashBeg", "Cash Beg"], ["notes", "Notes"]] as const;
 type RecordSection = (typeof RECORD_SECTIONS)[number][0];
 

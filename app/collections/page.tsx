@@ -35,7 +35,7 @@ import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, lateCheckDay, type CashCounts, needsBackdateReason, varianceLabel } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, lateCheckDay, type CashCounts, needsBackdateReason, PAYMENT_REFERENCE_MAX, paymentReferenceProblem, varianceLabel } from "@/lib/entry-controls";
 import { ControlTotalField } from "@/components/control-total-field";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
@@ -55,6 +55,7 @@ import { EntryFigures } from "@/components/entry-figures";
 import { monthlyPay } from "@/lib/program-payment-limit.mjs";
 import { isValidOrNumber, nextOrNumber, OR_NUMBER_EXAMPLE, orNumberProblem } from "@/lib/or-number";
 import { formatDate as showDate, formatDateTime } from "@/lib/date-format";
+import { CARRY_START } from "@/lib/cash-carry";
 import { formatDeadline } from "@/lib/remittance-deadline";
 
 type CollectionChannel = "MAS" | "Collector" | "DTO";
@@ -1018,6 +1019,13 @@ export default function CollectionsPage() {
 
     if (returnedEdit) { await saveReturnedEdit(returnedEdit); return; }
 
+    // Not cash (owner, November 27, 2026): the reference no. is required; it goes to Bank Deposits with the batch.
+    const referenceProblem = !isCashPayment && selectedPaymentMethod ? paymentReferenceProblem(paymentReference, selectedPaymentMethod.name) : "";
+    if (referenceProblem) {
+      setSaveMessage(referenceProblem);
+      document.getElementById("payment-reference")?.focus();
+      return;
+    }
     const controlProblem = (isCashPayment && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, isCashPayment ? cashDue : totalDue, isCashPayment);
     if (controlProblem) {
       setSaveMessage(controlProblem);
@@ -1493,9 +1501,9 @@ export default function CollectionsPage() {
 
             {selectedPaymentMethod && !isCashPayment ? (
               <div className="space-y-2">
-                <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no. (optional)</Label>
-                <Input id="payment-reference" maxLength={100} value={paymentReference} placeholder="Transaction / deposit slip number" onChange={(event) => setPaymentReference(event.target.value)} />
-                <p className="text-xs text-muted-foreground">Not required: attach the receipt or transfer screenshot in My Entries instead.</p>
+                <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no.{returnedEdit ? "" : " *"}</Label>
+                <Input id="payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} placeholder="Transaction / deposit slip number" aria-required={!returnedEdit} onChange={(event) => setPaymentReference(event.target.value)} />
+                <p className="text-xs text-muted-foreground">Required, with its number. From {showDate(CARRY_START)} the batch is recorded by itself in the report&apos;s Bank Deposits with this reference and the MAS. Attach the receipt or transfer screenshot too.</p>
               </div>
             ) : (
               <div className="flex items-center rounded-lg border border-dashed p-3 text-xs text-muted-foreground">

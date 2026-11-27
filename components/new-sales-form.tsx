@@ -39,7 +39,8 @@ import { AlreadySavedNote } from "@/components/already-saved-note";
 import type { AlreadySaved } from "@/lib/submission-already-saved";
 import { ControlTotalField } from "@/components/control-total-field";
 import { EntryFigures } from "@/components/entry-figures";
-import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, type CashCounts, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, type CashCounts, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber, PAYMENT_REFERENCE_MAX, paymentReferenceProblem } from "@/lib/entry-controls";
+import { CARRY_START } from "@/lib/cash-carry";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { scrollPageToTop } from "@/lib/scroll-top";
@@ -316,6 +317,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // the same way and goes on one remittance. A cash method needs no receipt photo.
   const [paymentMethods, setPaymentMethods] = useState<Array<{ name: string; isCash: boolean }>>([]);
   const [paymentMethod, setPaymentMethod] = useState("");
+  // The reference no. of a bank or e-wallet batch (owner, November 27, 2026): required; it goes to Bank Deposits.
+  const [paymentReference, setPaymentReference] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/remittance-methods", { cache: "no-store", signal: controller.signal })
@@ -364,7 +367,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
-  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId, paymentMethod };
+  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId, paymentMethod, paymentReference };
   type SalesDraft = typeof draftSnapshot;
   const restoreDraft = (draft: Partial<SalesDraft>) => {
       setSubmissionId(draft.submissionId ?? "");
@@ -380,6 +383,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
       setPenaltyNote(draft.penaltyNote ?? "");
       setFidelity(draft.fidelity ?? "");
       if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
+      setPaymentReference(draft.paymentReference ?? "");
     };
   useFormDraft(masMode ? "mas-sales" : "new-sales", draftSnapshot, restoreDraft, returnedBatchUrl);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
@@ -1462,6 +1466,12 @@ Is this cash part of that handover?`) ? "same"
       setSaveMessage("Add at least one receipt photo for this batch.");
       return;
     }
+    const referenceProblem = allCash ? "" : paymentReferenceProblem(paymentReference, paymentMethod);
+    if (referenceProblem) {
+      setSaveMessage(referenceProblem);
+      document.getElementById("sales-payment-reference")?.focus();
+      return;
+    }
 
     setSaving(true);
 
@@ -1532,6 +1542,7 @@ Is this cash part of that handover?`) ? "same"
             fidelityAmount,
             ...(allCash ? { cashCounted: cashCountTotal(cashCounts), cashCount: cleanCashCounts(cashCounts) } : { controlTotal: Number(controlTotal) }),
             controlTotalNote: controlTotalNote.trim(),
+            paymentReference: allCash ? "" : paymentReference.trim(),
             submissionId: submissionId || undefined,
           }),
         },
@@ -1564,6 +1575,7 @@ Is this cash part of that handover?`) ? "same"
       setPenalty("");
       setControlTotal("");
       setCashCounts({});
+      setPaymentReference("");
       setControlTotalNote("");
       setPenaltyNote("");
       setFidelity("");
@@ -3173,12 +3185,17 @@ Is this cash part of that handover?`) ? "same"
         <CardContent className="space-y-3 pt-5">
           <div className="max-w-sm space-y-1">
             <Label htmlFor="sales-remittance-method">Remittance method (whole batch) *</Label>
-            <select id="sales-remittance-method" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+            <select id="sales-remittance-method" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
               {!paymentMethods.length && <option value="">Loading...</option>}
               {paymentMethods.map((method) => <option key={method.name} value={method.name}>{method.name}</option>)}
             </select>
             <p className="text-xs text-muted-foreground">{allCash ? "Cash: no receipt photo needed." : "Not cash: add the receipt photo of the transfer below."}</p>
           </div>
+          {!allCash && paymentMethod && !returnedEdit && <div className="max-w-sm space-y-1">
+            <Label htmlFor="sales-payment-reference">{paymentMethod} reference no. *</Label>
+            <Input id="sales-payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} placeholder="Transaction / deposit slip number" aria-required onChange={(event) => setPaymentReference(event.target.value)} />
+            <p className="text-xs text-muted-foreground">Required, with its number. From {showDate(CARRY_START)} the batch is recorded by itself in the report&apos;s Bank Deposits with this reference and the MAS.</p>
+          </div>}
           <div className="grid gap-3 lg:grid-cols-2">
           <fieldset className={`space-y-2 rounded-lg border p-3 ${penaltyAmount > 0 ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20" : ""}`}>
             <legend className="px-1 text-sm font-medium">Remittance penalty (optional)</legend>

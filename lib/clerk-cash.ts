@@ -1,7 +1,7 @@
 import { and, eq, lte, ne, sql } from "drizzle-orm";
 
 import { currentDb, inTransaction, schema, type Queryable } from "@/lib/db";
-import { getEncoder } from "@/lib/encoder-context";
+import { currentEncoder, getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { validDate } from "@/lib/manila-date";
@@ -114,6 +114,25 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
     await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields });
     return { id };
   });
+}
+
+/**
+ * A bank or e-wallet batch goes to Bank Deposits by itself (owner, November 27, 2026): saving New Sales or Collections
+ * paid by a method that is not cash records a non-cash deposit for the clerk who saved it, dated today, with the
+ * batch's MAS, the method as bank account and transfer type, and the reference no. in the remarks. It takes no cash
+ * out (non-cash), so it is shown in Bank Deposits and Cash Remitted to Finance with its reference. Only from
+ * CARRY_START: before that, bank and e-wallet payments still count as cash on hand. Runs inside the batch's save, so a
+ * reference already on another day's deposit refuses the batch (one reference, one deposit). Returns the deposit ID.
+ */
+export async function recordBatchTransfer(input: { kind: "New Sales" | "Collections"; branch: string; mas: string; method: string; reference: string; amount: number; entryIds: string[] }) {
+  const clerk = currentEncoder();
+  const date = manilaNow().date;
+  const amount = Math.round(input.amount * 100) / 100;
+  if (date < CARRY_START || !clerk?.employeeId || !(amount > 0)) return null;
+  const [first] = input.entryIds, more = input.entryIds.length - 1;
+  const remarks = `Ref ${input.reference.trim()} · ${input.kind} ${first ?? ""}${more > 0 ? ` +${more}` : ""}`.slice(0, 200);
+  const saved = await addDeposit({ date, amount, bankAccount: input.method, transferType: input.method, mas: input.mas, remarks, nonCash: true }, { employeeId: clerk.employeeId, name: clerk.name, branch: input.branch });
+  return saved.id;
 }
 
 /**

@@ -88,9 +88,14 @@ function whenLabel(kind: AuditPeriod, date: string, weeks?: Weeks) {
 }
 
 // penalty: charged to the MAS/Collector and collected with the batch, separate from the member's payment (October 12, 2026).
-export type ReportLine = { label: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number };
+// nonCash: the net paid by each bank or e-wallet method (owner, November 27, 2026: the label on the row, e.g. GCash),
+// from CARRY_START; it is in the row's figures but not in the cash summary.
+export type ReportLine = { label: string; accounts: number; gross: number; incentives: number; net: number; fidelity: number; penalty: number; nonCash?: Record<string, number> };
 const empty = (label: string): ReportLine => ({ label, accounts: 0, gross: 0, incentives: 0, net: 0, fidelity: 0, penalty: 0 });
+/** Paid by a method that is not cash, on or after CARRY_START: shown in the sections, left out of the cash summary. */
+const nonCashEntry = (entry: DayEntry) => !entry.cash && entry.encodedAt.slice(0, 10) >= CARRY_START;
 const addTo = (line: ReportLine, entry: DayEntry) => {
+  if (nonCashEntry(entry)) { const method = entry.paymentMethod || "Non-cash"; line.nonCash = { ...line.nonCash, [method]: round((line.nonCash?.[method] ?? 0) + entry.amount - entry.incentive) }; }
   line.accounts += 1; line.gross = round(line.gross + entry.amount); line.incentives = round(line.incentives + entry.incentive);
   line.net = round(line.gross - line.incentives); line.fidelity = round(line.fidelity + entry.fidelity); line.penalty = round(line.penalty + entry.penalty);
 };
@@ -229,7 +234,6 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
   const carried = carries ? await cashHeldAtStart(clerk.employeeId, branch, start, { expenses: expensesAll, deposits: depositsAll }) : null;
   const cashBeg = carried ? carried.amount : typedCashBeg ? round(typedCashBeg.amount) : 0;
   // From CARRY_START bank and e-wallet payments are money already in the bank, not cash: on their own line, out of Cash In.
-  const nonCashEntry = (entry: DayEntry) => !entry.cash && entry.encodedAt.slice(0, 10) >= CARRY_START;
   const netOf = (list: DayEntry[]) => round(list.reduce((total, entry) => total + entry.amount - entry.incentive, 0));
   const salesCashNet = netOf(sales.filter((entry) => !nonCashEntry(entry))), collectionCashNet = netOf(collections.filter((entry) => !nonCashEntry(entry)));
   const nonCashNet = netOf(entries.filter(nonCashEntry));
