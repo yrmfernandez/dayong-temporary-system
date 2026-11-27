@@ -39,7 +39,7 @@ import { AlreadySavedNote } from "@/components/already-saved-note";
 import type { AlreadySaved } from "@/lib/submission-already-saved";
 import { ControlTotalField } from "@/components/control-total-field";
 import { EntryFigures } from "@/components/entry-figures";
-import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, expectedCash, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, type CashCounts, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber } from "@/lib/entry-controls";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { formatDeadline, manilaNow } from "@/lib/remittance-deadline";
 import { scrollPageToTop } from "@/lib/scroll-top";
@@ -355,6 +355,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [controlTotal, setControlTotal] = useState("");
   // Optional note kept with a short or over turnover sheet (lib/turnover-variance.ts).
   const [controlTotalNote, setControlTotalNote] = useState("");
+  // Cash batch: the pieces of each bill and coin counted (owner, November 27, 2026); the total is the cash counted.
+  const [cashCounts, setCashCounts] = useState<CashCounts>({});
   const [penaltyNote, setPenaltyNote] = useState("");
   const penaltyAmount = Math.max(0, Math.round((Number(penalty) || 0) * 100) / 100);
   // Fidelity for this batch: the MAS's own money handed over to save, added to the remittance. No limit; zero is allowed.
@@ -428,6 +430,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   // Cash batch (owner, November 27, 2026): the clerk types the cash counted, compared with total remittance + penalty.
   const cashDue = expectedCash(saleTotalDue, penaltyAmount);
   const checkedTotal = allCash ? cashDue : saleTotalDue;
+  const enteredTotal = allCash ? (cashCountTotal(cashCounts) ? String(cashCountTotal(cashCounts)) : "") : controlTotal;
 
   const [programLoading, setProgramLoading] =
     useState(true);
@@ -1421,7 +1424,7 @@ Is this cash part of that handover?`) ? "same"
     }
 
     // The turnover total belongs to the first save: a Returned batch is not compared with it again.
-    const controlProblem = returnedEdit ? "" : controlTotalProblem(controlTotal, checkedTotal, allCash);
+    const controlProblem = returnedEdit ? "" : ((allCash && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, checkedTotal, allCash));
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1527,7 +1530,7 @@ Is this cash part of that handover?`) ? "same"
             penalty: penaltyAmount,
             penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
             fidelityAmount,
-            ...(allCash ? { cashCounted: Number(controlTotal) } : { controlTotal: Number(controlTotal) }),
+            ...(allCash ? { cashCounted: cashCountTotal(cashCounts), cashCount: cleanCashCounts(cashCounts) } : { controlTotal: Number(controlTotal) }),
             controlTotalNote: controlTotalNote.trim(),
             submissionId: submissionId || undefined,
           }),
@@ -1550,7 +1553,7 @@ Is this cash part of that handover?`) ? "same"
       // Attach every receipt photo to the saved sales; the first one sends a bank or e-wallet batch to Pending Approval.
       const photos = receiptPhotos;
       const uploaded = await uploadBatchPhotos((result.savedSales ?? []).map((saved: { saleId: string }) => saved.saleId), photos);
-      const turnover = controlTotalDifference(controlTotal, checkedTotal, allCash);
+      const turnover = controlTotalDifference(enteredTotal, checkedTotal, allCash);
       const savedText = `${sales.length} ${sales.length === 1 ? "new sale" : "new sales"} saved${result.varianceId && turnover ? ` (${allCash ? "cash counted" : "turnover sheet"} ${varianceLabel(turnover).toLowerCase()}, recorded as ${result.varianceId}; its slip goes to Discrepancy)` : ""}`;
       setSaveMessage(uploaded.problem
         ? `${savedText}; ${uploaded.saved} of ${photos.length} receipt photo(s) attached. ${uploaded.problem} Add the rest in My Entries.`
@@ -1560,6 +1563,7 @@ Is this cash part of that handover?`) ? "same"
       if (submissionId) setSubmissionRevision((value) => value + 1);
       setPenalty("");
       setControlTotal("");
+      setCashCounts({});
       setControlTotalNote("");
       setPenaltyNote("");
       setFidelity("");
@@ -3206,7 +3210,7 @@ Is this cash part of that handover?`) ? "same"
         </CardContent>
       </Card>}
 
-      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}{cashOnSpotOn(sale) ? " · Cash on spot (paid in full)" : ""}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatPeso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${formatPeso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(controlTotal, checkedTotal, allCash); return turnover ? <p className="font-semibold text-amber-700">{allCash ? "Cash counted" : "Turnover sheet"} {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
+      {showPreview && <div ref={previewRef} className={`rounded-xl border border-primary/30 bg-primary/5 p-4 ${masMode ? "scroll-mt-14" : ""}`}><p className="font-semibold">{masMode ? "Review before submitting" : "Review before saving"}</p><div className="mt-3 grid gap-3 md:grid-cols-2">{sales.map((sale, index) => { const program = programOf(sale); return <div key={sale.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Sale {index + 1}: {[sale.member.name.firstName, sale.member.name.surname].filter(Boolean).join(" ") || "Unnamed member"}</strong><p>{program?.name || "No program"} · {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(amountPaidOf(sale))}{cashOnSpotOn(sale) ? " · Cash on spot (paid in full)" : ""}</p><p>MAS incentive {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.incentive ?? 0)} · remit {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(saleQuotes[index]?.remittance ?? 0)}</p><p>APP {sale.applicationNumber || "—"} · DOI {showDate(sale.orDate) || "—"}{sale.doiTime ? ` ${sale.doiTime}` : ""}</p><p>Registration {sale.program.withRegistrationFee ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(sale.program.registrationAmount) : "None"}</p>{sale.program.programTerms && <p className="mt-1 text-muted-foreground">Notes: {sale.program.programTerms}</p>}{Boolean(sale.member.id && memberStandings[sale.member.id]?.programs.length) && <p className="mt-1 flex items-center gap-1 font-medium text-amber-700"><TriangleAlert className="size-3.5" />Existing member has {memberStandings[sale.member.id].programs.map((program) => `${program.programName} ${program.standing.toLowerCase()}`).join(", ")}.</p>}</div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatPeso(totalPaid)}{!masMode && saleTotalDue !== null ? ` · Total remittance: ${formatPeso(saleTotalDue)}` : ""}</p>{!masMode && (() => { const turnover = controlTotalDifference(enteredTotal, checkedTotal, allCash); return turnover ? <p className="font-semibold text-amber-700">{allCash ? "Cash counted" : "Turnover sheet"} {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
 
       {/* RECEIPT PHOTOS: at least one required, as many as needed (owner, October 14, 2026); not for a MAS submit. */}
       {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one only for a receipt that changed; a new photo sends the batch back for approval.</p>}
@@ -3231,7 +3235,7 @@ Is this cash part of that handover?`) ? "same"
             {saveMessage && <p role="status" className="mt-1 font-medium">{saveMessage}</p>}
           </div>
           {!masMode && !returnedEdit && (
-            <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={checkedTotal} cash={allCash} />
+            <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={checkedTotal} cash={allCash} counts={cashCounts} onCountsChange={setCashCounts} />
           )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" className="max-md:h-11" disabled={saving} onClick={async () => {

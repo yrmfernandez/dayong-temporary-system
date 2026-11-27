@@ -19,6 +19,8 @@ import { toCents } from "@/lib/money";
  * the batch: the total remittance, Fidelity and the penalty, so it is compared with the expected cash (total remittance
  * + penalty). It is recorded as before with control total = cash counted − penalty, so the slip, Discrepancy, Exceptions
  * and the clerk report work unchanged. Other remittance methods keep the control total from the turnover sheet.
+ * The clerk counts by denomination (owner, November 27, 2026: how many ₱1,000, ₱500, ₱100 and so on); the total is
+ * worked out from the pieces (cashCountTotal) and the breakdown is kept in the note of a short or over.
  */
 export const BACKDATE_REASON_MIN = 5;
 
@@ -73,9 +75,38 @@ export const isCashCountNote = (note: string) => String(note ?? "").startsWith("
 /** "Cash count" or "Turnover sheet": where a recorded short or over came from, for messages and slip remarks. */
 export const varianceSource = (note: string) => isCashCountNote(note) ? "Cash count" : "Turnover sheet";
 
-/** The note kept with a cash count's short or over: the cash counted (and the penalty in it), then the clerk's note. */
-export const cashCountNote = (counted: unknown, penalty: number, note: string) =>
-  `Cash counted ${peso(toCents(Number(counted)) / 100)}${penalty > 0 ? ` incl. penalty ${peso(penalty)}` : ""}${note.trim() ? `: ${note.trim()}` : ""}`.slice(0, TURNOVER_NOTE_MAX);
+/** Philippine bills and coins counted for a Cash batch, largest first (₱20 is one row, bill or coin). */
+export const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25] as const;
+
+/** Pieces per denomination, e.g. { "1000": 3, "500": 1 }; typed text on the form, numbers on the server. */
+export type CashCounts = Record<string, number | string>;
+
+/** The pieces of one denomination: a whole number of 0 or more; NaN when it is not. */
+const pieces = (value: unknown) => { const text = String(value ?? "").trim(); if (!text) return 0; const count = Number(text); return Number.isInteger(count) && count >= 0 && count <= 100000 ? count : Number.NaN; };
+
+/** "" when every count is a whole number of pieces of a known denomination, otherwise what is wrong. */
+export function cashCountsProblem(counts: unknown) {
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) return "Count the cash by denomination.";
+  for (const [key, value] of Object.entries(counts as Record<string, unknown>)) {
+    if (!DENOMINATIONS.some((denomination) => String(denomination) === key)) return `₱${key} is not a denomination that can be counted.`;
+    if (Number.isNaN(pieces(value))) return `Enter a whole number of ₱${Number(key).toLocaleString("en-PH")} pieces.`;
+  }
+  return "";
+}
+
+/** The total of the pieces counted, in pesos (0 when nothing is counted or a count is not a whole number). */
+export const cashCountTotal = (counts: CashCounts) => cashCountsProblem(counts) ? 0
+  : DENOMINATIONS.reduce((cents, denomination) => cents + pieces(counts[String(denomination)]) * toCents(denomination), 0) / 100;
+
+/** The pieces counted, without the zeros: { "1000": 3, "500": 1 } (an object lists whole-number keys smallest first). */
+export const cleanCashCounts = (counts: CashCounts) => Object.fromEntries(DENOMINATIONS.map((denomination) => [String(denomination), pieces(counts[String(denomination)])]).filter(([, count]) => Number(count) > 0)) as Record<string, number>;
+
+/** "₱1,000×3, ₱500×1, ₱0.25×4": the breakdown as text. */
+export const cashCountsText = (counts: CashCounts) => { const clean = cleanCashCounts(counts); return DENOMINATIONS.filter((denomination) => clean[String(denomination)]).map((denomination) => `₱${denomination.toLocaleString("en-PH")}×${clean[String(denomination)]}`).join(", "); };
+
+/** The note kept with a cash count's short or over: the cash counted (and the penalty in it), its breakdown, then the clerk's note. */
+export const cashCountNote = (counted: unknown, penalty: number, note: string, counts?: CashCounts) =>
+  `Cash counted ${peso(toCents(Number(counted)) / 100)}${penalty > 0 ? ` incl. penalty ${peso(penalty)}` : ""}${counts && cashCountsText(counts) ? ` (${cashCountsText(counts)})` : ""}${note.trim() ? `: ${note.trim()}` : ""}`.slice(0, TURNOVER_NOTE_MAX);
 
 /** The longest note kept with a short or over turnover sheet (lib/turnover-variance.ts). */
 export const TURNOVER_NOTE_MAX = 300;

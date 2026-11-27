@@ -4,7 +4,7 @@ import { normalizeOrNumber, orNumberProblem } from "@/lib/or-number";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
-import { cashCountControlTotal, cashCountNote, checkBackdate, controlTotalProblem, expectedCash, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, checkBackdate, controlTotalProblem, expectedCash, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { blockingDateProblem } from "@/lib/date-checks";
@@ -235,8 +235,12 @@ async function saveCollections(request: Request, user: SessionUser) {
       const totalRemittance = (remittanceCents + Math.round(fidelity * 100)) / 100;
       // Cash batch (owner, November 27, 2026): the cash counted, compared with total remittance + penalty; recorded as
       // control total = counted − penalty (lib/entry-controls.ts). A page opened before still sends the control total.
-      const cashCount = paymentMethod.isCash && body.cashCounted !== undefined;
-      const controlProblem = cashCount ? controlTotalProblem(body.cashCounted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
+      // Counted by denomination (cashCount): the total is worked out from the pieces, not taken from the page.
+      const cashCount = paymentMethod.isCash && (body.cashCount !== undefined || body.cashCounted !== undefined);
+      const countsProblem = cashCount && body.cashCount !== undefined ? cashCountsProblem(body.cashCount) : "";
+      if (countsProblem) throw new Error(countsProblem);
+      const counted = body.cashCount !== undefined ? cashCountTotal(body.cashCount) : Number(body.cashCounted);
+      const controlProblem = cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
       if (controlProblem) throw new Error(controlProblem);
       const controlNote = String(body.controlTotalNote ?? "").trim();
       if (controlNote.length > TURNOVER_NOTE_MAX) throw new Error(`The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.`);
@@ -247,7 +251,7 @@ async function saveCollections(request: Request, user: SessionUser) {
       await commitCollections(tx, rows, [...touched.values()], payments);
       const ids = rows.map((row) => row.collection_id);
       if (submissionId) await markCollectionSubmissionSaved(submissionId, ids);
-      const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: cashCount ? cashCountControlTotal(body.cashCounted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: cashCount ? cashCountNote(body.cashCounted, penalty, controlNote) : controlNote });
+      const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: cashCount ? cashCountNote(counted, penalty, controlNote, body.cashCount) : controlNote });
       return { ids, grossCents, variance, cashCount };
     });
     // Saved as DTO, the batch's Mark remitted clearing (the MAS's handover) gets no entries: removed, as nothing is encoded under it.

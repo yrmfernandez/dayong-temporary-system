@@ -2441,6 +2441,13 @@ test('a Cash batch takes the cash counted instead of the control total, with the
   assert.equal(controls.cashCountNote(380, 50, 'MAS to pay Monday'), 'Cash counted ₱380.00 incl. penalty ₱50.00: MAS to pay Monday');
   assert.equal(controls.varianceSource(controls.cashCountNote(380, 0, '')), 'Cash count');
   assert.equal(controls.varianceSource('Member to bring the rest'), 'Turnover sheet');
+  // Counted by denomination: the pieces of each bill and coin, the total worked out from them.
+  assert.equal(controls.cashCountTotal({ 1000: '3', 500: '1', 20: '2', 0.25: '4' }), 3541);
+  assert.equal(controls.cashCountTotal({}), 0);
+  assert.equal(controls.cashCountsProblem({ 100: '1.5' }), 'Enter a whole number of ₱100 pieces.');
+  assert.equal(controls.cashCountsProblem({ 3: '1' }), '₱3 is not a denomination that can be counted.');
+  assert.deepEqual(controls.cleanCashCounts({ 1000: '3', 500: '', 100: '0', 0.25: '4' }), { 1000: 3, 0.25: 4 });
+  assert.equal(controls.cashCountsText({ 1000: 3, 0.25: 4 }), '₱1,000×3, ₱0.25×4');
 
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Employees = [[], ['DPE-0002', 'Maria', 'BR-1', 'MAS', 'active']];
@@ -2451,17 +2458,18 @@ test('a Cash batch takes the cash counted instead of the control total, with the
   const sales = h.load('app/api/sales/route.ts');
   const sale = (applicationNo) => ({ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo, addressHouse: 'Address', beneficiaries: [], paymentMethod: 'Cash' });
   // The entries need ₱200 (350 less the ₱150 incentive) and the ₱30 penalty is in the cash: ₱230 expected; ₱220 counted.
-  const body = { branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', penalty: 30, penaltyNote: 'Late turnover', cashCounted: 220, controlTotalNote: 'Recount tomorrow', sales: [sale('APP-21')] };
-  assert.match((await (await sales.POST(request({ ...body, cashCounted: '' }))).json()).message, /Enter the cash you counted/);
+  const body = { branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', penalty: 30, penaltyNote: 'Late turnover', cashCount: { 100: 2, 20: 1 }, cashCounted: 9999, controlTotalNote: 'Recount tomorrow', sales: [sale('APP-21')] };
+  assert.match((await (await sales.POST(request({ ...body, cashCount: {} }))).json()).message, /Enter the cash you counted/);
+  assert.match((await (await sales.POST(request({ ...body, cashCount: { 100: 2.5 } }))).json()).message, /whole number of ₱100 pieces/);
   const saved = await sales.POST(request(body));
   const result = await saved.json();
   assert.equal(saved.status, 200, JSON.stringify(result));
   assert.match(result.message, /Cash count short by ₱10\.00 \(TOV-/);
   const [variance] = await query('select control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note from turnover_variances');
-  assert.deepEqual(variance, { control: 190, system: 200, difference: -10, note: 'Cash counted ₱220.00 incl. penalty ₱30.00: Recount tomorrow' });
+  assert.deepEqual(variance, { control: 190, system: 200, difference: -10, note: 'Cash counted ₱220.00 incl. penalty ₱30.00 (₱100×2, ₱20×1): Recount tomorrow' }, 'the total comes from the pieces, not the page');
 
   // Counted right: nothing recorded.
-  const matched = await sales.POST(request({ ...body, cashCounted: 230, sales: [sale('APP-22')] }));
+  const matched = await sales.POST(request({ ...body, cashCount: { 100: 2, 20: 1, 10: 1 }, sales: [sale('APP-22')] }));
   assert.equal(matched.status, 200, JSON.stringify(await matched.clone().json()));
   assert.equal((await query('select count(*)::int as n from turnover_variances'))[0].n, 1);
 });
@@ -4586,7 +4594,7 @@ test('a Cash collections batch records the cash counted and its short on the sli
   await seed('employees', [{ employee_id: 'DPE-0001', full_name: '=encoder' }]);
   const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '3101 C', orDate: today };
   // A DTO batch (no incentive): the entries need ₱350; the clerk counted ₱300.
-  const batch = { dto: true, branch: 'BR-1', mas: '', accountableEmployeeId: '', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'Cash', cashCounted: 300, controlTotalNote: 'Member to bring the rest', collections: [entry] };
+  const batch = { dto: true, branch: 'BR-1', mas: '', accountableEmployeeId: '', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'Cash', cashCount: { 100: 3 }, controlTotalNote: 'Member to bring the rest', collections: [entry] };
   globalThis.dayongClearingNotRequired = false;
   try {
     const saved = await h.load('app/api/collections/route.ts').POST(request(batch));
@@ -4594,10 +4602,10 @@ test('a Cash collections batch records the cash counted and its short on the sli
     assert.equal(saved.status, 201, JSON.stringify(body));
     assert.match(body.message, /Cash count short by ₱50\.00 \(TOV-/);
     const [variance] = await query('select control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note from turnover_variances');
-    assert.deepEqual(variance, { control: 300, system: 350, difference: -50, note: 'Cash counted ₱300.00: Member to bring the rest' });
+    assert.deepEqual(variance, { control: 300, system: 350, difference: -50, note: 'Cash counted ₱300.00 (₱100×3): Member to bring the rest' });
     const slip = await lastSlip();
     assert.deepEqual([slip.status, slip.expected, slip.actual], ['Discrepancy', 350, 300]);
-    assert.match(slip.remarks, /Cash count short by ₱50\.00 \(TOV-.*\): Cash counted ₱300\.00: Member to bring the rest/);
+    assert.match(slip.remarks, /Cash count short by ₱50\.00 \(TOV-.*\): Cash counted ₱300\.00 \(₱100×3\): Member to bring the rest/);
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 

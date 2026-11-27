@@ -4,7 +4,7 @@ import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, pickedClea
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { cashCountControlTotal, cashCountNote, checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, expectedCash, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { cashCountControlTotal, cashCountNote, cashCountsProblem, cashCountTotal, type CashCounts, checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, expectedCash, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -41,6 +41,8 @@ type SalePayload = {
   controlTotal?: number | string;
   /** Cash batch (owner, November 27, 2026): the cash the clerk counted, in place of the control total. */
   cashCounted?: number | string;
+  /** The pieces of each bill and coin counted, e.g. { "1000": 3, "500": 1 }; the cash counted is worked out from them. */
+  cashCount?: CashCounts;
   /** Optional: what the clerk knows about a short or over turnover sheet. */
   controlTotalNote?: string;
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
@@ -643,12 +645,16 @@ async function saveSales(request: Request, user: SessionUser) {
     // Cash batch (owner, November 27, 2026): the cash counted, compared with total remittance + penalty; recorded as
     // control total = counted − penalty (lib/entry-controls.ts). A page opened before still sends the control total.
     const cashNames = await cashMethodNames();
-    const cashCount = body.cashCounted !== undefined && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
-    const controlProblem = cashCount ? controlTotalProblem(body.cashCounted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
+    // Counted by denomination (cashCount): the total is worked out from the pieces, not taken from the page.
+    const cashCount = (body.cashCount !== undefined || body.cashCounted !== undefined) && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
+    const countsProblem = cashCount && body.cashCount !== undefined ? cashCountsProblem(body.cashCount) : "";
+    if (countsProblem) return NextResponse.json({ success: false, message: countsProblem }, { status: 400 });
+    const counted = body.cashCount !== undefined ? cashCountTotal(body.cashCount) : Number(body.cashCounted);
+    const controlProblem = cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
-    const controlTotal = cashCount ? cashCountControlTotal(body.cashCounted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100;
+    const controlTotal = cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100;
     const typedNote = typeof body.controlTotalNote === "string" ? body.controlTotalNote.trim() : "";
-    const controlNote = cashCount ? cashCountNote(body.cashCounted, penalty, typedNote) : typedNote;
+    const controlNote = cashCount ? cashCountNote(counted, penalty, typedNote, body.cashCount) : typedNote;
     if (controlNote.length > TURNOVER_NOTE_MAX) return NextResponse.json({ success: false, message: `The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.` }, { status: 400 });
     let variance: { id: string; difference: number } | null = null;
 

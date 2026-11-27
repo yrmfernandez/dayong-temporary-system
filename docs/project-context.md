@@ -34,6 +34,12 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### New Sales and Collections: the cash is counted by denomination (2026-11-27)
+
+- **Asked (owner):** the cash count means how many ₱1,000, ₱500, ₱100 and so on, not one amount.
+- **Done:** on a Cash batch, Cash counted is a grid of bills and coins (₱1,000, ₱500, ₱200, ₱100, ₱50, ₱20, ₱10, ₱5, ₱1, ₱0.25): the clerk types the pieces of each, each row shows its subtotal, and the total counted is compared with the expected cash as before. The save sends the pieces (`cashCount`); the server checks them (whole pieces of known denominations) and works out the total itself. The breakdown is kept in the note of a short or over (e.g. ₱100×2, ₱20×1). `lib/entry-controls.ts`, `components/control-total-field.tsx` (`CashCountField`), `app/collections/page.tsx`, `components/new-sales-form.tsx`, `app/api/collections/route.ts`, `app/api/sales/route.ts`. Tests extended. Docs: `docs/system-guide.md`. No migration: the breakdown of a batch that matches is not stored.
+- **Status:** done: the change, tests, docs; in progress: none; to do: owner tries a Cash batch in a browser; decide whether every batch's breakdown should be stored (needs a migration).
+
 ### New Sales and Collections: Cash counted instead of the control total on Cash batches (2026-11-27)
 
 - **Asked (owner):** on Collections and New Sales, replace the control total with the cash count for the cash remittance method, so the system detects short and over by itself.

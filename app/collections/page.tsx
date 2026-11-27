@@ -35,7 +35,7 @@ import { useParkedDrafts } from "@/lib/use-parked-drafts";
 import { ParkedDrafts } from "@/components/parked-drafts";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
-import { BACKDATE_REASON_MIN, controlTotalDifference, controlTotalProblem, expectedCash, lateCheckDay, needsBackdateReason, varianceLabel } from "@/lib/entry-controls";
+import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, lateCheckDay, type CashCounts, needsBackdateReason, varianceLabel } from "@/lib/entry-controls";
 import { ControlTotalField } from "@/components/control-total-field";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
@@ -379,6 +379,8 @@ export default function CollectionsPage() {
   const [controlTotal, setControlTotal] = useState("");
   // Optional note kept with a short or over turnover sheet (lib/turnover-variance.ts).
   const [controlTotalNote, setControlTotalNote] = useState("");
+  // Cash batch: the pieces of each bill and coin counted (owner, November 27, 2026); the total is the cash counted.
+  const [cashCounts, setCashCounts] = useState<CashCounts>({});
   // The batch's receipt photos: at least one, as many as needed (owner, October 14, 2026); attached right after saving.
   const [receiptPhotos, setReceiptPhotos] = useState<PickedPhoto[]>([]);
   // Batch-level: who brought these payments in, and how the MAS remitted them to the office.
@@ -647,6 +649,8 @@ export default function CollectionsPage() {
   const totalDue = totalRemittance === null ? null : Math.round((totalRemittance + fidelityAmount) * 100) / 100;
   // Cash batch (owner, November 27, 2026): the clerk types the cash counted, compared with total remittance + penalty.
   const cashDue = expectedCash(totalDue, penaltyAmount);
+  const countedText = cashCountTotal(cashCounts) ? String(cashCountTotal(cashCounts)) : "";
+  const enteredTotal = isCashPayment ? countedText : controlTotal;
 
   function updateCollection(
     id: string,
@@ -1014,7 +1018,7 @@ export default function CollectionsPage() {
 
     if (returnedEdit) { await saveReturnedEdit(returnedEdit); return; }
 
-    const controlProblem = controlTotalProblem(controlTotal, isCashPayment ? cashDue : totalDue, isCashPayment);
+    const controlProblem = (isCashPayment && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, isCashPayment ? cashDue : totalDue, isCashPayment);
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1046,7 +1050,7 @@ export default function CollectionsPage() {
           paymentReference: selectedPaymentMethod && !selectedPaymentMethod.isCash ? paymentReference.trim() : "",
           // Saved first; the approved remittance is created below once the receipt photo is attached.
           autoApproveRemittance: false,
-          ...(isCashPayment ? { cashCounted: Number(controlTotal) } : { controlTotal: Number(controlTotal) }),
+          ...(isCashPayment ? { cashCounted: cashCountTotal(cashCounts), cashCount: cleanCashCounts(cashCounts) } : { controlTotal: Number(controlTotal) }),
           controlTotalNote: controlTotalNote.trim(),
           penalty: penaltyAmount,
           penaltyNote: penaltyAmount > 0 ? penaltyNote.trim() : "",
@@ -1185,6 +1189,7 @@ export default function CollectionsPage() {
     setSaveMessage("");
     setShowPreview(false);
     setControlTotal("");
+    setCashCounts({});
     setControlTotalNote("");
     setReceiptPhotos([]);
     setPenalty("");
@@ -2086,7 +2091,7 @@ export default function CollectionsPage() {
               {returnedEdit && <p className="text-xs text-muted-foreground">The batch keeps its receipt photos. Add one here only for collections you added or a receipt that changed; a new photo sends the batch back for approval.</p>}
               <ReceiptPhotosPicker photos={receiptPhotos} onChange={setReceiptPhotos} kind="collection" optional={isCashPayment || (Boolean(returnedEdit) && collections.every((entry) => entry.savedId))} />
 
-              {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p>{(() => { const turnover = controlTotalDifference(controlTotal, isCashPayment ? cashDue : totalDue, isCashPayment); return turnover ? <p className="font-semibold text-amber-700">{isCashPayment ? "Cash counted" : "Turnover sheet"} {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
+              {showPreview && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Review batch before saving</p><div className="mt-3 space-y-2">{collections.map((entry, index) => { const member = members.find((item) => item.id === entry.memberId); const program = programs.find((item) => item.id === entry.programId); const quote = quoteEntry(entry); return <div key={entry.id} className="rounded-lg border bg-background p-3 text-sm"><strong>Collection {index + 1}: {member ? getMemberFullName(member) : "No member"}</strong><p>{program?.name || "No program"} · {formatCurrency(Number(entry.amountCollected) || 0)}</p><p>{entry.monthFrom || "—"} to {entry.monthTo || "—"} · NOP {entry.nopFrom ?? "—"}–{entry.nopTo ?? "—"}</p><p>OR {entry.orNumber || "—"} · Calculated remittance {"remittance" in quote ? formatCurrency(quote.remittance) : "Pending"}</p></div>; })}</div><p className="mt-3 font-medium">Total amount collected: {formatCurrency(totalCollected)} · Total remittance: {totalDue === null ? "Pending" : formatCurrency(totalDue)}{penaltyAmount > 0 ? ` (incl. ${formatCurrency(penaltyAmount)} penalty: ${penaltyNote.trim() || "no note yet"})` : ""}</p>{(() => { const turnover = controlTotalDifference(enteredTotal, isCashPayment ? cashDue : totalDue, isCashPayment); return turnover ? <p className="font-semibold text-amber-700">{isCashPayment ? "Cash counted" : "Turnover sheet"} {varianceLabel(turnover).toLowerCase()}: this batch saves and its slip goes to Discrepancy.</p> : null; })()}</div>}
             </CardContent>
 
             {/* SAVE BAR (October 9, 2026): stays at the bottom of the entries panel with the totals, the control total and
@@ -2097,7 +2102,7 @@ export default function CollectionsPage() {
                 <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{totalDue === null ? "pending" : formatCurrency(totalDue)}</strong></span>
                 <span className="text-muted-foreground">{collections.length} {collections.length === 1 ? "entry" : "entries"}</span>
               </div>
-              {!returnedEdit && <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={isCashPayment ? cashDue : totalDue} cash={isCashPayment} />}
+              {!returnedEdit && <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={isCashPayment ? cashDue : totalDue} cash={isCashPayment} counts={cashCounts} onCountsChange={setCashCounts} />}
               {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
               <div className="flex gap-2">
                 <Button type="button" className="flex-1" onClick={async () => { if (showPreview) { void saveCollections(); return; } await alertDialog(COLLECTION_CHECK_REMINDER, { title: "Check every entry before saving", warning: true, confirmLabel: "I have checked every entry" }); setShowPreview(true); }} disabled={saving}>
