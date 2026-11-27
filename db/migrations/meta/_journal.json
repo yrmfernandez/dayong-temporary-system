@@ -428,6 +428,13 @@
       "when": 1795760441152,
       "tag": "0060_sale_payment_reference",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1795761942166,
+      "tag": "0061_finance_remittance_confirm",
+      "breakpoints": true
     }
   ]
 }

@@ -1048,6 +1048,16 @@ export const bank_deposits = pgTable("bank_deposits", {
    * cash, so it does not take cash out of the clerk report from December 1, 2026 (lib/cash-position.ts).
    */
   non_cash: boolean().notNull().default(false),
+  /**
+   * Cash remitted to Finance (owner, November 27, 2026): Finance confirms the amount received before the clerk's audit
+   * can be saved (lib/clerk-cash.ts decideFinanceRemittance). Pending, Confirmed or Rejected; blank on bank deposits and
+   * on records made before then.
+   */
+  finance_status: text(),
+  finance_decided_by_employee_id: text(),
+  finance_decided_by_name: text(),
+  finance_decided_at: text(),
+  finance_note: text(),
 }, (t) => [index("bank_deposits_branch_id_idx").on(t.branch_id), index("bank_deposits_mas_employee_id_idx").on(t.mas_employee_id), index("bank_deposits_employee_idx").on(t.employee_id, t.deposit_date)]).enableRLS();
 
 export const fidelity = pgTable("fidelity", {

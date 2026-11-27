@@ -9,6 +9,7 @@ import { MetricTile } from "@/components/metric-tile";
 import { ReceiptPhotoView } from "@/components/receipt-photo";
 import { RejectRequests } from "@/components/reject-requests";
 import { CashCounts } from "@/components/cash-counts";
+import { FinanceRemittances } from "@/components/finance-remittances";
 import { RemittanceDiscrepancy } from "@/components/remittance-discrepancy";
 import { RemittanceEntries } from "@/components/remittance-entries";
 import { StatusBadge } from "@/components/status-badge";
@@ -294,7 +295,7 @@ export default function RemittancesPage() {
         onViewSlip={(id) => { setView("approval"); setOnlyDifferences(false); setSearch(id); setViewingId(id); }}
         onChanged={(text) => { setMessage(text); void load(clerk); }} />}
 
-      {view === "counts" && canApprove && <CashCounts />}
+      {view === "counts" && canApprove && <div className="space-y-6"><FinanceRemittances /><CashCounts /></div>}
       {view === "reports" && (
         <div className="space-y-6">
           <Card><CardHeader><CardTitle>Outstanding Cash Aging</CardTitle><p className="text-sm text-muted-foreground">Entries not yet approved, by how long since the OR date.</p></CardHeader><CardContent className="space-y-4">

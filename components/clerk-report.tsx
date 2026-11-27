@@ -214,7 +214,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 rows={report.cashFlowTotals
                   // Monthly and yearly: the total of each week / month (owner, October 20, 2026); deposits are edited on the daily or weekly report.
                   ? report.cashFlowTotals.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, `${item.count} deposit${item.count === 1 ? "" : "s"}`])
-                  : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, item.remarks])}
+                  : report.deposits.map((item) => [item.bankAccount, item.when, money(item.amount), item.transferType, item.mas, [item.remarks, financeLabel(item)].filter(Boolean).join(" · ")])}
                 total={report.depositTotal}
                 action={editable && !report.cashFlowTotals ? (index) => <span className="flex gap-2 print:hidden"><button type="button" className="text-xs text-primary underline" onClick={() => { setEditingDeposit(report.deposits[index]); setTimeout(() => document.getElementById(isFinanceTurnover(report.deposits[index]) ? "finance-form" : "deposit-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>Edit</button><button type="button" className="text-xs text-red-700 underline" onClick={async () => { const reason = await promptDialog("Why is this deposit being voided?", { required: true }); if (reason) void act({ action: "void-deposit", id: report.deposits[index].id, reason }); }}>Void</button></span> : undefined} />
             </div>
@@ -633,6 +633,14 @@ function finWording(report: Report) { return report.from >= CARRY_START; }
  * on hand. Same figures as the old box (lib/clerk-report.ts); Total cash receipts and Net cash flow are added, TOTALS
  * (it repeated Total Cash In) is dropped, and bank / e-wallet and non-cash records move to a memo, not counted.
  */
+/** Finance's check of cash remitted to Finance (owner, November 27, 2026), shown in the record's remarks. */
+function financeLabel(item: Report["deposits"][number]) {
+  if (item.financeStatus === "Pending") return "Waiting for Finance to confirm";
+  if (item.financeStatus === "Confirmed") return `Confirmed by ${item.financeDecidedBy || "Finance"}`;
+  if (item.financeStatus === "Rejected") return `Not correct (${item.financeDecidedBy || "Finance"}): ${item.financeNote}. Edit the amount or void it.`;
+  return "";
+}
+
 function CashPosition({ report, giveToFinance }: { report: Report; giveToFinance: (() => void) | null }) {
   const cash = report.cash;
   const receipts = Math.round((cash.totalCashIn - cash.cashBeg) * 100) / 100;

@@ -81,14 +81,20 @@ async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "
 }
 
 /** nonCash: a bank or e-wallet payment kept for its details; it takes no cash out from December 1, 2026 (lib/cash-position.ts). */
-export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string; nonCash: boolean };
+export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string; nonCash: boolean;
+  /** Cash remitted to Finance: Finance's check of the amount (owner, November 27, 2026); blank on bank deposits and older records. */
+  financeStatus: "" | FinanceStatus; financeDecidedBy: string; financeDecidedAt: string; financeNote: string };
+export type FinanceStatus = "Pending" | "Confirmed" | "Rejected";
+const financeStatusOf = (value: unknown): "" | FinanceStatus => (value === "Pending" || value === "Confirmed" || value === "Rejected" ? value : "");
+const toDeposit = (row: typeof depositsTable.$inferSelect): BankDeposit => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks), nonCash: row.non_cash === true,
+  financeStatus: financeStatusOf(row.finance_status), financeDecidedBy: text(row.finance_decided_by_name), financeDecidedAt: text(row.finance_decided_at), financeNote: text(row.finance_note) });
 
 /** Posted (not voided) deposits by one clerk on or before `to`. */
 export async function getDeposits(employeeId: string, to: string): Promise<BankDeposit[]> {
   const rows = await currentDb().select().from(depositsTable)
     .where(and(eq(depositsTable.employee_id, employeeId), ne(depositsTable.status, "Voided"), lte(depositsTable.deposit_date, to)));
   return rows.sort((a, b) => text(a.deposit_date).localeCompare(text(b.deposit_date)) || a.row_seq - b.row_seq)
-    .map((row) => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks), nonCash: row.non_cash === true }));
+    .map(toDeposit);
 }
 
 function depositFields(input: Record<string, unknown>) {
@@ -116,7 +122,9 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   return inTransaction(async (tx) => {
     await assertReferenceFree(tx, fields.remarks, "", fields.deposit_date, fields.non_cash);
     const id = createReadableId("DEP");
-    await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields });
+    // Cash remitted to Finance waits for Finance to confirm the amount (owner, November 27, 2026).
+    await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields,
+      finance_status: fields.transfer_type === FINANCE_TURNOVER ? "Pending" : null });
     return { id };
   });
 }
@@ -155,8 +163,14 @@ export async function editDeposit(id: string, input: Record<string, unknown>, by
     if (!by.isAdmin && text(row.employee_id) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
     if (text(row.status) === "Voided") throw new Error("A voided deposit cannot be edited.");
     await assertReferenceFree(tx, fields.remarks, row.deposit_id, fields.deposit_date, fields.non_cash);
-    // The clerk, branch and status stay.
-    await tx.update(depositsTable).set(fields).where(eq(depositsTable.deposit_id, row.deposit_id));
+    // The clerk, branch and status stay. Cash remitted to Finance whose day, amount or receiver changed, or that Finance
+    // rejected, waits for Finance again (owner, November 27, 2026); unchanged, a confirmation stays.
+    const toFinance = fields.transfer_type === FINANCE_TURNOVER;
+    const changed = text(row.deposit_date) !== fields.deposit_date || Math.round(Number(row.amount) * 100) !== Math.round(fields.amount * 100) || text(row.bank_account_name) !== fields.bank_account_name || text(row.transfer_type) !== fields.transfer_type;
+    const recheck = toFinance && (changed || row.finance_status === "Rejected" || !row.finance_status);
+    const cleared = { finance_decided_by_employee_id: null, finance_decided_by_name: null, finance_decided_at: null, finance_note: null };
+    const finance = !toFinance ? { finance_status: null, ...cleared } : recheck ? { finance_status: "Pending", ...cleared } : {};
+    await tx.update(depositsTable).set({ ...fields, ...finance }).where(eq(depositsTable.deposit_id, row.deposit_id));
   });
 }
 
@@ -255,4 +269,51 @@ export async function saveReportNotes(employeeId: string, kind: string, start: s
     pending_cash: pendingCash, specific_remarks: text(input.specificRemarks).slice(0, 1000) || null, pending_transactions: text(input.pendingTransactions).slice(0, 1000) || null,
     other_comments: text(input.otherComments).slice(0, 1000) || null, updated_at: actor.encodedAt, updated_by: actor.name,
   });
+}
+
+/**
+ * Cash remitted to Finance is confirmed by Finance (owner, November 27, 2026: the finance should also confirm if the
+ * amount is correct before an audit can be saved). Finance or an Administrator confirms the amount received, or rejects
+ * it with a note the clerk sees (the clerk then corrects the amount, which sends it back to Finance, or voids it). Not
+ * one's own record, unless an Administrator. Until every record of a period is confirmed, the clerk's audit for it is
+ * neither saved nor approved (lib/daily-audit.ts).
+ */
+export async function decideFinanceRemittance(id: string, decision: "confirm" | "reject", note: string, by: { employeeId: string; isAdmin: boolean }) {
+  if (decision === "reject" && text(note).length < 3) throw new Error("Say why the amount is not correct (the clerk sees it).");
+  const actor = getEncoder();
+  return inTransaction(async (tx) => {
+    const [row] = await tx.select().from(depositsTable).where(eq(depositsTable.deposit_id, text(id))).for("update");
+    if (!row || text(row.transfer_type) !== FINANCE_TURNOVER) throw new Error("Cash remitted to Finance not found.");
+    if (text(row.status) === "Voided") throw new Error("This record was voided by the clerk.");
+    if (row.finance_status !== "Pending") throw new Error(`This record is already ${text(row.finance_status).toLowerCase() || "decided"}.`);
+    if (text(row.employee_id) === by.employeeId && !by.isAdmin) throw new Error("Another person confirms cash you remitted yourself.");
+    const status: FinanceStatus = decision === "confirm" ? "Confirmed" : "Rejected";
+    await tx.update(depositsTable).set({ finance_status: status, finance_decided_by_employee_id: actor.employeeId, finance_decided_by_name: actor.name, finance_decided_at: actor.encodedAt, finance_note: text(note).slice(0, 300) || null })
+      .where(eq(depositsTable.deposit_id, row.deposit_id));
+    return { ...toDeposit({ ...row, finance_status: status }), employeeName: text(row.employee_name) };
+  });
+}
+
+/** Cash remitted to Finance for Finance's check, newest first: every clerk's waiting or decided record (not voided). */
+export async function listFinanceRemittances(limit = 200) {
+  const rows = await currentDb().select().from(depositsTable)
+    .where(and(eq(depositsTable.transfer_type, FINANCE_TURNOVER), ne(depositsTable.status, "Voided"), sql`${depositsTable.finance_status} is not null`))
+    .orderBy(sql`${depositsTable.deposit_date} desc`, sql`${depositsTable.row_seq} desc`).limit(limit);
+  return rows.map((row) => ({ ...toDeposit(row), employeeName: text(row.employee_name), recordedAt: text(row.created_at) }));
+}
+
+/** The clerk's cash remitted to Finance in a period that Finance has not confirmed yet (Pending or Rejected). */
+export async function unconfirmedFinanceRemittances(employeeId: string, start: string, end: string) {
+  const rows = await currentDb().select().from(depositsTable)
+    .where(and(eq(depositsTable.employee_id, text(employeeId)), eq(depositsTable.transfer_type, FINANCE_TURNOVER), ne(depositsTable.status, "Voided"),
+      sql`${depositsTable.deposit_date} between ${start} and ${end}`, sql`${depositsTable.finance_status} in ('Pending', 'Rejected')`));
+  return rows.map(toDeposit);
+}
+
+/** The audit's refusal while cash remitted to Finance in the period is not confirmed (blank when all are). */
+export function unconfirmedFinanceProblem(items: BankDeposit[]) {
+  if (!items.length) return "";
+  const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  const list = items.map((item) => `${item.id} (${peso(item.amount)}, ${item.date}, ${item.financeStatus === "Rejected" ? `rejected: ${item.financeNote || "no note"}` : "waiting for Finance"})`).join("; ");
+  return `Finance has not confirmed ${items.length === 1 ? "the cash remitted to Finance" : `${items.length} records of cash remitted to Finance`} in this report: ${list}. Finance confirms the amount in Remittances, Cash counts; a rejected one is corrected or voided by the clerk first.`;
 }

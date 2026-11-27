@@ -214,6 +214,13 @@ async function auditDate(period: AuditPeriod, employeeId: string, day: string, d
   return { date: found.start, span: await spanOf(period, found) };
 }
 
+/** Refuses while the clerk's cash remitted to Finance in the period waits for Finance or was rejected (lib/clerk-cash.ts). */
+async function assertFinanceConfirmed(employeeId: string, { start, end }: { start: string; end: string }) {
+  const { unconfirmedFinanceProblem, unconfirmedFinanceRemittances } = await import("@/lib/clerk-cash");
+  const problem = unconfirmedFinanceProblem(await unconfirmedFinanceRemittances(employeeId, start, end));
+  if (problem) throw new Error(problem);
+}
+
 export async function saveDailyAudit(input: { date: string; employeeId: string; findings: string; result: string; period?: AuditPeriod; week?: number }) {
   const period = input.period ?? "daily";
   const employeeId = text(input.employeeId), findings = text(input.findings), result = text(input.result);
@@ -223,6 +230,8 @@ export async function saveDailyAudit(input: { date: string; employeeId: string; 
   if (findings.length > 2000) throw new Error("Findings must be 2,000 characters or fewer.");
   const employee = (await auditedEmployees()).find((item) => item.employeeId === employeeId);
   if (!employee) throw new Error("Only active Entry Clerks are audited.");
+  // Cash remitted to Finance is confirmed by Finance before the audit is saved (owner, November 27, 2026).
+  await assertFinanceConfirmed(employeeId, span ?? periodSpan(period, date));
   const figures = await figuresFor(period, date, employee, span);
   const table = TABLES[period];
   return inTransaction(async (tx) => {
@@ -272,6 +281,7 @@ export async function decideDailyAudit(input: { date: string; employeeId: string
     const { open } = await clerkTurnover(before.employeeId, start, end);
     // The report's slips waiting for approval are approved with it (November 19, 2026); checked here, written below.
     if (!open.length) slips = await (await import("@/lib/remittance-workflow")).reportSlips(before.employeeId, start, end, Boolean(input.allowOwnDecision));
+    await assertFinanceConfirmed(before.employeeId, { start, end });
     if (open.length) throw new Error(`This report has ${open.length === 1 ? "a turnover sheet short or over" : `${open.length} turnover sheets short or over`} not settled yet: ${open.map((item) => `${item.id} (${item.mas}, ${varianceLabel(item.difference).toLowerCase()})`).join("; ")}. Settle ${open.length === 1 ? "it" : "them"} in Remittances (approve the Discrepancy slip with how it was settled) before approving.`);
   }
   const figures = input.decision === "approve" ? await figuresFor(period, before.date, { name: before.employeeName, employeeId: before.employeeId }, span) : null;

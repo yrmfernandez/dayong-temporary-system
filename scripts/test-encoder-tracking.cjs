@@ -3742,6 +3742,24 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
   const [auto] = await query("select deposit_date::text as date, bank_account_name, amount::float8 as amount, transfer_type, mas, remarks, non_cash from bank_deposits where deposit_id = '" + ids[1] + "'");
   assert.deepEqual(auto, { date: '2026-12-02', bank_account_name: 'GCash', amount: 450, transfer_type: 'GCash', mas: 'Lopez, Ana', remarks: 'Ref 7712039 · New Sales SALE-1 +1', non_cash: true });
   const [handover] = (await query("select deposit_id from bank_deposits where transfer_type = '" + FINANCE_TURNOVER + "'"));
+  // Finance confirms the amount before the audit is saved (owner, November 27, 2026).
+  const cashFns = h.load('lib/clerk-cash.ts');
+  const waiting = await cashFns.unconfirmedFinanceRemittances('DPE-7', '2026-09-03', '2026-09-03');
+  assert.deepEqual(waiting.map((item) => [item.id, item.financeStatus]), [[handover.deposit_id, 'Pending']]);
+  assert.match(cashFns.unconfirmedFinanceProblem(waiting), /Finance has not confirmed the cash remitted to Finance.*waiting for Finance/);
+  const finance = (work) => encoding(async () => Response.json(await work()))(request());
+  h.setUser({ userId: 'USR-7', employeeId: 'DPE-7', name: 'Clerk' });
+  assert.match(await (await finance(() => cashFns.decideFinanceRemittance(handover.deposit_id, 'confirm', '', { employeeId: 'DPE-7', isAdmin: false }).catch((error) => ({ error: error.message })))).text(), /Another person confirms/);
+  h.setUser({ userId: 'USR-1', employeeId: 'DPE-0001', name: 'Finance' });
+  assert.match(await (await finance(() => cashFns.decideFinanceRemittance(handover.deposit_id, 'reject', '', { employeeId: 'DPE-0001', isAdmin: false }).catch((error) => ({ error: error.message })))).text(), /Say why/);
+  await finance(() => cashFns.decideFinanceRemittance(handover.deposit_id, 'reject', 'Received 150 only', { employeeId: 'DPE-0001', isAdmin: false }));
+  assert.match(cashFns.unconfirmedFinanceProblem(await cashFns.unconfirmedFinanceRemittances('DPE-7', '2026-09-03', '2026-09-03')), /rejected: Received 150 only/, 'a rejected one still holds the audit');
+  // The clerk corrects the amount: it goes back to Finance, who confirms it.
+  await asSystem(() => cashFns.editDeposit(handover.deposit_id, { date: '2026-09-03', amount: 150, transferType: FINANCE_TURNOVER, bankAccount: 'Finance Officer', remarks: '' }, { employeeId: 'DPE-7', isAdmin: false }));
+  assert.equal((await cashFns.unconfirmedFinanceRemittances('DPE-7', '2026-09-03', '2026-09-03'))[0].financeStatus, 'Pending');
+  await finance(() => cashFns.decideFinanceRemittance(handover.deposit_id, 'confirm', '', { employeeId: 'DPE-0001', isAdmin: false }));
+  assert.deepEqual(await cashFns.unconfirmedFinanceRemittances('DPE-7', '2026-09-03', '2026-09-03'), [], 'confirmed: the audit can be saved');
+  assert.equal((await cashFns.listFinanceRemittances()).find((item) => item.id === handover.deposit_id).financeDecidedBy, 'Finance');
   await asSystem(() => h.load('lib/clerk-cash.ts').voidDeposit(handover.deposit_id, 'Test handover', { employeeId: 'DPE-7', isAdmin: false }));
   const nextDay = await buildClerkReport('daily', '2026-09-04', { employeeId: 'DPE-7', name: 'Clerk' });
   assert.equal(nextDay.cash.cashBeg, 0, 'the 200 left the day before is not carried: Cash Beg is typed, case by case');
