@@ -1,9 +1,10 @@
+import { cashMethodNames, isCashMethod } from "@/lib/entry-batches";
 import { refuseOnDayOff } from "@/lib/day-off";
 import { clearedEmployee, clearingProblem, dateRemittedReasonProblem, pickedClearingProblem, waitingBatchProblem } from "@/lib/clearing";
 import { submitCashAfterSave } from "@/lib/remittance-workflow";
 import { userWithPageAccess } from "@/lib/auth-server";
 import { cashOnSpotProblem, fixedNewSaleAmount } from "@/lib/program-amount-lock";
-import { checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
+import { cashCountControlTotal, cashCountNote, checkBackdate, controlTotalProblem, DOI_TIME_MESSAGE, expectedCash, INCOMPLETE_APPLICATION_MESSAGE, isDoiTime, isIncompleteApplicationNumber, lateCheckDay, lateEntryReason } from "@/lib/entry-controls";
 import { blockingDateProblem } from "@/lib/date-checks";
 import { loadWorkCalendar } from "@/lib/work-calendar";
 import { manilaNow } from "@/lib/remittance-deadline";
@@ -38,6 +39,8 @@ type SalePayload = {
   sales: SalePayloadItem[];
   /** The total written on the MAS's turnover sheet. Short or over still saves and is recorded (lib/turnover-variance.ts). */
   controlTotal?: number | string;
+  /** Cash batch (owner, November 27, 2026): the cash the clerk counted, in place of the control total. */
+  cashCounted?: number | string;
   /** Optional: what the clerk knows about a short or over turnover sheet. */
   controlTotalNote?: string;
   /** Optional remittance penalty on the batch, charged to the MAS, with what it is for. */
@@ -637,10 +640,15 @@ async function saveSales(request: Request, user: SessionUser) {
     // The batch's total remittance (server calculation, plus Fidelity) is compared with the net total on the turnover
     // sheet. Short or over still saves; the difference is recorded below with the batch (lib/turnover-variance.ts).
     const totalRemittance = (quotes.reduce((sum, quote) => sum + Math.round(quote.remittance * 100), 0) + Math.round(fidelity * 100)) / 100;
-    const controlProblem = controlTotalProblem(body.controlTotal, totalRemittance);
+    // Cash batch (owner, November 27, 2026): the cash counted, compared with total remittance + penalty; recorded as
+    // control total = counted − penalty (lib/entry-controls.ts). A page opened before still sends the control total.
+    const cashNames = await cashMethodNames();
+    const cashCount = body.cashCounted !== undefined && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
+    const controlProblem = cashCount ? controlTotalProblem(body.cashCounted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
-    const controlTotal = Math.round(Number(body.controlTotal) * 100) / 100;
-    const controlNote = typeof body.controlTotalNote === "string" ? body.controlTotalNote.trim() : "";
+    const controlTotal = cashCount ? cashCountControlTotal(body.cashCounted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100;
+    const typedNote = typeof body.controlTotalNote === "string" ? body.controlTotalNote.trim() : "";
+    const controlNote = cashCount ? cashCountNote(body.cashCounted, penalty, typedNote) : typedNote;
     if (controlNote.length > TURNOVER_NOTE_MAX) return NextResponse.json({ success: false, message: `The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.` }, { status: 400 });
     let variance: { id: string; difference: number } | null = null;
 
@@ -891,7 +899,7 @@ async function saveSales(request: Request, user: SessionUser) {
     return NextResponse.json({
       success: true,
       message:
-        `All new sales were saved successfully.${recorded ? ` Turnover sheet ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}${fullPaymentNotes.length ? ` ${fullPaymentNotes.join(" ")}` : ""}`,
+        `All new sales were saved successfully.${recorded ? ` ${cashCount ? "Cash count" : "Turnover sheet"} ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}${fullPaymentNotes.length ? ` ${fullPaymentNotes.join(" ")}` : ""}`,
       savedSales,
       slips,
       varianceId: recorded?.id,

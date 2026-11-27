@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### New Sales and Collections: Cash counted instead of the control total on Cash batches (2026-11-27)
+
+- **Asked (owner):** on Collections and New Sales, replace the control total with the cash count for the cash remittance method, so the system detects short and over by itself.
+- **Decided (owner):** the cash counted includes the penalty (everything handed over for the batch).
+- **Done:** on a batch whose remittance method is cash, the save bar asks **Cash counted** and shows **Expected cash** = total remittance (with Fidelity) + penalty, with Matches / Short / Over as before; other methods keep the control total. The server takes `cashCounted` (a page opened before still sends `controlTotal`, accepted) and records a short or over as before with control total = counted − penalty and a note starting Cash counted ₱X incl. penalty ₱Y, so slips, Discrepancy, Exceptions, the clerk report and audits are unchanged; messages and slip remarks say Cash count. `lib/entry-controls.ts`, `components/control-total-field.tsx`, `app/collections/page.tsx`, `components/new-sales-form.tsx`, `app/api/collections/route.ts`, `app/api/sales/route.ts`, `lib/remittance-workflow.ts`. Two tests in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, tests, docs; in progress: none; to do: owner tries a Cash batch in a browser (short, over and match, with a penalty).
+
 ### Clerk report: finance wording and a cash position statement from December 1, 2026 (2026-11-27)
 
 - **Asked (owner):** simplify the report, especially the cash summary, without losing any function, in finance / accounting wording; a mockup first (`clerk-report-mockup.html` in the owner's Downloads, approved), then use it only from December 1.

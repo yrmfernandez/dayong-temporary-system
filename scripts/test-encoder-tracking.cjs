@@ -2428,6 +2428,44 @@ test('new sales are remitted on their own slip, separate from collections', asyn
   assert.equal((await collectionState('COL-1')).status, 'Outstanding');
 });
 
+test('a Cash batch takes the cash counted instead of the control total, with the penalty in it (owner, November 27, 2026)', async () => {
+  const h = harness();
+  const controls = h.load('lib/entry-controls.ts');
+  assert.equal(controls.expectedCash(350, 50), 400, 'expected cash = total remittance + penalty');
+  assert.equal(controls.expectedCash(null, 50), null);
+  assert.equal(controls.cashCountControlTotal(380, 50), 330, 'recorded as counted less the penalty');
+  assert.equal(controls.controlTotalStatus(400, 400, true).text, 'Matches the expected cash.');
+  assert.match(controls.controlTotalStatus(380, 400, true).text, /^Short by ₱20\.00: the cash counted is less/);
+  assert.match(controls.controlTotalStatus(420, 400, true).text, /^Over by ₱20\.00: the cash counted is more/);
+  assert.equal(controls.controlTotalProblem('', 400, true), 'Enter the cash you counted from the MAS for this batch.');
+  assert.equal(controls.cashCountNote(380, 50, 'MAS to pay Monday'), 'Cash counted ₱380.00 incl. penalty ₱50.00: MAS to pay Monday');
+  assert.equal(controls.varianceSource(controls.cashCountNote(380, 0, '')), 'Cash count');
+  assert.equal(controls.varianceSource('Member to bring the rest'), 'Turnover sheet');
+
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows.Employees = [[], ['DPE-0002', 'Maria', 'BR-1', 'MAS', 'active']];
+  h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0002', 'BR-1']];
+  h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+  h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'Maria']);
+  const sales = h.load('app/api/sales/route.ts');
+  const sale = (applicationNo) => ({ existingMember: false, memberNumber: '', programId: 'DP-1', amountPaid: '350', applicationNo, addressHouse: 'Address', beneficiaries: [], paymentMethod: 'Cash' });
+  // The entries need ₱200 (350 less the ₱150 incentive) and the ₱30 penalty is in the cash: ₱230 expected; ₱220 counted.
+  const body = { branch: 'BR-1', mas: 'Maria', dateRemitted: '2026-09-25', penalty: 30, penaltyNote: 'Late turnover', cashCounted: 220, controlTotalNote: 'Recount tomorrow', sales: [sale('APP-21')] };
+  assert.match((await (await sales.POST(request({ ...body, cashCounted: '' }))).json()).message, /Enter the cash you counted/);
+  const saved = await sales.POST(request(body));
+  const result = await saved.json();
+  assert.equal(saved.status, 200, JSON.stringify(result));
+  assert.match(result.message, /Cash count short by ₱10\.00 \(TOV-/);
+  const [variance] = await query('select control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note from turnover_variances');
+  assert.deepEqual(variance, { control: 190, system: 200, difference: -10, note: 'Cash counted ₱220.00 incl. penalty ₱30.00: Recount tomorrow' });
+
+  // Counted right: nothing recorded.
+  const matched = await sales.POST(request({ ...body, cashCounted: 230, sales: [sale('APP-22')] }));
+  assert.equal(matched.status, 200, JSON.stringify(await matched.clone().json()));
+  assert.equal((await query('select count(*)::int as n from turnover_variances'))[0].n, 1);
+});
+
 test('New Sales Fidelity is the MAS own money: incentives stay whole and the remittance expects it', async () => {
   const h = harness();
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
@@ -4533,6 +4571,33 @@ test('a DTO batch: a member of a resigned MAS paid at the office, without a clea
       'the account keeps its MAS; the clerk is accountable; DTO earns no incentive, so all ₱350 is remitted');
     const { entries } = await h.load('lib/todays-entries.ts').getEntriesForRange(today, today, 'encoded', {});
     assert.deepEqual(entries.map((entry) => entry.person), ['DTO'], 'shown as DTO, not the clerk or the MAS');
+  } finally { globalThis.dayongClearingNotRequired = true; }
+});
+
+test('a Cash collections batch records the cash counted and its short on the slip (owner, November 27, 2026)', async () => {
+  const h = harness();
+  const rules = h.load('lib/account-rules.ts');
+  const today = rules.todayInManila(), month = today.slice(0, 7);
+  const next = rules.monthName(rules.monthIndex(month) + 1);
+  h.rows.Employees = [[], ['DPE-0001', '=encoder', 'BR-1', 'Entry Clerk', 'active']];
+  h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+  h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active']];
+  await seedAccount({ doi: month + '-01' });
+  await seed('employees', [{ employee_id: 'DPE-0001', full_name: '=encoder' }]);
+  const entry = { memberNumber: 'PH-1', programId: 'DP-1', monthFrom: next, monthTo: next, amountCollected: 350, nopFrom: 2, nopTo: 2, orNumber: '3101 C', orDate: today };
+  // A DTO batch (no incentive): the entries need ₱350; the clerk counted ₱300.
+  const batch = { dto: true, branch: 'BR-1', mas: '', accountableEmployeeId: '', dateRemitted: today, collectedBy: 'DTO', paymentMethod: 'Cash', cashCounted: 300, controlTotalNote: 'Member to bring the rest', collections: [entry] };
+  globalThis.dayongClearingNotRequired = false;
+  try {
+    const saved = await h.load('app/api/collections/route.ts').POST(request(batch));
+    const body = await saved.json();
+    assert.equal(saved.status, 201, JSON.stringify(body));
+    assert.match(body.message, /Cash count short by ₱50\.00 \(TOV-/);
+    const [variance] = await query('select control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note from turnover_variances');
+    assert.deepEqual(variance, { control: 300, system: 350, difference: -50, note: 'Cash counted ₱300.00: Member to bring the rest' });
+    const slip = await lastSlip();
+    assert.deepEqual([slip.status, slip.expected, slip.actual], ['Discrepancy', 350, 300]);
+    assert.match(slip.remarks, /Cash count short by ₱50\.00 \(TOV-.*\): Cash counted ₱300\.00: Member to bring the rest/);
   } finally { globalThis.dayongClearingNotRequired = true; }
 });
 

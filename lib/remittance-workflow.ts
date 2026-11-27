@@ -15,6 +15,7 @@ import { cashMethodNames, isCashMethod, saleBatchKey } from "@/lib/entry-batches
 import { incentiveDecisions } from "@/lib/incentive-decision";
 import { formatDate as showDate } from "@/lib/date-format";
 import { decideVariance, linkVarianceToSlip, openVarianceFor, reopenVariance, varianceLabel, variancesOfSlips } from "@/lib/turnover-variance";
+import { varianceSource } from "@/lib/entry-controls";
 import { differentLabel } from "@/lib/remittance";
 
 
@@ -526,7 +527,7 @@ export async function createCashRemittance(input: { collectionIds: string[]; act
   const penaltyText = penalized.map((collection) => `Penalty ${collection.penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (separate from remittance): ${collection.penaltyNote}`).join("; ");
   const fidelityText = fidelityAmount > 0 ? `Fidelity ${fidelityAmount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} (employee's own money), included in the expected amount` : "";
   const forfeitText = forfeits.length ? `Incentive forfeited on ${forfeits.length} item${forfeits.length === 1 ? "" : "s"} (${forfeitedTotal.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}): cash received after 3:00 PM the day after the OR date, or an Administrator's decision` : "";
-  const turnoverText = variance && turnoverOffset ? `Turnover sheet ${varianceLabel(turnoverOffset).toLowerCase()} (${variance.id})${variance.note ? `: ${variance.note}` : ""}` : "";
+  const turnoverText = variance && turnoverOffset ? `${varianceSource(variance.note)} ${varianceLabel(turnoverOffset).toLowerCase()} (${variance.id})${variance.note ? `: ${variance.note}` : ""}` : "";
   const remarks = [text(input.remarks), turnoverText, penaltyText, fidelityText, forfeitText].filter(Boolean).join(" | ");
   const status = approved ? "Approved" : difference === 0 ? "Pending Approval" : "Discrepancy";
   const id = createReadableId("REM");

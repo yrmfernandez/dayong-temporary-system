@@ -13,6 +13,12 @@ import { toCents } from "@/lib/money";
  * summary. A penalty is separate and not part of it. Until October 29, 2026 the batch saved only on an exact match;
  * now it saves short or over too (owner): the difference is shown before saving, recorded with the batch, and its slip
  * goes to Discrepancy so it is traced and settled (lib/turnover-variance.ts).
+ *
+ * Cash count (owner, November 27, 2026): on a Cash batch the clerk types the cash they counted from the MAS instead of
+ * the turnover sheet's figure, so short and over are found from the real cash. The count is everything handed over for
+ * the batch: the total remittance, Fidelity and the penalty, so it is compared with the expected cash (total remittance
+ * + penalty). It is recorded as before with control total = cash counted − penalty, so the slip, Discrepancy, Exceptions
+ * and the clerk report work unchanged. Other remittance methods keep the control total from the turnover sheet.
  */
 export const BACKDATE_REASON_MIN = 5;
 
@@ -46,12 +52,30 @@ export function checkBackdate(date: string, reason: string, label: string, today
  * `totalRemittance` is null while an entry is incomplete (its remittance cannot be calculated yet). A total that does
  * not match is not a problem: see controlTotalDifference.
  */
-export function controlTotalProblem(controlTotal: unknown, totalRemittance: number | null) {
+export function controlTotalProblem(controlTotal: unknown, totalRemittance: number | null, cash = false) {
   const total = Number(controlTotal);
-  if (controlTotal === "" || controlTotal === null || controlTotal === undefined || !Number.isFinite(total) || total <= 0) return "Enter the net total (total remittance) from the MAS's turnover sheet.";
-  if (totalRemittance === null) return "Complete the entries so the total remittance can be calculated.";
+  if (controlTotal === "" || controlTotal === null || controlTotal === undefined || !Number.isFinite(total) || total <= 0) return cash ? "Enter the cash you counted from the MAS for this batch." : "Enter the net total (total remittance) from the MAS's turnover sheet.";
+  if (totalRemittance === null) return cash ? "Complete the entries so the expected cash can be calculated." : "Complete the entries so the total remittance can be calculated.";
   return "";
 }
+
+/** The cash a Cash batch should bring in: total remittance (with Fidelity) + penalty; null while it cannot be calculated. */
+export const expectedCash = (totalRemittance: number | null, penalty: number) => totalRemittance === null ? null : (toCents(totalRemittance) + toCents(Math.max(0, penalty || 0))) / 100;
+
+/** The control total recorded for a cash count: the cash counted less the penalty, so it compares with the total remittance. */
+export const cashCountControlTotal = (counted: unknown, penalty: number) => (toCents(Number(counted)) - toCents(Math.max(0, penalty || 0))) / 100;
+
+const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+
+/** True for a short or over recorded from a cash count (its note starts with Cash counted); else from a turnover sheet. */
+export const isCashCountNote = (note: string) => String(note ?? "").startsWith("Cash counted ");
+
+/** "Cash count" or "Turnover sheet": where a recorded short or over came from, for messages and slip remarks. */
+export const varianceSource = (note: string) => isCashCountNote(note) ? "Cash count" : "Turnover sheet";
+
+/** The note kept with a cash count's short or over: the cash counted (and the penalty in it), then the clerk's note. */
+export const cashCountNote = (counted: unknown, penalty: number, note: string) =>
+  `Cash counted ${peso(toCents(Number(counted)) / 100)}${penalty > 0 ? ` incl. penalty ${peso(penalty)}` : ""}${note.trim() ? `: ${note.trim()}` : ""}`.slice(0, TURNOVER_NOTE_MAX);
 
 /** The longest note kept with a short or over turnover sheet (lib/turnover-variance.ts). */
 export const TURNOVER_NOTE_MAX = 300;
@@ -60,23 +84,32 @@ export const TURNOVER_NOTE_MAX = 300;
 export const varianceLabel = (difference: number) => `${difference < 0 ? "Short" : "Over"} by ${Math.abs(difference).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}`;
 
 /** Control total − total remittance, in pesos: negative is short, positive is over, 0 matches; null when not comparable. */
-export function controlTotalDifference(controlTotal: unknown, totalRemittance: number | null) {
-  if (controlTotalProblem(controlTotal, totalRemittance) || totalRemittance === null) return null;
+export function controlTotalDifference(controlTotal: unknown, totalRemittance: number | null, cash = false) {
+  if (controlTotalProblem(controlTotal, totalRemittance, cash) || totalRemittance === null) return null;
   return (toCents(Number(controlTotal)) - toCents(totalRemittance)) / 100;
 }
 
 /** What the form shows beside the control total: what is missing, a match, or how much it is short or over. */
-export function controlTotalStatus(controlTotal: unknown, totalRemittance: number | null) {
-  const difference = controlTotalDifference(controlTotal, totalRemittance);
-  if (difference === null) return { tone: "problem" as const, difference: 0, text: controlTotalProblem(controlTotal, totalRemittance) };
+export function controlTotalStatus(controlTotal: unknown, totalRemittance: number | null, cash = false) {
+  const difference = controlTotalDifference(controlTotal, totalRemittance, cash);
+  if (difference === null) return { tone: "problem" as const, difference: 0, text: controlTotalProblem(controlTotal, totalRemittance, cash) };
+  if (cash) {
+    if (!difference) return { tone: "match" as const, difference, text: "Matches the expected cash." };
+    return {
+      tone: "variance" as const,
+      difference,
+      text: difference < 0
+        ? `Short by ${peso(Math.abs(difference))}: the cash counted is less than the entries need. Count again, then look for a doubled entry or a wrong amount. It can still be saved; its slip goes to Discrepancy.`
+        : `Over by ${peso(Math.abs(difference))}: the cash counted is more than the entries need. Count again, then look for a missing entry or a wrong incentive. It can still be saved; its slip goes to Discrepancy.`,
+    };
+  }
   if (!difference) return { tone: "match" as const, difference, text: "Matches the total remittance." };
-  const peso = Math.abs(difference).toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   return {
     tone: "variance" as const,
     difference,
     text: difference < 0
-      ? `Short by ${peso}: the turnover sheet is less than the entries. Look for a doubled entry or a wrong amount. It can still be saved; its slip goes to Discrepancy.`
-      : `Over by ${peso}: the turnover sheet is more than the entries. Look for a missing entry or a wrong incentive. It can still be saved; its slip goes to Discrepancy.`,
+      ? `Short by ${peso(Math.abs(difference))}: the turnover sheet is less than the entries. Look for a doubled entry or a wrong amount. It can still be saved; its slip goes to Discrepancy.`
+      : `Over by ${peso(Math.abs(difference))}: the turnover sheet is more than the entries. Look for a missing entry or a wrong incentive. It can still be saved; its slip goes to Discrepancy.`,
   };
 }
 

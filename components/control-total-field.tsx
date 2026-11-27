@@ -10,16 +10,20 @@ const TONE = { problem: "text-red-700", match: "text-emerald-700", variance: "te
  * The control total in a New Sales or Collections save bar (owner, October 29, 2026). It shows whether the turnover
  * sheet matches the batch's total remittance or is short or over by how much. Short or over still saves; the optional
  * note goes with the recorded difference (lib/turnover-variance.ts) to help whoever settles it.
+ *
+ * Cash batches (owner, November 27, 2026): `cash` turns it into Cash counted, the cash the clerk counted from the MAS,
+ * compared with the expected cash (`totalRemittance` is then total remittance + penalty; lib/entry-controls.ts).
  */
-export function ControlTotalField({ id, title, value, onChange, note, onNoteChange, totalRemittance }: {
+export function ControlTotalField({ id, title, value, onChange, note, onNoteChange, totalRemittance, cash = false }: {
   id: string; title: string; value: string; onChange: (value: string) => void;
-  note: string; onNoteChange: (value: string) => void; totalRemittance: number | null;
+  note: string; onNoteChange: (value: string) => void; totalRemittance: number | null; cash?: boolean;
 }) {
-  const status = value === "" ? null : controlTotalStatus(value, totalRemittance);
+  const status = value === "" ? null : controlTotalStatus(value, totalRemittance, cash);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Label htmlFor={id} className="whitespace-nowrap" title={title}>Control total *</Label>
-      <Input id={id} type="number" min="0" step="0.01" className="w-36" value={value} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => onChange(event.target.value)} placeholder="From turnover sheet" />
+      <Label htmlFor={id} className="whitespace-nowrap" title={cash ? "Count the cash the MAS handed over for this batch, with Fidelity and any penalty, and type the amount. The system compares it with what the entries need." : title}>{cash ? "Cash counted *" : "Control total *"}</Label>
+      <Input id={id} type="number" min="0" step="0.01" className="w-36" value={value} onWheel={(event) => event.currentTarget.blur()} onChange={(event) => onChange(event.target.value)} placeholder={cash ? "Cash you counted" : "From turnover sheet"} />
+      {cash && totalRemittance !== null && <span className="text-xs text-muted-foreground">Expected cash {totalRemittance.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>}
       {status && <span className={`max-w-80 text-xs ${TONE[status.tone]}`}>{status.text}</span>}
       {status?.tone === "variance" && (
         <Input aria-label="Turnover note" className="w-72" maxLength={TURNOVER_NOTE_MAX} value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Note on the short/over (optional), e.g. MAS to pay tomorrow" />
