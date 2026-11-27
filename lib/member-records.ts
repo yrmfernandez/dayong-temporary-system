@@ -301,6 +301,8 @@ export type SaleSheetData = {
   dateRemittedReason?: string;
   /** The clearing (handover) picked for the batch (lib/clearing.ts). */
   clearingId?: string;
+  /** The reference no. of a bank or e-wallet batch, typed by the Entry Clerk (owner, November 27, 2026). */
+  paymentReference?: string;
 };
 
 /**
@@ -327,6 +329,7 @@ export async function addSale(
     forfeited_incentive: quote.forfeited && quote.forfeited > 0 ? quote.forfeited : null, no_incentive_reason: optional(quote.noIncentiveReason),
     // Cash on spot (owner, November 26, 2026): priced at 20% (lib/remittance.ts); repricing keeps it.
     cash_on_spot: quote.cashOnSpot === true,
+    payment_reference: optional(sale.paymentReference),
   });
 }
 

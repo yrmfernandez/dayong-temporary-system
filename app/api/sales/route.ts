@@ -874,6 +874,8 @@ async function saveSales(request: Request, user: SessionUser) {
           backdateReason: lateEntryReason(String(sale.orDate ?? "").trim(), String(sale.backdateReason ?? "").trim().slice(0, 300), dateRemittedReason, manilaNow().date, calendar),
           dateRemittedReason,
           clearingId,
+          // Typed by the Entry Clerk on a bank or e-wallet batch (owner, November 27, 2026).
+          paymentReference: transferMethod ? paymentReference : "",
         };
 
         const quote = quotes[savedSales.length];
@@ -894,7 +896,7 @@ async function saveSales(request: Request, user: SessionUser) {
         });
       }
       if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch);
-      if (transferMethod) await recordBatchTransfer({ kind: "New Sales", branch: body.branch.trim(), mas: body.mas.trim(), method: transferMethod, reference: paymentReference, amount: totalRemittance + penalty, entryIds: savedSales.map((saved) => saved.saleId) });
+      if (transferMethod) await recordBatchTransfer({ kind: "New Sales", branch: body.branch.trim(), mas: body.mas.trim(), method: transferMethod, reference: paymentReference, amount: totalRemittance - fidelity, entryIds: savedSales.map((saved) => saved.saleId) });
       variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 

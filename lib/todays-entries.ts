@@ -150,6 +150,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
   const money = (value: unknown) => (text(value) === "" ? "" : peso(number(value)));
   const today = manilaNow().date;
   // no_incentive_reason was added after the sheet layout (migration 0025), so it is found by its header.
+  const saleReferenceAt = sales[0]?.indexOf("payment_reference") ?? -1;
   const saleNoIncentive = sales[0]?.indexOf("no_incentive_reason") ?? -1, collectionNoIncentive = collections[0]?.indexOf("no_incentive_reason") ?? -1;
   const reasonAt = (row: unknown[], index: number) => (index >= 0 ? text(row[index]) : "");
   const collectionDifferent = collections[0]?.indexOf("different_incentive") ?? -1;
@@ -192,7 +193,7 @@ export async function getEntriesForRange(from: string, to: string, mode: TodayMo
           ["Sale ID", text(row[0])], ["Member", [memberName, text(row[5])].filter(Boolean).join(" · ")],
           ["Program", programNames.get(text(row[21])) || text(row[21])], ["Branch", text(row[2])], ["MAS", text(row[3])],
           ["Application no.", text(row[28])], ["Application date", showDate(orDate)], ["DOI", showDate(text(row[22]).slice(0, 10))],
-          ["Date remitted", showDate(dateRemitted)], ["Payment method", text(row[23])],
+          ["Date remitted", showDate(dateRemitted)], ["Payment method", [text(row[23]), reasonAt(row, saleReferenceAt) && `ref ${reasonAt(row, saleReferenceAt)}`].filter(Boolean).join(" · ")],
           ["Registration fee", /^yes$/i.test(text(row[24])) ? money(row[25]) : ""], ["Amount paid", peso(amount)],
           ["MAS incentive", peso(Math.max(0, round(amount - remittance)))], ["Company share (to remit)", peso(remittance)],
           ["Forfeited incentive", number(row[43]) ? peso(number(row[43])) : ""], ["No incentive", reasonAt(row, saleNoIncentive)],

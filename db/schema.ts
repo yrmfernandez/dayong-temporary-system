@@ -410,6 +410,8 @@ export const sales = pgTable("sales", {
   no_incentive_reason: text(),
   /** Cash on spot (owner, November 26, 2026; lib/remittance.ts CASH_ON_SPOT_RATE): the member paid the whole program on this New Sale; the MAS keeps 20%. */
   cash_on_spot: boolean().notNull().default(false),
+  /** The reference no. of a bank or e-wallet batch (owner, November 27, 2026), typed by the Entry Clerk; blank on cash batches and MAS submissions. */
+  payment_reference: text(),
   /** The clearing (handover of cash) the clerk picked for this batch (owner, October 29, 2026; lib/clearing.ts). Blank before then. */
   clearing_id: text(),
   /** An Administrator's decision on the incentive (owner, October 23, 2026; lib/incentive-decision.ts): "Keep" or "Forfeit" overrides the 3:00 PM rule; blank follows it. */

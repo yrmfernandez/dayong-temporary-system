@@ -65,12 +65,17 @@ const asRow = (row: typeof depositsTable.$inferSelect): unknown[] => [row.deposi
 /**
  * Refuses a deposit whose reference is already on another deposit. Inside the save's transaction it first locks each
  * reference it carries, so a second save of the same reference waits and then sees the first.
+ *
+ * Cash out only (owner, November 27, 2026): a MAS often sends New Sales and Collections, or all their money, in one
+ * transfer with one reference, which the clerk encodes as several batches, maybe on different days. A non-cash record
+ * takes no cash out, so it may share its reference with any other record, and only deposits that take cash out are
+ * held to one reference, one deposit.
  */
-async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "", date = "") {
+async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "", date = "", nonCash = false) {
   const wanted = references(remarks).sort();
-  if (!wanted.length) return;
+  if (!wanted.length || nonCash) return;
   for (const reference of wanted) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`deposit-reference:${reference}`}))`);
-  const candidates = await tx.select().from(depositsTable).where(and(ne(depositsTable.status, "Voided"), sql`${depositsTable.remarks} ~ ${wanted.join("|")}`));
+  const candidates = await tx.select().from(depositsTable).where(and(ne(depositsTable.status, "Voided"), ne(depositsTable.non_cash, true), sql`${depositsTable.remarks} ~ ${wanted.join("|")}`));
   const problem = duplicateReferenceProblem(remarks, [[], ...candidates.map(asRow)], exceptId, { date });
   if (problem) throw new Error(problem);
 }
@@ -109,7 +114,7 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
   const fields = depositFields(input);
   getEncoder();
   return inTransaction(async (tx) => {
-    await assertReferenceFree(tx, fields.remarks, "", fields.deposit_date);
+    await assertReferenceFree(tx, fields.remarks, "", fields.deposit_date, fields.non_cash);
     const id = createReadableId("DEP");
     await tx.insert(depositsTable).values({ deposit_id: id, employee_id: clerk.employeeId, employee_name: clerk.name, branch: clerk.branch, status: "Posted", void_reason: null, created_at: new Date().toISOString(), ...fields });
     return { id };
@@ -121,8 +126,10 @@ export async function addDeposit(input: Record<string, unknown>, clerk: { employ
  * paid by a method that is not cash records a non-cash deposit for the clerk who saved it, dated today, with the
  * batch's MAS, the method as bank account and transfer type, and the reference no. in the remarks. It takes no cash
  * out (non-cash), so it is shown in Bank Deposits and Cash Remitted to Finance with its reference. Only from
- * CARRY_START: before that, bank and e-wallet payments still count as cash on hand. Runs inside the batch's save, so a
- * reference already on another day's deposit refuses the batch (one reference, one deposit). Returns the deposit ID.
+ * CARRY_START: before that, bank and e-wallet payments still count as cash on hand. The amount is the entries'
+ * remittance only: Fidelity and penalty may be paid in cash and stay in the cash summary. One reference may be on
+ * several batches (one transfer for New Sales and Collections, or for several days), as a non-cash record takes no
+ * cash out. Runs inside the batch's save. Returns the deposit ID.
  */
 export async function recordBatchTransfer(input: { kind: "New Sales" | "Collections"; branch: string; mas: string; method: string; reference: string; amount: number; entryIds: string[] }) {
   const clerk = currentEncoder();
@@ -147,7 +154,7 @@ export async function editDeposit(id: string, input: Record<string, unknown>, by
     if (!row) throw new Error("Deposit not found.");
     if (!by.isAdmin && text(row.employee_id) !== by.employeeId) throw new Error("You can edit only deposits you recorded.");
     if (text(row.status) === "Voided") throw new Error("A voided deposit cannot be edited.");
-    await assertReferenceFree(tx, fields.remarks, row.deposit_id, fields.deposit_date);
+    await assertReferenceFree(tx, fields.remarks, row.deposit_id, fields.deposit_date, fields.non_cash);
     // The clerk, branch and status stay.
     await tx.update(depositsTable).set(fields).where(eq(depositsTable.deposit_id, row.deposit_id));
   });

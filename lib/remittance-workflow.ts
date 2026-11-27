@@ -212,13 +212,14 @@ async function readLedger(include: string[] = []) {
   // AQ is the batch's MAS Fidelity, on its first sale.
   // A New Sale has no OR; its date is the Manila date it was created (date_created is a UTC stamp).
   const saleDate = (row: unknown[]) => text(row[30]) || manilaDateOf(text(row[1]));
+  const saleReferenceAt = rows.Sales[0]?.indexOf("payment_reference") ?? -1;
   const sales: CashCollection[] = rows.Sales.slice(1).map((row, index) => ({
     kind: "New Sales" as const, photoId: "", cash: false, encodedByEmployeeId: text(row[32]), encodedByName: text(row[33]), encodedAt: manilaStamp(text(row[34]) || text(row[1])), dateRemitted: text(row[4]).slice(0, 10), id: text(row[0]), batchId: "", rowNumber: activeSales.rowNumbers[index] ?? 0, memberNumber: text(row[5]), programId: text(row[21]), branch: text(row[2]),
     accountableEmployeeId: text(row[37]), accountableName: text(row[3]), accountableRole: "MAS",
     orNumber: text(row[29]) || (text(row[28]) ? `App ${text(row[28])}` : ""), orDate: saleDate(row), amount: number(row[26]), remittanceAmount: text(row[41]) === "" ? number(row[26]) : number(row[41]),
     forfeitedIncentive: number(row[FORFEIT_COLUMN["New Sales"]]), incentiveDeadline: deadline(saleDate(row), text(row[2])),
     remittanceStatus: text(row[35]) || "Needs Historical Review", linkedRemittanceId: text(row[36]),
-    collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: number(row[42]),
+    collectedBy: "MAS", paymentMethod: text(row[23]) || "Cash", paymentReference: saleReferenceAt >= 0 ? text(row[saleReferenceAt]) : "", penalty: number(row[38]), penaltyNote: text(row[39]), fidelity: number(row[42]),
     daysOutstanding: Math.max(0, Math.floor((Date.now() - new Date(`${saleDate(row)}T00:00:00Z`).getTime()) / 86400000)) || 0,
   })).filter((sale) => sale.id);
   // A New Sales batch: the sales saved together (lib/entry-batches.ts), remitted on one slip like a Collections batch.

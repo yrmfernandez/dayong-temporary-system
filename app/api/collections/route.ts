@@ -254,8 +254,9 @@ async function saveCollections(request: Request, user: SessionUser) {
       await commitCollections(tx, rows, [...touched.values()], payments);
       const ids = rows.map((row) => row.collection_id);
       if (submissionId) await markCollectionSubmissionSaved(submissionId, ids);
-      // A bank or e-wallet batch is recorded in Bank Deposits (non-cash) with its MAS and reference, from December 1, 2026.
-      if (!paymentMethod.isCash) await recordBatchTransfer({ kind: "Collections", branch: selectedBranch.name, mas: accountable.name, method: paymentMethod.name, reference: paymentReference, amount: totalRemittance + penalty, entryIds: [batchId] });
+      // A bank or e-wallet batch is recorded in Bank Deposits (non-cash) with its MAS and reference, from December 1, 2026:
+      // the entries' remittance only; Fidelity and penalty may be paid in cash and stay in the cash summary.
+      if (!paymentMethod.isCash) await recordBatchTransfer({ kind: "Collections", branch: selectedBranch.name, mas: accountable.name, method: paymentMethod.name, reference: paymentReference, amount: remittanceCents / 100, entryIds: [batchId] });
       const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: cashCount ? cashCountNote(counted, penalty, controlNote, body.cashCount) : controlNote });
       return { ids, grossCents, variance, cashCount };
     });

@@ -191,7 +191,7 @@ export async function getReturnedBatch(ids: string[], by: By, branch = ""): Prom
       masChoices: await masChoices(text(branch) || text(first.branch), day(first.date_remitted), text(first.accountable_employee_id)),
       branchChoices: (await getBranches()).filter((item) => item.status === "active" || entryKey(item.name) === entryKey(first.branch)).map((item) => item.name).sort((a, b) => a.localeCompare(b)),
       encodedOn: manilaDate(first.encoded_at), kind: "New Sale", branch: text(first.branch), person: text(first.mas), personEmployeeId: text(first.accountable_employee_id), returnReason: await returnReason(first.linked_remittance_id),
-      dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: "", collectedBy: "", orc: false,
+      dateRemitted: day(first.date_remitted), dateRemittedReason: text(first.date_remitted_reason), paymentMethod: text(first.payment_method) || "Cash", paymentReference: text(first.payment_reference), collectedBy: "", orc: false,
       penalty: rows.reduce((sum, row) => sum + Number(row.penalty_amount ?? 0), 0), penaltyNote: rows.map((row) => text(row.penalty_note)).find(Boolean) ?? "",
       fidelity: rows.reduce((sum, row) => sum + Number(row.fidelity_amount ?? 0), 0),
       entries: rows.map((row) => ({

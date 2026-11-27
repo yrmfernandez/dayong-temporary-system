@@ -421,6 +421,13 @@
       "when": 1795678894329,
       "tag": "0059_cash_on_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1795760441152,
+      "tag": "0060_sale_payment_reference",
+      "breakpoints": true
     }
   ]
 }

@@ -3730,7 +3730,14 @@ test('bank deposits count as cash out, pending cash counts only in its own repor
     await encoding(async () => { ids.push(await recordBatchTransfer(transfer)); return Response.json({}); })(request());
     globalThis.Date = at('2026-12-02T03:00:00Z');
     await encoding(async () => { ids.push(await recordBatchTransfer({ ...transfer, entryIds: ['SALE-1', 'SALE-2'], kind: 'New Sales' })); return Response.json({}); })(request());
+    // One transfer for New Sales and Collections, encoded on another day: the same reference is not refused (non-cash).
+    globalThis.Date = at('2026-12-03T03:00:00Z');
+    await encoding(async () => { ids.push(await recordBatchTransfer({ ...transfer, amount: 300 })); return Response.json({}); })(request());
   } finally { globalThis.Date = RealDate; }
+  assert.equal((await query("select count(*)::int as n from bank_deposits where remarks like 'Ref 7712039%'"))[0].n, 2, 'one reference on two batches');
+  // A deposit that takes cash out is still held to one reference, one deposit; non-cash records do not block it.
+  await asSystem(() => addDeposit({ date: '2026-12-03', amount: 50, transferType: 'RCBC', bankAccount: 'DSRDPI', remarks: 'Ref 7712039' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' }));
+  await assert.rejects(() => asSystem(() => addDeposit({ date: '2026-12-04', amount: 50, transferType: 'RCBC', bankAccount: 'DSRDPI', remarks: 'Ref 7712039' }, { employeeId: 'DPE-7', name: 'Clerk', branch: 'AGDAO' })), /already recorded on deposit/);
   assert.equal(ids[0], null, 'before December 1 nothing is recorded');
   const [auto] = await query("select deposit_date::text as date, bank_account_name, amount::float8 as amount, transfer_type, mas, remarks, non_cash from bank_deposits where deposit_id = '" + ids[1] + "'");
   assert.deepEqual(auto, { date: '2026-12-02', bank_account_name: 'GCash', amount: 450, transfer_type: 'GCash', mas: 'Lopez, Ana', remarks: 'Ref 7712039 · New Sales SALE-1 +1', non_cash: true });
