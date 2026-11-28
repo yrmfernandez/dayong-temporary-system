@@ -34,6 +34,14 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### My Notices in every sidebar; cash count down to ₱0.01 (2026-11-28)
+
+- **Reported (owner):** Entry Clerks have no My Notices. Found (production, read-only `scripts/inspect-role-pages.mjs`, role settings only): Entry Clerk, Finance, Finance-Auditor, MAS, MAS-Officer, IT Clerk, CEO, President and Driver have page access saved in Roles without My Notices ticked; the sidebar shows only ticked pages, though the server always allows `/my-notices`.
+- **Done:** `lib/navigation.ts` `visibleNavigation` always keeps My Notices, like Home and System Updates. No Roles change needed on production.
+- **Asked (owner):** the cash count should have centavos down to the smallest, not only ₱0.25. **Done:** `DENOMINATIONS` in `lib/entry-controls.ts` adds ₱0.50, ₱0.10, ₱0.05 and ₱0.01 (`denominationLabel` shows ₱0.50 etc.), used by Cash counted on New Sales and Collections and the Mark remitted window (`components/control-total-field.tsx`) and checked by the server; `lib/cash-count.ts` (the typed count on the daily report Cash count and on a received remittance) reads them too (`0.50x1`, `.01x3`) and adds up in centavos.
+- Tests added in `scripts/test-encoder-tracking.cjs`; all 377 tests pass; type check, lint and build pass; not tried in a browser; no migration.
+- **Status:** done: both changes, docs; in progress: none; to do: owner checks an Entry Clerk sidebar and a cash count with centavos in a browser after the push.
+
 ### Fidelity Monitoring: the Branch filter finds employees by any of their branches (2026-11-28)
 
 - **Reported (owner):** on Fidelity, choosing GOTUAL, a date range and then MINTAL showed nothing, though his history has MINTAL entries. Cause: the Branch filter matched only the employee's primary branch.

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cashCountTotal, controlTotalStatus, DENOMINATIONS, TURNOVER_NOTE_MAX, varianceLabel, type CashCounts } from "@/lib/entry-controls";
+import { cashCountTotal, controlTotalStatus, denominationLabel, DENOMINATIONS, TURNOVER_NOTE_MAX, varianceLabel, type CashCounts } from "@/lib/entry-controls";
 
 const TONE = { problem: "text-red-700", match: "text-emerald-700", variance: "text-amber-700" } as const;
 
@@ -97,10 +97,10 @@ export function DenominationCounter({ id, counts, onCountsChange }: { id: string
     const key = String(denomination), pieces = Number(counts[key]) || 0;
     return (
       <label key={key} className="grid grid-cols-[3.75rem_4.5rem_minmax(0,1fr)] items-center gap-2 text-sm">
-        <span className="text-right font-medium tabular-nums">₱{denomination.toLocaleString("en-PH")}</span>
+        <span className="text-right font-medium tabular-nums">{denominationLabel(denomination)}</span>
         <Input id={denomination === 1000 ? `${id}-1000` : undefined} type="text" inputMode="numeric" autoComplete="off" maxLength={6} className="h-8 px-2 text-right tabular-nums" value={String(counts[key] ?? "")} placeholder="0"
-          onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value.replace(/\D/g, "") })} aria-label={`Pieces of ₱${denomination}`} />
-        <span className={`text-right tabular-nums ${pieces ? "" : "text-muted-foreground/60"}`}>{peso(pieces * denomination)}</span>
+          onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value.replace(/\D/g, "") })} aria-label={`Pieces of ${denominationLabel(denomination)}`} />
+        <span className={`text-right tabular-nums ${pieces ? "" : "text-muted-foreground/60"}`}>{peso(Math.round(pieces * denomination * 100) / 100)}</span>
       </label>
     );
   };

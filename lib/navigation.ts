@@ -217,7 +217,10 @@ function placeGrantedPage(sections: NavSection[], item: NavItem) {
 export function visibleNavigation(role: string, access: AccessContext): NavSection[] {
   const configured = isAdministratorRole(role) ? undefined : access.rolePages?.[normalizeRole(role)];
   // Inventory stays for Entry Clerks, Finance and Administrators even when their pages were configured before it existed.
-  const inRole = (href: string) => !configured || href === "/" || href === "/updates" || (href === "/inventory" && keepsInventory(access)) || (href === "/deceased-members" && keepsDeceasedRecords(access)) || configured.some((route) => routeMatches(href, route));
+  // My Notices always shows (November 28, 2026): every employee may open their own Notices to Explain (alwaysAllowed in
+  // lib/access-control.ts), but roles whose pages were saved in Roles without it ticked (Entry Clerk, Finance, MAS and
+  // most others on production) lost it from the sidebar.
+  const inRole = (href: string) => !configured || href === "/" || href === "/updates" || href === "/my-notices" || (href === "/inventory" && keepsInventory(access)) || (href === "/deceased-members" && keepsDeceasedRecords(access)) || configured.some((route) => routeMatches(href, route));
   // Fidelity (everyone's) only for those who monitor it: for the rest, the Fidelity page every employee has by default
   // only opens My Fidelity, so a Fidelity item in their menu led there (November 24, 2026).
   const allowed = (item: NavItem) => canAccessPath(access, item.href) && inRole(item.href) && (item.href !== "/fidelity" || canMonitorFidelity(access));

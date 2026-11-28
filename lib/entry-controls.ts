@@ -75,8 +75,14 @@ export const isCashCountNote = (note: string) => String(note ?? "").startsWith("
 /** "Cash count" or "Turnover sheet": where a recorded short or over came from, for messages and slip remarks. */
 export const varianceSource = (note: string) => String(note ?? "").startsWith("Handover ") ? "Handover count" : isCashCountNote(note) ? "Cash count" : "Turnover sheet";
 
-/** Philippine bills and coins counted for a Cash batch, largest first (₱20 is one row, bill or coin). */
-export const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25] as const;
+/**
+ * Philippine bills and coins counted for a Cash batch, largest first (₱20 is one row, bill or coin). Centavos down to
+ * ₱0.01 (owner, November 28, 2026): before, ₱0.25 was the only centavo coin, so 50, 10, 5 and 1 centavo could not be counted.
+ */
+export const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.5, 0.25, 0.1, 0.05, 0.01] as const;
+
+/** "₱1,000", "₱20", "₱0.50", "₱0.05": a denomination as shown (centavos with two decimals). */
+export const denominationLabel = (denomination: number) => `₱${denomination < 1 ? denomination.toFixed(2) : denomination.toLocaleString("en-PH")}`;
 
 /** Pieces per denomination, e.g. { "1000": 3, "500": 1 }; typed text on the form, numbers on the server. */
 export type CashCounts = Record<string, number | string>;
@@ -89,7 +95,7 @@ export function cashCountsProblem(counts: unknown) {
   if (!counts || typeof counts !== "object" || Array.isArray(counts)) return "Count the cash by denomination.";
   for (const [key, value] of Object.entries(counts as Record<string, unknown>)) {
     if (!DENOMINATIONS.some((denomination) => String(denomination) === key)) return `₱${key} is not a denomination that can be counted.`;
-    if (Number.isNaN(pieces(value))) return `Enter a whole number of ₱${Number(key).toLocaleString("en-PH")} pieces.`;
+    if (Number.isNaN(pieces(value))) return `Enter a whole number of ${denominationLabel(Number(key))} pieces.`;
   }
   return "";
 }
@@ -101,8 +107,8 @@ export const cashCountTotal = (counts: CashCounts) => cashCountsProblem(counts) 
 /** The pieces counted, without the zeros: { "1000": 3, "500": 1 } (an object lists whole-number keys smallest first). */
 export const cleanCashCounts = (counts: CashCounts) => Object.fromEntries(DENOMINATIONS.map((denomination) => [String(denomination), pieces(counts[String(denomination)])]).filter(([, count]) => Number(count) > 0)) as Record<string, number>;
 
-/** "₱1,000×3, ₱500×1, ₱0.25×4": the breakdown as text. */
-export const cashCountsText = (counts: CashCounts) => { const clean = cleanCashCounts(counts); return DENOMINATIONS.filter((denomination) => clean[String(denomination)]).map((denomination) => `₱${denomination.toLocaleString("en-PH")}×${clean[String(denomination)]}`).join(", "); };
+/** "₱1,000×3, ₱500×1, ₱0.25×4, ₱0.05×2": the breakdown as text. */
+export const cashCountsText = (counts: CashCounts) => { const clean = cleanCashCounts(counts); return DENOMINATIONS.filter((denomination) => clean[String(denomination)]).map((denomination) => `${denominationLabel(denomination)}×${clean[String(denomination)]}`).join(", "); };
 
 /** The note kept with a cash count's short or over: the cash counted (and the penalty in it), its breakdown, then the clerk's note. */
 export const cashCountNote = (counted: unknown, penalty: number, note: string, counts?: CashCounts) =>

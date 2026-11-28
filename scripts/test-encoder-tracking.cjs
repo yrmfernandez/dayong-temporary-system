@@ -1809,8 +1809,18 @@ test('Finance-Auditor sees every ticked page in the Finance layout; other custom
   assert.equal(sections.some((section) => section.title === 'My Portfolio'), false, 'not the MAS layout');
   assert.equal(sections[0].title, 'Overview');
   const custom = visibleNavigation('Auditor', { roleNames: ['Auditor'], permissions, rolePages: { auditor: ['/audit', '/history', '/expenses'] } });
-  assert.deepEqual(custom.flatMap((section) => section.items.map((item) => item.href)).sort(), ['/', '/audit', '/expenses', '/history', '/updates'], 'System Updates shows for every role (November 12, 2026)');
+  assert.deepEqual(custom.flatMap((section) => section.items.map((item) => item.href)).sort(), ['/', '/audit', '/expenses', '/history', '/my-notices', '/updates'], 'System Updates (November 12, 2026) and My Notices (November 28, 2026) show for every role');
   assert.equal(custom.some((section) => section.title === 'My Portfolio'), false);
+});
+
+test('My Notices shows in the sidebar for every role, even when the role pages were saved in Roles without it (November 28, 2026)', () => {
+  const { visibleNavigation } = harness().load('lib/navigation.ts');
+  const permissions = { manageUsers: false, manageAttendance: false, viewAttendanceReports: false };
+  const hrefs = (role, pages) => visibleNavigation(role, { roleNames: [role], permissions, rolePages: { [role.toLowerCase()]: pages } }).flatMap((section) => section.items.map((item) => item.href));
+  // As on production: these roles have saved page access with My Notices not ticked.
+  for (const role of ['Entry Clerk', 'Finance', 'Finance-Auditor', 'MAS', 'MAS-Officer', 'IT Clerk', 'CEO', 'President', 'Driver']) {
+    assert.equal(hrefs(role, ['/', '/attendance']).includes('/my-notices'), true, role);
+  }
 });
 
 test('Fidelity: Entry Clerks see everyone\'s (view only) from their menu; a pre-filled Fidelity tick gives MAS and IT Clerk nothing more than My Fidelity (November 24, 2026)', async () => {
@@ -2460,6 +2470,15 @@ test('a Cash batch takes the cash counted instead of the control total, with the
   assert.equal(controls.cashCountsProblem({ 3: '1' }), '₱3 is not a denomination that can be counted.');
   assert.deepEqual(controls.cleanCashCounts({ 1000: '3', 500: '', 100: '0', 0.25: '4' }), { 1000: 3, 0.25: 4 });
   assert.equal(controls.cashCountsText({ 1000: 3, 0.25: 4 }), '₱1,000×3, ₱0.25×4');
+  // Centavos down to ₱0.01 (owner, November 28, 2026): 13,420.53 = 13,420 + 0.50 + 0.01×3, added up exactly.
+  assert.equal(controls.cashCountTotal({ 1000: '13', 200: '2', 20: '1', 0.5: '1', 0.01: '3' }), 13420.53);
+  assert.equal(controls.cashCountTotal({ 0.1: '3', 0.05: '1' }), 0.35);
+  assert.equal(controls.cashCountsProblem({ 0.5: '1', 0.1: '2', 0.05: '1', 0.01: '4' }), '');
+  assert.equal(controls.cashCountsText({ 0.5: 1, 0.05: 2 }), '₱0.50×1, ₱0.05×2');
+  assert.equal(controls.cashCountsProblem({ 0.05: 'x' }), 'Enter a whole number of ₱0.05 pieces.');
+  const typed = h.load('lib/cash-count.ts');
+  assert.equal(typed.cashCountProblem('1000x13, 200x2, 20x1, 0.50x1, .01x3', 13420.53), '', 'the daily report count reads centavos');
+  assert.match(typed.cashCountProblem('0.30x1', 0.3), /could not be read/, 'not a coin');
 
   h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
   h.rows.Employees = [[], ['DPE-0002', 'Maria', 'BR-1', 'MAS', 'active']];

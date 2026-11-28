@@ -922,7 +922,7 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Start of day"><Input type="date" min={CARRY_START} value={count.date} onChange={(event) => setCount({ ...count, date: event.target.value })} /></Field>
           <Field label="Cash counted"><Input type="number" min="0" step="0.01" placeholder="0.00" value={count.amount} onChange={(event) => setCount({ ...count, amount: event.target.value })} /></Field>
-          <Field label="By denomination (optional)"><Input value={count.denominations} onChange={(event) => setCount({ ...count, denominations: event.target.value })} placeholder="e.g. 1000x3, 500x1, 20x2" /></Field>
+          <Field label="By denomination (optional)"><Input value={count.denominations} onChange={(event) => setCount({ ...count, denominations: event.target.value })} placeholder="e.g. 1000x3, 500x1, 20x2, 0.50x1" /></Field>
           <Field label="Note"><Input value={count.note} onChange={(event) => setCount({ ...count, note: event.target.value })} placeholder="e.g. counted with the branch head" /></Field>
         </div>
         <Button type="submit" size="sm" disabled={saving || count.amount === "" || count.date < CARRY_START}>Record cash count</Button>
