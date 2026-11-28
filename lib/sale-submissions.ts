@@ -167,6 +167,12 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
     if (!updated.length) throw new Error("This submission is with the clerk, so only the clerk can change it now. Tell the clerk what needs fixing.");
     return { id, saleCount: sales.length };
   }
+  // The same cards sent twice (owner, November 28, 2026: "Failed to fetch" on a phone whose connection dropped after the
+  // server had saved them, so the MAS pressed Submit again). Each card keeps the id the form gave it until a submit
+  // succeeds, so cards already in one of their batches still waiting are that submit again: answered with that batch,
+  // never added twice. A rejected batch submitted again keeps its card ids, so only waiting batches count.
+  const repeat = await alreadySubmitted(profile.employeeId, sales);
+  if (repeat) return repeat;
   // Submitted again the same day: added to today's batch still waiting (owner, November 28, 2026), so the MAS hands over
   // one total instead of adding up batches by hand. Not once marked remitted: that handover is already recorded.
   const added = await addToTodaysBatch(profile.employeeId, branch.id, sales, today);
@@ -174,6 +180,24 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
   const newId = createReadableId("SUB");
   await getDb().insert(submissions).values({ submission_id: newId, ...values, ...encodedBy() });
   return { id: newId, saleCount: sales.length, added: false, total: sales.length };
+}
+
+/**
+ * The waiting batch of this MAS that already holds these cards (by the form's card id), as the answer to a repeated
+ * submit; null when none of them was sent. Some sent and some not cannot come from one form, so it is refused.
+ */
+async function alreadySubmitted(employeeId: string, sales: SaleCard[]) {
+  const ids = new Set(sales.map((sale) => text(sale.id)).filter(Boolean));
+  if (!ids.size) return null;
+  const open = await getDb().select({ id: submissions.submission_id, sales: submissions.sales, count: submissions.sale_count }).from(submissions)
+    .where(and(eq(submissions.mas_employee_id, employeeId), inArray(submissions.status, OPEN)));
+  for (const row of open) {
+    const held = new Set((Array.isArray(row.sales) ? row.sales as SaleCard[] : []).map((sale) => text(sale.id)));
+    const found = [...ids].filter((id) => held.has(id)).length;
+    if (found === ids.size) return { id: row.id, saleCount: sales.length, added: false, total: row.count, repeated: true };
+    if (found) throw new Error(`Some of these sales are already in your batch ${row.id}, waiting for the clerk. Reload the page to see what was sent.`);
+  }
+  return null;
 }
 
 /**

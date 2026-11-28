@@ -38,6 +38,8 @@ export const POST = withEncoder(async (request: Request) => {
   if (!user) return Response.json({ success: false, message: "You do not have access to Submit New Sales." }, { status: 403 });
   try {
     const result = await submitSales(user, await request.json());
+    // The same cards sent again after a dropped connection: already with the clerk, nothing added (lib/sale-submissions.ts).
+    if ("repeated" in result && result.repeated) return Response.json({ success: true, ...result, message: `These sales were already submitted to the branch clerk (batch ${result.id}). Nothing was added twice.` });
     return Response.json({ success: true, ...result, message: `${result.saleCount} sale${result.saleCount === 1 ? "" : "s"} submitted to the branch clerk${result.added ? `, added to your batch from earlier today, now ${result.total} sale${result.total === 1 ? "" : "s"}` : ""}.` }, { status: 201 });
   } catch (error) { return failure(error, "Unable to submit the sales."); }
 });

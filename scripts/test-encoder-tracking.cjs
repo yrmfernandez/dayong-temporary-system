@@ -6235,6 +6235,12 @@ test('submitting again the same day adds to the batch still waiting, and the cle
   assert.match(sale2.body.message, /added to your batch from earlier today, now 2 sales/);
   const [sales] = await query('select sale_count, total_amount::float8 as amount from sale_submissions');
   assert.deepEqual([sales.sale_count, sales.amount], [2, 700]);
+  // The same cards again (the connection dropped after the server saved them): answered with that batch, not added twice.
+  const repeat = await call(mas, 'sale-submissions', 'POST', { sales: [card('Reyes')] });
+  assert.deepEqual([repeat.status, repeat.body.id, repeat.body.repeated], [200, sale1.body.id, true]);
+  assert.match(repeat.body.message, /already submitted .* Nothing was added twice/);
+  assert.match((await call(mas, 'sale-submissions', 'POST', { sales: [card('Reyes'), card('Lopez')] })).body.message, /Some of these sales are already in your batch/);
+  assert.equal((await query('select sale_count from sale_submissions'))[0].sale_count, 2, 'still 2 sales');
   const save = async (submissionCount) => {
     const sale = { existingMember: false, surname: 'Cruz', firstName: 'Ana', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [] };
     const response = await clerk.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'Mas Two', dateRemitted: today, controlTotal: 175, submissionId: sale1.body.id, submissionCount, sales: [sale] }));

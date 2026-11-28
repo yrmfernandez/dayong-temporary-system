@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Submit New Sales: "Failed to fetch", and the same sales never added twice (2026-11-28)
+
+- **Reported (owner):** Failed to fetch when submitting on Submit New Sales.
+- **Found:** "Failed to fetch" is the browser getting no answer at all (connection dropped), not a server message. Production was taking submissions normally (`scripts/inspect-sale-submissions.mjs`, read-only: the latest 15, the last at 2:05 PM Manila). The real risk: the server may have saved the sales before the answer was lost, and with same-day batches added together a second Submit would have put the same sales in the batch twice.
+- **Done:** `lib/sale-submissions.ts` `alreadySubmitted`: cards (by the form's card id) already in one of the MAS's waiting batches are answered with that batch and nothing is added; some already sent and some not is refused. `app/api/sale-submissions/route.ts`: message "These sales were already submitted… Nothing was added twice." `components/new-sales-form.tsx`: replies read through `readApiResponse`; on a dropped connection the page says so, reloads My Submissions and says submitting again is safe. Submit Collections already refuses a member waiting in a batch. New read-only `scripts/inspect-sale-submissions.mjs`. Test extended in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, test, docs; in progress: none; to do: owner asks who saw it (MAS or Entry Clerk as MAS, phone or PC, time) if it keeps happening on a good connection.
+
 ### Entry Clerk's MAS workspace: Submit Collections and Submit New Sales (2026-11-28)
 
 - **Reported (owner):** an Entry Clerk who switches to their virtual MAS workspace has no Submit Collections or Submit New Sales.

@@ -2,6 +2,7 @@
 
 import { alertDialog, confirmDialog, promptDialog } from "@/components/app-dialog";
 import { SALE_CHECK_REMINDER } from "@/lib/entry-check-reminder";
+import { readApiResponse } from "@/lib/api-response";
 import { isSamePerson } from "@/lib/member-identity";
 import {
   useCallback,
@@ -1226,14 +1227,18 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ submissionId, branchId: chosen.id, sales }),
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok || !result.success) throw new Error(result.message || "Unable to submit the sales.");
       resetForm();
       setSaveMessage(result.message || "Submitted to the branch clerk.");
       setSubmissionRevision((value) => value + 1);
       scrollPageToTop();
     } catch (error: unknown) {
-      setSaveMessage(error instanceof Error ? error.message : "Unable to submit the sales.");
+      // No answer from the server ("Failed to fetch": the connection dropped). The sales may have been saved before it
+      // dropped, so the list is reloaded; submitting the same cards again is safe, as they are never added twice.
+      const dropped = error instanceof TypeError;
+      if (dropped) setSubmissionRevision((value) => value + 1);
+      setSaveMessage(dropped ? "The connection dropped before the server answered. Check My Submissions below: if these sales are there, they were submitted. If not, press Submit again; the same sales are never added twice." : error instanceof Error ? error.message : "Unable to submit the sales.");
     } finally {
       setSaving(false);
     }
