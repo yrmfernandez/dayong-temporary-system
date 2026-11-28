@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Entry Clerk's MAS workspace: Submit Collections and Submit New Sales (2026-11-28)
+
+- **Reported (owner):** an Entry Clerk who switches to their virtual MAS workspace has no Submit Collections or Submit New Sales.
+- **Found:** a workspace only opens pages the real role opens too (`canAccessPath` checks `realAccess`), and the Entry Clerk role has neither page.
+- **Done:** `lib/access-control.ts`: `isEntryClerkVirtualMas` lets an Entry Clerk's MAS workspace open `/mas-sales` and `/mas-collections` (sidebar, page and their APIs follow `canAccessPath`); nothing else changes, the Entry Clerk workspace does not list them, and other roles' MAS workspace (HR, IT, Finance) still opens only what their role opens. Test extended in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, test, docs; in progress: none; to do: owner checks in a browser (the clerk needs MAS duty in a branch to have a branch to submit for).
+
 ### Submit Collections and Submit New Sales: submitting again the same day adds to the batch (2026-11-28)
 
 - **Asked (owner):** on Submit Collections and Submit New Sales, a second submit today should add to what the MAS already submitted today, as they otherwise add up the batches by hand.

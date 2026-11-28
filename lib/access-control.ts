@@ -149,8 +149,20 @@ export function accessibleRoutes(context: AccessContext) {
   return [...routes];
 }
 
+/**
+ * An Entry Clerk's MAS workspace (the virtual MAS, lib/workspace-session.ts) has Submit New Sales and Submit Collections
+ * (owner, November 28, 2026): an Entry Clerk also sells and collects as a MAS, though the Entry Clerk role itself has
+ * neither page. Other roles' MAS workspace still opens only what their own role opens.
+ */
+const clerkMasPages = ["/mas-sales", "/mas-collections"];
+const isEntryClerkVirtualMas = (context: AccessContext) => Boolean(context.realAccess)
+  && context.roleNames.length === 1 && normalizeRoleName(context.roleNames[0]) === "mas"
+  && !context.realAccess!.roleNames.some((role) => isMasFamilyRole(role) || normalizeRoleName(role) === "collector")
+  && context.realAccess!.roleNames.some((role) => normalizeRoleName(role) === "entry clerk");
+
 export function canAccessPath(context: AccessContext, pathname: string): boolean {
-  if (context.realAccess && !canAccessPath(context.realAccess, pathname)) return false;
+  const clerkAsMas = isEntryClerkVirtualMas(context) && clerkMasPages.some((route) => routeMatches(pathname, route));
+  if (context.realAccess && !clerkAsMas && !canAccessPath(context.realAccess, pathname)) return false;
   if (routeMatches(pathname, "/inventory") && keepsInventory(context)) return true;
   if (routeMatches(pathname, "/deceased-members") && keepsDeceasedRecords(context)) return true;
   const routes = accessibleRoutes(context);

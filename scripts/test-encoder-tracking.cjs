@@ -2000,6 +2000,14 @@ test('a workspace narrows the session to its role; the MAS workspace is a MAS wi
   const hr = { ...admin, roles: ['ROL-H'], roleNames: ['HR Officer'], permissions: none, rolePermissions: { 'hr officer': none } };
   assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mas-sales'), false);
   assert.equal(canAccessPath(sessionForWorkspace(hr, 'MAS'), '/mam'), true);
+  // An Entry Clerk's MAS workspace has Submit New Sales and Submit Collections (owner, November 28, 2026); not the
+  // Entry Clerk workspace itself, and the clerk's New Sales stays closed in the MAS workspace.
+  const entryClerk = { ...admin, roles: ['ROL-E'], roleNames: ['Entry Clerk'], permissions: none, rolePermissions: { 'entry clerk': none } };
+  assert.equal(canAccessPath(sessionForWorkspace(entryClerk, 'MAS'), '/mas-sales'), true);
+  assert.equal(canAccessPath(sessionForWorkspace(entryClerk, 'MAS'), '/mas-collections'), true);
+  assert.equal(canAccessPath(sessionForWorkspace(entryClerk, 'MAS'), '/new-sales'), false);
+  assert.equal(canAccessPath(entryClerk, '/mas-collections'), false, 'not in the Entry Clerk workspace');
+  assert.equal(canAccessPath(sessionForWorkspace(admin, 'MAS'), '/mas-sales'), true, 'an Administrator who also clerks');
   // A Collector has Submit New Sales, in their own workspace and their MAS workspace, but not the clerk's New Sales.
   const collector = { ...admin, roles: ['ROL-L', 'ROL-F'], roleNames: ['Collector', 'Finance'], permissions: none, rolePermissions: { collector: none, finance: none } };
   assert.equal(canAccessPath(sessionForWorkspace(collector, 'Collector'), '/mas-sales'), true);
