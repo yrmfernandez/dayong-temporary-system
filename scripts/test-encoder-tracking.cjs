@@ -6824,7 +6824,9 @@ test('Deceased Members: an Entry Clerk encodes records with checklists, services
     { employee_id: 'DPE-0005', full_name: 'Fin Person' }, { employee_id: 'DPE-0007', full_name: 'Mas Person' },
     { employee_id: 'DPE-0008', full_name: 'Mas Toril', primary_branch: 'Toril', operational_roles: 'MAS', employment_status: 'active' },
     { employee_id: 'DPE-0009', full_name: 'Mas Gone', primary_branch: 'Toril', operational_roles: 'MAS', employment_status: 'resigned' },
+    { employee_id: 'DPE-0010', full_name: 'Agent Toril', primary_branch: 'Calinan', operational_roles: 'Collector', employment_status: 'active' },
   ]);
+  await seed('employee_branches', [{ assignment_id: 'EBA-10-1', employee_id: 'DPE-0010', branch_id: 'BR-1', mas_duty: false }]);
   await seed('programs', [{ program_id: 'P1', program_code: 'A', program_name: 'Program A', base_pay: 350 }, { program_id: 'P2', program_code: 'B', program_name: 'Program B', base_pay: 500 }]);
   await seed('members', [{ member_id: 'M1', member_number: 'PH-1', surname: 'DELA CRUZ', first_name: 'JUAN' }, { member_id: 'M2', member_number: 'PH-2', surname: 'SANTOS', first_name: 'ANA' }]);
   await seed('member_programs', [
@@ -6849,7 +6851,8 @@ test('Deceased Members: an Entry Clerk encodes records with checklists, services
 
   const mine = await get();
   assert.deepEqual([mine.view, mine.canOversee, mine.branches, mine.records], ['mine', false, ['Toril'], []]);
-  assert.deepEqual(mine.mas.Toril.map((item) => item.name), ['Mas Toril'], 'active MAS of the branch only');
+  // Every active employee assigned to the branch, whatever the role or duty (owner, November 28, 2026); not a resigned one.
+  assert.deepEqual(mine.mas.Toril.map((item) => item.name), ['Agent Toril', 'Mas Toril'], 'every active employee of the branch, a Collector without MAS duty too');
   assert.deepEqual(mine.programs.map((item) => item.id).sort(), ['P1', 'P2']);
   const choices = await get('?members=1&branch=Toril&mas=mas toril');
   assert.deepEqual(choices.members.map((item) => [item.id, item.name, item.programIds, item.statuses]), [['M1', 'DELA CRUZ, JUAN', ['P1'], ['Deceased']]], 'members of the branch and MAS, whatever the account status');

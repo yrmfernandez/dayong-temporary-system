@@ -34,6 +34,12 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Deceased Members: the MAS field lists every employee of the branch (2026-11-28)
+
+- **Reported (owner):** in Deceased Members, the MAS field does not list every employee assigned to the branch, only those with the MAS role.
+- **Done:** `deceasedFormOptions` (`lib/deceased-members.ts`) now lists every active employee assigned to the branch (any role or duty, or with it as primary branch); before, only active employees with a MAS-type role and MAS duty there. Other MAS (type the name) stays. Test updated in `scripts/test-encoder-tracking.cjs` (a Collector without MAS duty is listed, a resigned MAS is not). Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, test, docs; in progress: none; to do: owner checks it in a browser.
+
 ### Employees: Notices to Explain reorganized into its own tab (2026-11-28)
 
 - **Asked (owner):** on Employees, the NTE part for administrators needs too much scrolling and is messy.

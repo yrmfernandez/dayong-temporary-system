@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
-import { isMasFamilyRole } from "@/lib/access-control";
 import { getDb, inTransaction, schema } from "@/lib/db";
 import {
   DECEASED_CLAIMS, DECEASED_FILE_TYPES, DECEASED_REQUIREMENTS, DECEASED_SERVICES, MAX_DECEASED_FILE_BYTES, MAX_DECEASED_FILES,
@@ -90,14 +89,17 @@ const yesNo = (value: unknown) => value === true || ["yes", "true", "1"].include
 /** The branches a clerk encodes for (same as Inventory: primary branch and the branches they clerk). */
 export const deceasedBranches = inventoryBranches;
 
-/** For each of these branches, the MAS working there (active, MAS duty), by name; and every program. */
+/**
+ * For each of these branches, every active employee assigned to it (any role or duty, or with it as primary branch), by
+ * name, for the MAS field (owner, November 28, 2026: not only those with a MAS role); and every program.
+ */
 export async function deceasedFormOptions(branchNames: string[]) {
   const [employees, branches, programs] = await Promise.all([getEmployees(), getBranches(), getPrograms()]);
   const mas: Record<string, Array<{ id: string; name: string }>> = {};
   for (const name of branchNames) {
     const branch = branches.find((item) => same(item.name, name));
     mas[name] = employees
-      .filter((employee) => employee.status === "active" && employee.roles.some(isMasFamilyRole) && ((branch && employee.masBranchIds.includes(branch.id)) || same(employee.branch, name)))
+      .filter((employee) => employee.status === "active" && ((branch && employee.branchIds.includes(branch.id)) || same(employee.branch, name)))
       .map((employee) => ({ id: employee.id, name: employee.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
