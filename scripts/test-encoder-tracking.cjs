@@ -6163,6 +6163,79 @@ test('a Collector chooses MAS or Collector on Submit Collections, with no MAS ro
   assert.match((await call(realMas, 'POST', '/api/collection-submissions', { entries: [pick('ENR-3')], collectedBy: 'Collector', memberMasEmployeeId: 'DPE-0002' })).body.message, /Only an employee with the Collector role/);
 });
 
+test('submitting again the same day adds to the batch still waiting, and the clerk cannot save an older copy (November 28, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'clerk', 'BR-1', 'Entry Clerk', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 50, 50]];
+    return h;
+  };
+  const mas = as({ userId: 'USR-M', employeeId: 'DPE-0002', name: 'Mas Two', roleNames: ['MAS'], permissions: {} });
+  const clerk = as({ userId: 'USR-1', employeeId: 'DPE-0001', name: 'clerk', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0002', 'Mas Two']);
+  const today = mas.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  for (const number of [1, 2, 3, 4]) {
+    await seed('members', [{ member_id: `MEM-${number}`, member_number: `PH-${number}`, surname: 'Santos', first_name: 'Ana' }]);
+    await seed('member_programs', [{ enrollment_id: `ENR-${number}`, member_id: `MEM-${number}`, member_number: `PH-${number}`, program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active' }]);
+  }
+  const call = async (h, page, method, body) => {
+    const response = await h.load(`app/api/${page}/route.ts`)[method](new Request(`http://localhost/api/${page}`, { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const pick = (id) => ({ enrollmentId: id, months: 1, amount: null, waiver: false });
+
+  // Collections: the second submit today joins the first batch, totals added up.
+  const first = await call(mas, 'collection-submissions', 'POST', { entries: [pick('ENR-1')] });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  const second = await call(mas, 'collection-submissions', 'POST', { entries: [pick('ENR-2'), pick('ENR-3')] });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  assert.deepEqual(second.body.ids, first.body.ids, 'added to the same batch');
+  assert.match(second.body.message, /added to your batch from earlier today, now 3 members/);
+  const [joined] = await query('select entry_count, total_amount::float8 as amount, total_incentive::float8 as incentive, entries from collection_submissions');
+  assert.deepEqual([joined.entry_count, joined.amount, joined.entries.map((entry) => entry.enrollmentId)], [3, 1050, ['ENR-1', 'ENR-2', 'ENR-3']]);
+  assert.equal(joined.incentive, joined.entries.reduce((sum, entry) => sum + entry.incentive, 0), 'the incentive is the sum of every member\'s');
+
+  // The clerk opened it at 1 member: marking that copy Saved is refused, naming the members added.
+  const lib = clerk.load('lib/collection-submissions.ts');
+  await assert.rejects(clerk.load('lib/encoder-context.ts').runAsSystem(() => lib.markCollectionSubmissionSaved(first.body.ids[0], ['COL-X'], 1)), /added 2 more members to this batch after you opened it/);
+  assert.equal((await query('select status from collection_submissions'))[0].status, 'Submitted');
+
+  // Once marked remitted, a new submit starts a new batch: that handover is already recorded.
+  await query("update collection_submissions set status = 'Remitted'");
+  const third = await call(mas, 'collection-submissions', 'POST', { entries: [pick('ENR-4')] });
+  assert.equal(third.status, 201, JSON.stringify(third.body));
+  assert.notDeepEqual(third.body.ids, first.body.ids, 'a new batch after Mark remitted');
+  assert.doesNotMatch(third.body.message, /added to your batch/);
+  // Not the same day: a batch from an earlier day is left as it is.
+  await query('delete from collection_submissions where submission_id = $1', [third.body.ids[0]]);
+  await query("update collection_submissions set submitted_at = now() - interval '2 days', status = 'Submitted'");
+  const fourth = await call(mas, 'collection-submissions', 'POST', { entries: [pick('ENR-4')] });
+  assert.equal(fourth.status, 201, JSON.stringify(fourth.body));
+  assert.notDeepEqual(fourth.body.ids, first.body.ids, 'an earlier day\'s batch is not added to');
+
+  // New Sales: the same rule.
+  const card = (surname) => ({ id: `S-${surname}`, member: { name: { firstName: 'Ana', surname } }, program: { programCode: 'CODE', amountPaid: '350' } });
+  const sale1 = await call(mas, 'sale-submissions', 'POST', { sales: [card('Cruz')] });
+  assert.equal(sale1.status, 201, JSON.stringify(sale1.body));
+  const sale2 = await call(mas, 'sale-submissions', 'POST', { sales: [card('Reyes')] });
+  assert.equal(sale2.status, 201, JSON.stringify(sale2.body));
+  assert.equal(sale2.body.id, sale1.body.id);
+  assert.match(sale2.body.message, /added to your batch from earlier today, now 2 sales/);
+  const [sales] = await query('select sale_count, total_amount::float8 as amount from sale_submissions');
+  assert.deepEqual([sales.sale_count, sales.amount], [2, 700]);
+  const save = async (submissionCount) => {
+    const sale = { existingMember: false, surname: 'Cruz', firstName: 'Ana', programId: 'DP-1', amountPaid: '350', applicationNo: 'APP-1', addressHouse: 'Complete Address', beneficiaries: [] };
+    const response = await clerk.load('app/api/sales/route.ts').POST(request({ branch: 'BR-1', mas: 'Mas Two', dateRemitted: today, controlTotal: 175, submissionId: sale1.body.id, submissionCount, sales: [sale] }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.match((await save(1)).body.message, /added 1 more sale to this batch after you opened it/, 'a copy opened at 1 sale is refused');
+  assert.equal(await count('sales'), 0, 'nothing was saved');
+});
+
 test('a member\'s Collector is an assignment: it lists their members, goes one batch per branch and MAS, and limits what the Collector workspace sees (November 6, 2026)', async () => {
   const as = (user) => {
     const h = harness(user);

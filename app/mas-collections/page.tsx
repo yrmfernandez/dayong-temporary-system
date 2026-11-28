@@ -240,7 +240,7 @@ export default function MasCollectionsPage() {
     const intro = groups.length > 1 ? `Submit ${plural(shownRows.length, "member")} as ${groups.length} batches, one per ${perBatch}?` : `Submit ${plural(shownRows.length, "member")} to the ${groups[0]?.name ?? ""} clerk?`;
     const whose = asCollector ? `\n\nCollected by you as Collector, for ${memberMas?.own ? "your own accounts" : memberMas ? `the members of ${memberMas.name}` : "your assigned members"} · ${quoteAs.dto ? "DTO: no incentive" : `ORC ${quoteAs.orc ? "Yes" : "No"}`}.`
       : collector?.isCollector ? "\n\nCollected by you as MAS: your own members, at the MAS incentive." : "";
-    if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash.${whose}\n\n${perBranch.join("\n")}`)) return;
+    if (!await confirmDialog(`${intro} You cannot change it after this; the clerk checks it when you remit the cash. A batch you sent earlier today and not yet remitted is added to, so you remit one total.${whose}\n\n${perBranch.join("\n")}`)) return;
     setBusy(true); setMessage("");
     try {
       await saveDraft();

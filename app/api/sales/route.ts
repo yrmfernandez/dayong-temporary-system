@@ -53,6 +53,8 @@ type SalePayload = {
   fidelityAmount?: number;
   /** Set when the clerk saves a MAS submission (lib/sale-submissions.ts); it is marked Saved in the same transaction. */
   submissionId?: string;
+  /** How many sales the batch had when the clerk opened it; more now (the MAS added to it the same day) refuses the save. */
+  submissionCount?: number;
   /** Required when the batch's remittance method is not cash (owner, November 27, 2026); kept on its Bank Deposits record. */
   paymentReference?: string;
 };
@@ -895,7 +897,8 @@ async function saveSales(request: Request, user: SessionUser) {
           saleId,
         });
       }
-      if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch);
+      // submissionCount: the sales on the batch when the clerk opened it; the MAS may have added more today since.
+      if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch, body.submissionCount);
       if (transferMethod) await recordBatchTransfer({ kind: "New Sales", branch: body.branch.trim(), mas: body.mas.trim(), method: transferMethod, reference: paymentReference, amount: totalRemittance - fidelity, entryIds: savedSales.map((saved) => saved.saleId) });
       variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });

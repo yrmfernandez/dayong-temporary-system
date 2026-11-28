@@ -100,7 +100,7 @@ type CollectionSubmissionSummary = {
   alreadySaved?: AlreadySaved;
 };
 /** The MAS submission open on the form: saving it marks it Saved; its handover must be this MAS's. */
-type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: CollectionChannel; memberMas?: string; orc?: boolean };
+type ReviewedSubmission = { id: string; masEmployeeId: string; mas: string; branch: string; clearingId: string; remittedAt: string; collectedBy?: CollectionChannel; memberMas?: string; orc?: boolean; entryCount?: number };
 
 type CollectionMember = Member & {
   programIds: string[];
@@ -1050,6 +1050,8 @@ export default function CollectionsPage() {
           // A batch the MAS submitted (lib/collection-submissions.ts): marked Saved with these collections.
           // Kept on a DTO save too, so the batch is marked Saved (November 20, 2026).
           submissionId: reviewing ? reviewing.id : undefined,
+          // How many members the batch had when opened: the MAS may add more the same day (lib/collection-submissions.ts).
+          submissionCount: reviewing?.entryCount,
           dto,
           orc: orc && !dto && collectedBy === "Collector",
           collectedBy: dto ? "DTO" : collectedBy,
@@ -1232,7 +1234,7 @@ export default function CollectionsPage() {
     setCollectedBy(channel);
     setMemberMas(whose);
     setOrc(channel === "Collector" && submission.orc);
-    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: channel, memberMas: whose, orc: channel === "Collector" && submission.orc });
+    setReviewing({ id: submission.id, masEmployeeId: submission.masEmployeeId, mas: submission.mas, branch: submission.branch, clearingId: submission.clearingId, remittedAt: submission.remittedAt, collectedBy: channel, memberMas: whose, orc: channel === "Collector" && submission.orc, entryCount: submission.entryCount });
     // Marked remitted: saved under the clearing recorded then. The Date Remitted starts on that day and can still be
     // changed with a reason (no work, day off, on leave...), as for any batch.
     if (submission.clearingId) {

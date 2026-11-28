@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, ne } from "drizzle-orm";
 
 import { isAdministratorRole } from "@/lib/access-control";
 import type { SessionUser } from "@/lib/auth";
@@ -167,9 +167,32 @@ export async function submitSales(user: SessionUser, input: { submissionId?: unk
     if (!updated.length) throw new Error("This submission is with the clerk, so only the clerk can change it now. Tell the clerk what needs fixing.");
     return { id, saleCount: sales.length };
   }
+  // Submitted again the same day: added to today's batch still waiting (owner, November 28, 2026), so the MAS hands over
+  // one total instead of adding up batches by hand. Not once marked remitted: that handover is already recorded.
+  const added = await addToTodaysBatch(profile.employeeId, branch.id, sales, today);
+  if (added) return { id: added.id, saleCount: sales.length, added: true, total: added.saleCount };
   const newId = createReadableId("SUB");
   await getDb().insert(submissions).values({ submission_id: newId, ...values, ...encodedBy() });
-  return { id: newId, saleCount: sales.length };
+  return { id: newId, saleCount: sales.length, added: false, total: sales.length };
+}
+
+/**
+ * Adds these sale cards to the MAS's batch for this branch sent earlier today and still Submitted (not marked remitted),
+ * when the whole stays within the limits. The clerk's save of a copy opened before is refused (markSubmissionSaved).
+ * Null when there is no such batch.
+ */
+async function addToTodaysBatch(employeeId: string, branchId: string, sales: SaleCard[], today: string) {
+  const open = await getDb().select().from(submissions)
+    .where(and(eq(submissions.mas_employee_id, employeeId), eq(submissions.branch_id, branchId), eq(submissions.status, "Submitted")))
+    .orderBy(desc(submissions.row_seq));
+  const same = open.find((row) => manilaNow(new Date(row.submitted_at)).date === today && row.sale_count + sales.length <= MAX_SUBMISSION_SALES);
+  if (!same) return null;
+  const all = [...(Array.isArray(same.sales) ? same.sales as SaleCard[] : []), ...sales];
+  if (JSON.stringify(all).length > MAX_SUBMISSION_BYTES) return null;
+  const totalAmount = Math.round(all.reduce((sum, sale) => sum + (Number(sale.program?.amountPaid) || 0), 0) * 100) / 100;
+  const updated = await getDb().update(submissions).set({ sales: all, sale_count: all.length, total_amount: totalAmount })
+    .where(and(eq(submissions.submission_id, same.submission_id), eq(submissions.status, "Submitted"), eq(submissions.sale_count, same.sale_count))).returning({ id: submissions.submission_id });
+  return updated.length ? { id: same.submission_id, saleCount: all.length } : null;
 }
 
 /** Branch IDs whose submissions this user reviews: where they work as Entry Clerk; null means every branch (administrators). */
@@ -300,13 +323,20 @@ export async function markSaleSubmissionRemitted(user: SessionUser, id: string, 
   });
 }
 
-/** Marks a submission Saved with its sale IDs. Call inside the New Sales transaction: a submission saved twice rolls back. */
-/** `branch`: where the clerk saved it, when moved to another branch of the MAS (reviewableSubmission). */
-export async function markSubmissionSaved(id: string, saleIds: string[], branch?: { id: string; name: string }) {
+/**
+ * Marks a submission Saved with its sale IDs. Call inside the New Sales transaction: a submission saved twice rolls back.
+ * `branch`: where the clerk saved it, when moved to another branch of the MAS (reviewableSubmission). `openedCount`: how
+ * many sales the clerk's copy had when opened; more now (added by the MAS the same day) refuses it.
+ */
+export async function markSubmissionSaved(id: string, saleIds: string[], branch?: { id: string; name: string }, openedCount?: unknown) {
   const actor = getEncoder();
+  const opened = openedCount === undefined || openedCount === null || openedCount === "" ? NaN : Number(openedCount);
   const updated = await currentDb().update(submissions).set({ status: "Saved", sale_ids: saleIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt, ...(branch ? { branch_id: branch.id, branch: branch.name } : {}) })
-    .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN))).returning({ id: submissions.submission_id });
-  if (!updated.length) throw new Error("This MAS submission was just saved or rejected by someone else. Nothing was saved.");
+    .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN), ...(Number.isFinite(opened) ? [lte(submissions.sale_count, opened)] : []))).returning({ id: submissions.submission_id });
+  if (updated.length) return;
+  const [row] = Number.isFinite(opened) ? await currentDb().select({ count: submissions.sale_count }).from(submissions).where(eq(submissions.submission_id, text(id))) : [];
+  const more = row ? row.count - opened : 0;
+  throw new Error(more > 0 ? `The MAS added ${more} more sale${more === 1 ? "" : "s"} to this batch after you opened it. Open it again from Submitted by MAS, so they are saved too. Nothing was saved.` : "This MAS submission was just saved or rejected by someone else. Nothing was saved.");
 }
 
 /**

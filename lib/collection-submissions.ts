@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 
 import { isMasFamilyRole, normalizeRoleName } from "@/lib/access-control";
 import { accountState, forfeitedPaymentsAllowed, validatePayment } from "@/lib/account-rules";
@@ -349,13 +349,49 @@ export async function submitCollections(user: SessionUser, input: { entries?: un
   const over = [...perBranch.values()].find((item) => item.count > MAX_SUBMISSION_ENTRIES);
   if (over) throw new Error(`${over.name} has ${over.count} members in the batch. Submit at most ${MAX_SUBMISSION_ENTRIES} members per branch at a time.`);
 
-  // All saved or none; the members sent leave the batch kept for the nightly job.
+  // All saved or none; the members sent leave the batch kept for the nightly job. A batch like one already sent today
+  // and not yet marked remitted is added to it (owner, November 28, 2026), so the MAS hands over one total.
   const batches = batchRows(context, entries, orc, false, dto);
-  await inTransaction(async () => {
-    await currentDb().insert(submissions).values(batches);
+  const sent = await inTransaction(async () => {
+    const result = [];
+    for (const batch of batches) result.push(await addToTodaysBatch(batch, today) ?? (await currentDb().insert(submissions).values(batch), { id: batch.submission_id, entryCount: batch.entry_count, added: 0 }));
     await removeFromDraft(profile.employeeId, ids);
+    return result;
   });
-  return { ids: batches.map((batch) => batch.submission_id), entryCount: entries.length, collectedBy: context.as, dto, memberMas: memberMas?.name ?? "", batches: batches.map((batch) => ({ branch: batch.branch, memberMas: batch.member_mas ?? "", entryCount: batch.entry_count })) };
+  return { ids: sent.map((item) => item.id), entryCount: entries.length, collectedBy: context.as, dto, memberMas: memberMas?.name ?? "", batches: batches.map((batch, index) => ({ branch: batch.branch, memberMas: batch.member_mas ?? "", entryCount: batch.entry_count, id: sent[index].id, added: sent[index].added, total: sent[index].entryCount })) };
+}
+
+/**
+ * Adds a new batch to the same submitter's batch sent earlier today (owner, November 28, 2026: submitting again the same
+ * day adds to it, so the MAS does not add up two batches by hand), when it is still Submitted (not yet marked remitted,
+ * whose handover amount is already recorded), not sent by the nightly job, and for the same branch, Collected by, whose
+ * members, ORC and DTO, with room for the new members. The clerk's save of a copy opened before the members were added
+ * is refused (submissionCount in app/api/collections/route.ts). Null when there is no such batch: a new one is made.
+ */
+async function addToTodaysBatch(batch: ReturnType<typeof batchRows>[number], today: string) {
+  const open = await currentDb().select().from(submissions)
+    .where(and(eq(submissions.mas_employee_id, batch.mas_employee_id), eq(submissions.branch_id, batch.branch_id), eq(submissions.status, "Submitted")))
+    .orderBy(desc(submissions.row_seq));
+  const same = open.find((row) => manilaNow(new Date(row.submitted_at)).date === today && row.auto_submitted !== true
+    && (row.collected_by === "Collector" ? "Collector" : "MAS") === batch.collected_by && text(row.member_mas_employee_id) === text(batch.member_mas_employee_id)
+    && sameName(text(row.member_mas), text(batch.member_mas)) && (row.orc === true) === batch.orc && (row.dto === true) === batch.dto
+    && row.entry_count + batch.entry_count <= MAX_SUBMISSION_ENTRIES);
+  if (!same) return null;
+  const entries = [...entriesOf(same), ...batch.entries];
+  const updated = await currentDb().update(submissions).set({
+    entries, entry_count: entries.length, total_amount: roundMoney(entries.reduce((sum, entry) => sum + entry.amount, 0)), total_incentive: roundMoney(entries.reduce((sum, entry) => sum + entry.incentive, 0)),
+  }).where(and(eq(submissions.submission_id, same.submission_id), eq(submissions.status, "Submitted"), eq(submissions.entry_count, same.entry_count))).returning({ id: submissions.submission_id });
+  return updated.length ? { id: same.submission_id, entryCount: entries.length, added: batch.entry_count } : null;
+}
+
+/**
+ * The clerk's save of a batch opened before the MAS added more to it (addToTodaysBatch) would mark it Saved without the
+ * added members. `count`: how many the clerk's copy had when opened; undefined skips the check (an older page).
+ */
+export async function submissionGrewProblem(id: string, count: unknown) {
+  if (count === undefined || count === null || count === "") return "";
+  const [row] = await currentDb().select({ count: submissions.entry_count }).from(submissions).where(eq(submissions.submission_id, text(id)));
+  return row && row.count > Number(count) ? `The MAS added ${row.count - Number(count)} more member${row.count - Number(count) === 1 ? "" : "s"} to this batch after you opened it. Open it again from Submitted by MAS, so they are saved too. Nothing was saved.` : "";
 }
 
 const draftItems = (row: { entries: unknown } | undefined) => (Array.isArray(row?.entries) ? row.entries as DraftItem[] : []);
@@ -510,12 +546,16 @@ export async function markCollectionSubmissionRemitted(user: SessionUser, id: st
   });
 }
 
-/** Marks a submission Saved with its collection IDs. Call inside the Collections transaction: saved twice rolls back. */
-export async function markCollectionSubmissionSaved(id: string, collectionIds: string[]) {
+/**
+ * Marks a submission Saved with its collection IDs. Call inside the Collections transaction: saved twice rolls back.
+ * `openedCount`: how many members the clerk's copy had when opened; more now (added by the MAS the same day) refuses it.
+ */
+export async function markCollectionSubmissionSaved(id: string, collectionIds: string[], openedCount?: unknown) {
   const actor = getEncoder();
+  const opened = openedCount === undefined || openedCount === null || openedCount === "" ? null : Number(openedCount);
   const updated = await currentDb().update(submissions).set({ status: "Saved", collection_ids: collectionIds.join(","), reviewed_by_employee_id: actor.employeeId, reviewed_by_name: actor.name, reviewed_at: actor.encodedAt })
-    .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN))).returning({ id: submissions.submission_id });
-  if (!updated.length) throw new Error("This MAS submission was just saved or rejected by someone else. Nothing was saved.");
+    .where(and(eq(submissions.submission_id, text(id)), inArray(submissions.status, OPEN), ...(opened !== null && Number.isFinite(opened) ? [lte(submissions.entry_count, opened)] : []))).returning({ id: submissions.submission_id });
+  if (!updated.length) throw new Error(await submissionGrewProblem(id, opened) || "This MAS submission was just saved or rejected by someone else. Nothing was saved.");
 }
 
 /**

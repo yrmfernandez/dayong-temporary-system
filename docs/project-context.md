@@ -34,6 +34,12 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Submit Collections and Submit New Sales: submitting again the same day adds to the batch (2026-11-28)
+
+- **Asked (owner):** on Submit Collections and Submit New Sales, a second submit today should add to what the MAS already submitted today, as they otherwise add up the batches by hand.
+- **Done:** `addToTodaysBatch` in `lib/collection-submissions.ts` and `lib/sale-submissions.ts`: a new submit is added to the same submitter's batch sent today for the same branch while it is still Submitted (not marked remitted: that handover amount is already recorded, so a new batch starts), not sent by the nightly job, within the limit (100 members per branch, 20 sales), and for Collections with the same Collected by, whose members, ORC and DTO; totals recomputed; otherwise a new batch as before. Messages say "added to your batch from earlier today, now N"; the Submit Collections confirmation says so. The clerk's save sends how many entries the batch had when opened (`submissionCount`, `app/collections/page.tsx`, `components/new-sales-form.tsx`); `markCollectionSubmissionSaved` and `markSubmissionSaved` refuse it inside the save when the batch has more now, so added members are not lost. Test added in `scripts/test-encoder-tracking.cjs`. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, test, docs; in progress: none; to do: owner checks it in a browser (MAS submits twice; clerk opens, MAS adds, clerk saves = refused; reopen and save).
+
 ### Deceased Members: the MAS field lists every employee of the branch (2026-11-28)
 
 - **Reported (owner):** in Deceased Members, the MAS field does not list every employee assigned to the branch, only those with the MAS role.

@@ -294,6 +294,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const [dateRemitted, setDateRemitted] = useState("");
   // The MAS submission the clerk is reviewing, or the MAS is editing: saving marks it Saved; submitting updates it.
   const [submissionId, setSubmissionId] = useState("");
+  // How many sales the opened batch had: the MAS may add more the same day, and the save of an older copy is refused.
+  const [submissionCount, setSubmissionCount] = useState<number | undefined>(undefined);
   const [returnedEdit, setReturnedEdit] = useState<ReturnedEdit | null>(null);
   // The Clearing entry the batch was filled from (components/clearing-picker.tsx).
   const [clearingId, setClearingId] = useState("");
@@ -367,10 +369,11 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const fidelityAmount = Math.max(0, Math.round((Number(fidelity) || 0) * 100) / 100);
 
   // The unsaved form survives leaving the page (e.g. to Collections) and coming back.
-  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId, paymentMethod, paymentReference };
+  const draftSnapshot = { branch, mas, dateRemitted, clearingId, clearedDate, dateRemittedReason, sales, expandedSales, penalty, penaltyNote, fidelity, submissionId, submissionCount, paymentMethod, paymentReference };
   type SalesDraft = typeof draftSnapshot;
   const restoreDraft = (draft: Partial<SalesDraft>) => {
       setSubmissionId(draft.submissionId ?? "");
+      setSubmissionCount(draft.submissionCount);
       setBranch(draft.branch ?? "");
       setMas(draft.mas ?? "");
       setDateRemitted(draft.dateRemitted ?? "");
@@ -1248,6 +1251,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
     // A MAS works on a phone: one card open at a time, not every long card.
     setExpandedSales(Object.fromEntries(cards.map((sale, index) => [sale.id, !masMode || index === 0])));
     setSubmissionId(asNew ? "" : submission.id);
+    setSubmissionCount(asNew ? undefined : submission.saleCount);
     // Marked remitted: saved under the handover recorded then, so its time decides the incentive (as on Collections).
     if (!masMode) {
       const clearedOn = submission.clearingId ? submission.remittedAt.slice(0, 10) : "";
@@ -1544,6 +1548,7 @@ Is this cash part of that handover?`) ? "same"
             controlTotalNote: controlTotalNote.trim(),
             paymentReference: allCash ? "" : paymentReference.trim(),
             submissionId: submissionId || undefined,
+            submissionCount: submissionId ? submissionCount : undefined,
           }),
         },
       );
