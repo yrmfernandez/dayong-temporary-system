@@ -34,6 +34,12 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Fidelity Monitoring: the Branch filter finds employees by any of their branches (2026-11-28)
+
+- **Reported (owner):** on Fidelity, choosing GOTUAL, a date range and then MINTAL showed nothing, though his history has MINTAL entries. Cause: the Branch filter matched only the employee's primary branch.
+- **Done:** `lib/fidelity.ts` gives each account `branches` (primary, assigned branch names, and the branches of their Fidelity remittances); `app/fidelity/fidelity-views.tsx` matches the Branch filter against any of them (case ignored), lists those branches in the dropdown, and with a branch chosen shows only that branch's history entries (payouts and manual additions, which have no branch, follow the primary branch). Balance columns are unchanged (whole balance). Docs: `docs/system-guide.md`. Type check, lint, tests and build pass; not tried in a browser; no migration.
+- **Status:** done: the fix, docs; in progress: none; to do: owner checks GOTUAL + dates + MINTAL in a browser after the push.
+
 ### Remitted to Finance: more than the cash on hand is detected, Remitted whole amount accepts centavos (2026-11-28)
 
 - **Reported (owner):** CABALLERO, JENNY's daily report today (MINTAL): Remaining Cash on Hand −₱0.47. Found (production, read-only, amounts only): cash in ₱25,890.00 with no centavos; a ₱1,475.47 expense (her note: 1,475 was released for the monthly bill); ₱10,994 to the bank; ₱13,421 to Finance against ₱13,420.53 held. Owner asked to detect it when remitting to Finance, with a button saying the whole amount was remitted so the over is accepted.

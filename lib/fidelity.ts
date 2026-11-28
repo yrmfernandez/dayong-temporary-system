@@ -1,5 +1,6 @@
 import { GOOGLE_SHEET_ID, sheets } from "@/lib/google-sheets";
 import { getEmployees } from "@/lib/employees";
+import { getBranches } from "@/lib/google-sheets-data";
 import { createReadableId } from "@/lib/readable-id";
 import { sql } from "drizzle-orm";
 import { currentDb, encodedBy, getDb, inTransaction, schema } from "@/lib/db";
@@ -56,7 +57,8 @@ export async function getFidelityData(employeeId:string,viewAll:boolean){
  const withdrawals=claims.slice(1).filter(row=>text(row[0])&&PAID_OUT.has(text(row[5]).toLowerCase())).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:text(row[9])||"Released",amount:amount(row[7]),type:text(row[5]),direction:"out" as const,encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
  const openings=claims.slice(1).filter(row=>text(row[0])&&ADDED_IN.has(text(row[5]).toLowerCase())).map(row=>({id:text(row[0]),masEmployeeId:text(row[1]),masName:text(row[2]),date:text(row[8]),status:"Approved",amount:amount(row[7]),type:text(row[5]).toLowerCase()===MANUAL_TYPE.toLowerCase()?MANUAL_TYPE:OPENING_TYPE,direction:"in" as const,encodedBy:text(row[13]),remarks:text(row[10]),branch:""}));
  const transactions=[...contributions,...openings,...withdrawals].filter(item=>viewAll||item.masEmployeeId===employeeId).sort((a,b)=>b.date.localeCompare(a.date));
- const employees=await getEmployees();
+ const [employees,branchList]=await Promise.all([getEmployees(),getBranches()]);
+ const branchName=new Map(branchList.map(branch=>[branch.id,branch.name]));
  // Every active employee can sell as a MAS (see the MAS lists in New Sales and Collections), so each may save Fidelity.
  const ids=[...new Set([...employees.filter(item=>item.status.toLowerCase()==="active").map(item=>item.id),...transactions.map(item=>item.masEmployeeId)])].filter(id=>viewAll||id===employeeId);
  const accounts=ids.map(id=>{
@@ -68,8 +70,11 @@ export async function getFidelityData(employeeId:string,viewAll:boolean){
   // An employee who is no longer active (resigned, inactive) has left the company: shown so Finance pays out the rest.
   const separated=Boolean(employee)&&employee!.status.toLowerCase()!=="active";
   const standing=fidelityStanding(approved);
-  // Branch and roles for the Fidelity Monitoring filters (owner, October 16, 2026).
-  return{masEmployeeId:id,masName:own[0]?.masName||employee?.name||id,employmentStatus:employee?.status||"",branch:employee?.branch||"",roles:employee?.roles??[],approved,pending,claimed,total:approved,
+  // Branch and roles for the Fidelity Monitoring filters (owner, October 16, 2026). `branches` is every branch the
+  // employee belongs to (primary, assigned) or remitted Fidelity in (November 28, 2026): the Branch filter matched only
+  // the primary branch, so an employee with MINTAL remittances but another primary branch was hidden when MINTAL was chosen.
+  const branches=[...new Set([employee?.branch??"",...(employee?.branchIds??[]).map(branchId=>branchName.get(branchId)??""),...own.map(item=>item.branch)].map(text).filter(Boolean))];
+  return{masEmployeeId:id,masName:own[0]?.masName||employee?.name||id,employmentStatus:employee?.status||"",branch:employee?.branch||"",branches,roles:employee?.roles??[],approved,pending,claimed,total:approved,
    base:standing.base,excess:standing.excess,remaining:standing.remaining,separated};
  }).sort((a,b)=>a.masName.localeCompare(b.masName));
  return{cap:FIDELITY_CAP,accounts,transactions};

@@ -15,7 +15,7 @@ import { baseWithdrawalAmount } from "@/lib/fidelity-cap";
 import { manilaToday } from "@/lib/manila-date";
 import { formatPeso } from "@/lib/money";
 
-type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; roles?: string[]; approved: number; pending: number; claimed: number; base: number; excess: number; remaining: number; separated: boolean };
+type Account = { masEmployeeId: string; masName: string; employmentStatus: string; branch?: string; branches?: string[]; roles?: string[]; approved: number; pending: number; claimed: number; base: number; excess: number; remaining: number; separated: boolean };
 type Transaction = { id: string; masEmployeeId: string; masName: string; date: string; status: string; amount: number; type: string; direction: "in" | "out"; encodedBy: string; branch?: string; remarks?: string };
 type Data = { canViewAll: boolean; canMonitor: boolean; canClaim: boolean; currentEmployeeId: string; currentName: string; cap: number; accounts: Account[]; transactions: Transaction[] };
 
@@ -124,6 +124,8 @@ const emptyFilters: Filters = { masId: "", branch: "", role: "", employment: "",
 const field = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 /** An employee's Fidelity standing, as the Status column shows it. */
 const STANDINGS: Array<[string, string]> = [["saving", "Saving (up to the base)"], ["excess", "Above the base (has excess)"], ["release", "Left the company, balance to pay out"], ["left", "Left the company, nothing to pay out"]];
+const sameBranch = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const inBranch = (item: Account, branch: string) => [item.branch ?? "", ...(item.branches ?? [])].some((name) => sameBranch(name, branch));
 const standingOf = (item: Account) => item.separated ? (item.approved > 0 ? "release" : "left") : item.excess > 0 ? "excess" : "saving";
 type Kind = "base" | "excess" | "full";
 const KIND_LABEL: Record<Kind, string> = { base: "Withdraw base", excess: "Withdraw excess", full: "Withdraw all" };
@@ -157,14 +159,15 @@ export function FidelityMonitoring() {
     const list = data?.accounts ?? [];
     const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
     return {
-      branches: sorted(list.map((item) => item.branch ?? "")), roles: sorted(list.flatMap((item) => item.roles ?? [])),
+      branches: sorted(list.flatMap((item) => [item.branch ?? "", ...(item.branches ?? [])])), roles: sorted(list.flatMap((item) => item.roles ?? [])),
       employment: sorted(list.map((item) => item.employmentStatus.toLowerCase())),
       types: sorted((data?.transactions ?? []).map((item) => item.type)), statuses: sorted((data?.transactions ?? []).map((item) => item.status)),
     };
   }, [data]);
   const accounts = useMemo(() => (data?.accounts ?? []).filter((item) => {
     if (masId && item.masEmployeeId !== masId) return false;
-    if (filters.branch && (item.branch ?? "") !== filters.branch) return false;
+    // Any branch the employee belongs to or remitted in, not only the primary one (November 28, 2026).
+    if (filters.branch && !inBranch(item, filters.branch)) return false;
     if (filters.role && !(item.roles ?? []).includes(filters.role)) return false;
     if (filters.employment && item.employmentStatus.toLowerCase() !== filters.employment) return false;
     if (filters.standing && standingOf(item) !== filters.standing) return false;
@@ -176,13 +179,15 @@ export function FidelityMonitoring() {
   const branchOf = useMemo(() => new Map((data?.accounts ?? []).map((item) => [item.masEmployeeId, item.branch ?? ""])), [data]);
   const transactions = useMemo(() => (data?.transactions ?? []).filter((item) => {
     if (!shownIds.has(item.masEmployeeId)) return false;
+    // With a branch chosen, only that branch's entries; a payout or addition has no branch and goes with the primary one.
+    if (filters.branch && !sameBranch(item.branch || branchOf.get(item.masEmployeeId) || "", filters.branch)) return false;
     const day = item.date.slice(0, 10);
     if (filters.from && day < filters.from) return false;
     if (filters.to && day > filters.to) return false;
     if (filters.type && item.type !== filters.type) return false;
     if (filters.status && item.status !== filters.status) return false;
     return true;
-  }), [data, shownIds, filters]);
+  }), [data, shownIds, branchOf, filters]);
   const periodIn = transactions.filter((item) => item.direction === "in" && item.status === "Approved").reduce((sum, item) => sum + item.amount, 0);
   const periodOut = transactions.filter((item) => item.direction === "out").reduce((sum, item) => sum + item.amount, 0);
   const filtered = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
