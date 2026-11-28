@@ -34,6 +34,13 @@ The owner asked again what to improve; the first list is all built. These come f
 | 7 | Owner checks in a browser the items marked "not checked in a browser" below (CEO dashboard dates, Months paid message, rejected batches on full forms, phone keyboard, two-branch MAS) | **Done 2026-11-10** (owner) |
 | 8 | Owner decisions: payments on an account of a member marked Deceased by hand; the 3 accounts held Forfeited by the old-system mark; converting old records to capitals | **Decided 2026-11-10** (below): Deceased blocked and left out (built); PH-20863137 reopened by the owner (now 150D; no account is held by the old-system mark any more); capitals converted on production 2026-11-10 |
 
+### Employees: Notices to Explain reorganized into its own tab (2026-11-28)
+
+- **Asked (owner):** on Employees, the NTE part for administrators needs too much scrolling and is messy.
+- **Found:** the NTE panel sat under the 25-row employee table (even between the table and its page buttons), the issue form was always open, and each notice was an 8-column row with the full explanation inside it.
+- **Done:** `app/employees/page.tsx`: administrators get two tabs, Directory and Notices to Explain (`?tab=notices` opens it); the tab shows a number for explanations to review plus employees subject to suspension (red when anyone is). `components/nte-panel.tsx`: Issue NTE button opens the form (closes after saving); the suspension warning is one line; counts that double as filters (In force, Needs review, Not yet read, Subject to suspension, All with expired and withdrawn) and a search by employee or reason; one short line per notice (employee, reason, issued to expiry, status, reply state) that opens to show details, the full explanation (scrolls inside its box), Mark reviewed and Withdraw; 15 per page; expiry dates now shown as Oct 27, 2026. No change to the API or data. Docs: `docs/system-guide.md`. No migration.
+- **Status:** done: the change, docs; in progress: none; to do: owner checks it in a browser.
+
 ### Cash remitted to Finance: Finance confirms the amount before the audit is saved (2026-11-27)
 
 - **Asked (owner):** when Remitted to Finance is submitted, Finance should also confirm the amount is correct before an audit can be saved.
