@@ -5,7 +5,7 @@ import { currentEncoder, getEncoder } from "@/lib/encoder-context";
 import { createReadableId } from "@/lib/readable-id";
 import { manilaNow } from "@/lib/remittance-deadline";
 import { validDate } from "@/lib/manila-date";
-import { FINANCE_TURNOVER } from "@/lib/cash-turnover";
+import { FINANCE_TURNOVER, wholeAmountProblem } from "@/lib/cash-turnover";
 import { CARRY_START } from "@/lib/cash-carry";
 
 /**
@@ -82,11 +82,13 @@ async function assertReferenceFree(tx: Queryable, remarks: unknown, exceptId = "
 
 /** nonCash: a bank or e-wallet payment kept for its details; it takes no cash out from December 1, 2026 (lib/cash-position.ts). */
 export type BankDeposit = { id: string; date: string; employeeId: string; branch: string; bankAccount: string; amount: number; transferType: string; mas: string; remarks: string; nonCash: boolean;
+  /** Remitted whole amount: the centavos the clerk added to remit whole pesos to Finance (cash in); 0 when none. */
+  wholeAmountAdded: number;
   /** Cash remitted to Finance: Finance's check of the amount (owner, November 27, 2026); blank on bank deposits and older records. */
   financeStatus: "" | FinanceStatus; financeDecidedBy: string; financeDecidedAt: string; financeNote: string };
 export type FinanceStatus = "Pending" | "Confirmed" | "Rejected";
 const financeStatusOf = (value: unknown): "" | FinanceStatus => (value === "Pending" || value === "Confirmed" || value === "Rejected" ? value : "");
-const toDeposit = (row: typeof depositsTable.$inferSelect): BankDeposit => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks), nonCash: row.non_cash === true,
+const toDeposit = (row: typeof depositsTable.$inferSelect): BankDeposit => ({ id: row.deposit_id, date: text(row.deposit_date), employeeId: text(row.employee_id), branch: text(row.branch), bankAccount: text(row.bank_account_name), amount: Number(row.amount) || 0, transferType: text(row.transfer_type), mas: text(row.mas), remarks: text(row.remarks), nonCash: row.non_cash === true, wholeAmountAdded: Number(row.whole_amount_added) || 0,
   financeStatus: financeStatusOf(row.finance_status), financeDecidedBy: text(row.finance_decided_by_name), financeDecidedAt: text(row.finance_decided_at), financeNote: text(row.finance_note) });
 
 /** Posted (not voided) deposits by one clerk on or before `to`. */
@@ -113,7 +115,11 @@ function depositFields(input: Record<string, unknown>) {
   const nonCash = !toFinance && (input.nonCash === true || input.nonCash === "true");
   // Before CARRY_START bank and e-wallet payments still count as cash on hand, so their records must take cash out.
   if (nonCash && date < CARRY_START) throw new Error(`A record dated before ${CARRY_START} cannot be marked non-cash: bank and e-wallet payments are left out of cash on hand from that day.`);
-  return { deposit_date: date, bank_account_name: bankAccount, amount, transfer_type: transferType, mas: text(input.mas).slice(0, 100), remarks: text(input.remarks).slice(0, 200), non_cash: nonCash };
+  // Remitted whole amount (owner, November 28, 2026): the centavos the clerk added to remit whole pesos to Finance.
+  const added = toFinance ? Math.round((Number(input.wholeAmountAdded) || 0) * 100) / 100 : 0;
+  const wholeProblem = wholeAmountProblem(amount, added);
+  if (wholeProblem) throw new Error(wholeProblem);
+  return { deposit_date: date, bank_account_name: bankAccount, amount, transfer_type: transferType, mas: text(input.mas).slice(0, 100), remarks: text(input.remarks).slice(0, 200), non_cash: nonCash, whole_amount_added: added > 0 ? added : null };
 }
 
 export async function addDeposit(input: Record<string, unknown>, clerk: { employeeId: string; name: string; branch: string }) {

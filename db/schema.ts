@@ -1059,6 +1059,12 @@ export const bank_deposits = pgTable("bank_deposits", {
    */
   non_cash: boolean().notNull().default(false),
   /**
+   * Remitted whole amount (owner, November 28, 2026): cash remitted to Finance rounded up to whole pesos when the cash on
+   * hand had centavos (e.g. ₱13,421 for ₱13,420.53). The centavos added (under ₱1) count as cash in, so the cash on hand
+   * ends at zero instead of below it (lib/clerk-report.ts).
+   */
+  whole_amount_added: money("whole_amount_added"),
+  /**
    * Cash remitted to Finance (owner, November 27, 2026): Finance confirms the amount received before the clerk's audit
    * can be saved (lib/clerk-cash.ts decideFinanceRemittance). Pending, Confirmed or Rejected; blank on bank deposits and
    * on records made before then.

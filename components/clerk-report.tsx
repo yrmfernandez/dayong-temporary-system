@@ -21,7 +21,7 @@ import { BURIAL_ACCOUNT, EXPENSE_ACCOUNTS, EXPENSE_APPROVERS } from "@/lib/expen
 import { useLiveRefresh } from "@/lib/use-live-refresh";
 import { formatDate as showDate, formatDateTime as showDateTime } from "@/lib/date-format";
 import { manilaToday } from "@/lib/manila-date";
-import { FINANCE_TURNOVER, isFinanceTurnover } from "@/lib/cash-turnover";
+import { canRemitWholeAmount, FINANCE_TURNOVER, isFinanceTurnover, remittedOver } from "@/lib/cash-turnover";
 
 type Kind = "daily" | "weekly" | "monthly" | "yearly";
 type Remark = { id: string; comment: string; createdAt: string; encodedBy: string };
@@ -256,6 +256,7 @@ export function ClerkReport({ kind, review = false, employeeId: fixedEmployee, d
                 {/* The turnover sheet short (−) or over (+) on the clerk's batches, and cash that settled one (lib/turnover-variance.ts). */}
                 {(report.cash.turnoverShortOver !== 0 || report.turnover.encoded.length > 0) && <Cash label="Turnover short/over" value={report.cash.turnoverShortOver} color={report.cash.turnoverShortOver ? "text-amber-700" : ""} />}
                 {report.cash.turnoverSettled !== 0 && <Cash label="Turnover settled" value={report.cash.turnoverSettled} />}
+                {(report.cash.wholeAmountAdded ?? 0) !== 0 && <Cash label="Added to remit the whole amount" value={report.cash.wholeAmountAdded} />}
                 <Cash label="Pending cash, to be encoded" value={report.cash.pendingCash} />
                 <Cash label="Total Cash In" value={report.cash.totalCashIn} color={tone.cashIn} strong />
                 <div className="h-2" />
@@ -674,6 +675,7 @@ function CashPosition({ report, giveToFinance }: { report: Report; giveToFinance
       {line("Penalties collected", cash.penalty)}
       {(cash.turnoverShortOver !== 0 || report.turnover.encoded.length > 0) && line("Cash short / over on turnover", cash.turnoverShortOver, "short is negative, over is positive", cash.turnoverShortOver ? "text-amber-700 dark:text-amber-400" : "")}
       {cash.turnoverSettled !== 0 && line("Short / over settled", cash.turnoverSettled)}
+      {(cash.wholeAmountAdded ?? 0) !== 0 && line("Added to remit the whole amount", cash.wholeAmountAdded, "centavos added when remitting whole pesos to Finance")}
       {cash.pendingCash !== 0 && line("Cash received, not yet recorded", cash.pendingCash, "typed by the clerk; to be encoded")}
       {total("Total cash receipts", receipts)}
       {total("Total cash available", cash.totalCashIn, tone.cashIn, "opening balance + total receipts")}
@@ -809,6 +811,20 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
   }
   const textarea = "min-h-20 w-full rounded-md border bg-background p-2 text-sm";
   const fin = finWording(report);
+  /*
+   * More than the cash on hand (owner, November 28, 2026): the cash on hand before this record (an edited one is put
+   * back first). Over by centavos only on a whole-peso amount: Remitted whole amount saves it with the centavos added as
+   * cash in, so the cash on hand ends at zero; a bigger difference is only warned about.
+   */
+  const remainingBefore = Math.round((report.cash.remainingCashOnHand + (editingTurnover ? editingTurnover.amount - (editingTurnover.wholeAmountAdded ?? 0) : 0)) * 100) / 100;
+  const turnoverAmount = Number(turnover.amount) || 0;
+  const turnoverOver = turnover.amount ? remittedOver(turnoverAmount, remainingBefore) : 0;
+  const wholeAmount = canRemitWholeAmount(turnoverAmount, turnoverOver);
+  async function saveTurnover(wholeAmountAdded: number) {
+    const body = { date: report.from === report.to ? report.from : turnover.date, bankAccount: turnover.receivedBy, amount: turnoverAmount, transferType: FINANCE_TURNOVER, mas: turnover.mas, remarks: turnover.remarks, wholeAmountAdded };
+    if (editingTurnover) { if (await act({ action: "edit-deposit", id: editingTurnover.id, ...body })) onEditDone(); return; }
+    if (await act({ action: "add-deposit", ...body })) { rememberFinanceReceiver(turnover.receivedBy); setTurnover((current) => ({ ...current, amount: "", remarks: "" })); }
+  }
 
   return (
     <div className="rounded-xl border print:hidden">
@@ -871,9 +887,8 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
       {/* Cash handed to Finance at the office in person (owner, November 24, 2026): out of the cash on hand like a deposit. */}
       {section === "finance" && <form id="finance-form" className="space-y-4" onSubmit={async (event) => {
         event.preventDefault();
-        const body = { date: report.from === report.to ? report.from : turnover.date, bankAccount: turnover.receivedBy, amount: Number(turnover.amount), transferType: FINANCE_TURNOVER, mas: turnover.mas, remarks: turnover.remarks };
-        if (editingTurnover) { if (await act({ action: "edit-deposit", id: editingTurnover.id, ...body })) onEditDone(); return; }
-        if (await act({ action: "add-deposit", ...body })) { rememberFinanceReceiver(turnover.receivedBy); setTurnover((current) => ({ ...current, amount: "", remarks: "" })); }
+        if (wholeAmount) return;
+        await saveTurnover(0);
       }}>
         <FormTitle title={editingTurnover ? `Edit cash turned over to Finance ${editingTurnover.id}` : "Add cash turned over to Finance"} note="Cash out of this report: cash you handed to Finance at the office in person. Record each handover on the day you gave it. What you keep is carried to the next day; no Cash Beg to type." />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -886,8 +901,14 @@ function RecordPanel({ report, cashCounts, act, saved, saving, editing, onEditDo
           <Field label="MAS"><Input list="report-mas" value={turnover.mas} onChange={(event) => setTurnover({ ...turnover, mas: event.target.value })} /></Field>
           <Field label="Remarks" wide><Input value={turnover.remarks} onChange={(event) => setTurnover({ ...turnover, remarks: event.target.value })} placeholder="e.g. Nov 23 collections, acknowledgement no." /></Field>
         </div>
+        {turnoverOver > 0 && (wholeAmount
+          ? <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              <p><strong>{money(turnoverAmount)} is {money(turnoverOver)} more than your {fin ? "ending cash on hand" : "Remaining Cash on Hand"} ({money(remainingBefore)}).</strong> If you rounded up and handed Finance the whole amount, press <strong>Remitted whole amount</strong>: the {money(turnoverOver)} is recorded as added, so your cash on hand ends at {money(0)}. Otherwise type {money(remainingBefore)}.</p>
+              <Button type="button" size="sm" disabled={saving || !turnover.receivedBy.trim()} onClick={() => void saveTurnover(turnoverOver)}>Remitted whole amount (+{money(turnoverOver)})</Button>
+            </div>
+          : <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100"><strong>{money(turnoverAmount)} is {money(turnoverOver)} more than your {fin ? "ending cash on hand" : "Remaining Cash on Hand"} ({money(remainingBefore)}).</strong> Your cash on hand would go below zero. Check the amount, and your entries, expenses and deposits on this report, before saving.</p>)}
         <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={saving || !turnover.amount || !turnover.receivedBy.trim()}>{editingTurnover ? "Save changes" : "Save cash to Finance"}</Button>
+          <Button type="submit" size="sm" disabled={saving || !turnover.amount || !turnover.receivedBy.trim() || wholeAmount}>{editingTurnover ? "Save changes" : "Save cash to Finance"}</Button>
           {editingTurnover && <Button type="button" size="sm" variant="outline" onClick={onEditDone}>Cancel</Button>}
         </div>
       </form>}

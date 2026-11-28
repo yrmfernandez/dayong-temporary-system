@@ -1,0 +1,1 @@
+ALTER TABLE "bank_deposits" ADD COLUMN "whole_amount_added" numeric(12, 2);

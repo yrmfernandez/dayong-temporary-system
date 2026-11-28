@@ -168,7 +168,8 @@ export async function cashHeldAtStart(employeeId: string, branch: string, start:
     const cashIn = entries.filter((row) => mine(row.branch) && within(row.day)).reduce((acc, row) => acc + row.cashNet + row.fidelity + row.penalty, 0)
       + slips.filter((item) => mine(item.branch) && within(item.date)).reduce((acc, item) => acc + (Number(item.amount) || 0), 0)
       + (turnover?.encoded ?? []).filter((item) => mine(item.branch) && within(manilaDateOf(item.encodedAt))).reduce((acc, item) => acc + item.cashEffect, 0)
-      + (turnover?.settled ?? []).filter((item) => mine(item.branch) && within(item.settledOn)).reduce((acc, item) => acc + item.settledCash, 0);
+      + (turnover?.settled ?? []).filter((item) => mine(item.branch) && within(item.settledOn)).reduce((acc, item) => acc + item.settledCash, 0)
+      + deposits.filter((item) => !item.nonCash && mine(item.branch) && within(item.date)).reduce((acc, item) => acc + item.wholeAmountAdded, 0);
     const cashOut = expenses.filter((item) => mine(item.branch) && within(item.recordedOn)).reduce((acc, item) => acc + item.amount, 0)
       + deposits.filter((item) => !item.nonCash && mine(item.branch) && within(item.date)).reduce((acc, item) => acc + item.amount, 0);
     return sum + count.amount + cashIn - cashOut;
@@ -246,7 +247,9 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
    * (+ MAS paid the short, − overage returned). Remaining Cash on Hand is then the cash really held. Not carried as a balance.
    */
   const turnoverShortOver = round(turnover.shortOver), turnoverSettled = round(turnover.settledCash);
-  const totalCashIn = round(cashBeg + salesCashNet + collectionCashNet + fidelity + penalty + turnoverShortOver + turnoverSettled + notes.pendingCash);
+  // Remitted whole amount (owner, November 28, 2026): centavos the clerk added to remit whole pesos to Finance are cash in.
+  const wholeAmountAdded = round(deposits.filter((item) => !item.nonCash).reduce((total, item) => total + item.wholeAmountAdded, 0));
+  const totalCashIn = round(cashBeg + salesCashNet + collectionCashNet + fidelity + penalty + turnoverShortOver + turnoverSettled + wholeAmountAdded + notes.pendingCash);
   const expenseTotal = round(expenses.reduce((total, item) => total + item.amount, 0));
   const depositTotal = round(deposits.reduce((total, item) => total + item.amount, 0));
   // Cash Flow records marked non-cash (a bank or e-wallet payment kept for its details) take no cash out.
@@ -297,7 +300,7 @@ export async function buildClerkReport(kind: AuditPeriod, date: string, clerk: {
       ...fidelitySlips.map((item) => ({ id: item.id, kind: "slip" as const, masName: item.masName, branch: item.branch, date: item.date, when: whenLabel(kind, item.date, weeks), amount: item.amount, status: item.status, remarks: item.remarks || "Handed in after encoding" })),
     ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     cash: {
-      cashBeg, cashBegEdit: carried ? null : typedCashBeg, salesNet: salesCashNet, collectionNet: collectionCashNet, fidelity, penalty, turnoverShortOver, turnoverSettled, pendingCash: notes.pendingCash, totalCashIn,
+      cashBeg, cashBegEdit: carried ? null : typedCashBeg, salesNet: salesCashNet, collectionNet: collectionCashNet, fidelity, penalty, turnoverShortOver, turnoverSettled, wholeAmountAdded, pendingCash: notes.pendingCash, totalCashIn,
       /** From CARRY_START: Cash Beg is the cash held at the start (carried from these confirmed counts); openingMissing: no count confirmed yet. */
       carries, carriedFrom: carried?.counts.map((count) => ({ id: count.id, branch: count.branch, date: count.date, amount: count.amount })) ?? [], openingMissing: carries && !carried,
       /** Bank and e-wallet payments (not cash), and Cash Flow records marked non-cash: shown, not counted. */
