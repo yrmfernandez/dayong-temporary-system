@@ -37,6 +37,8 @@ import { manilaNow } from "@/lib/remittance-deadline";
 import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, lateCheckDay, type CashCounts, needsBackdateReason, PAYMENT_REFERENCE_MAX, paymentReferenceProblem, varianceLabel } from "@/lib/entry-controls";
 import { ControlTotalField } from "@/components/control-total-field";
+import { HandoverSaveBar, MarkRemittedDialog, useHandover, type HandoverTarget } from "@/components/mark-remitted-dialog";
+import { handoverCountOn } from "@/lib/handover-rules";
 import { blockingDateProblem, dateWarnings } from "@/lib/date-checks";
 import { ReceiptPhotosPicker, uploadBatchPhotos, type PickedPhoto } from "@/components/receipt-photos-picker";
 import { RemittanceSummary } from "@/components/remittance-summary";
@@ -406,6 +408,7 @@ export default function CollectionsPage() {
   const submissionBranches = useSubmissionBranches(submissionList);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionRevision, setSubmissionRevision] = useState(0);
+  const [handoverTarget, setHandoverTarget] = useState<HandoverTarget | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/collection-submissions?view=review", { cache: "no-store", signal: controller.signal })
@@ -447,6 +450,8 @@ export default function CollectionsPage() {
   useFormDraft("collections", draftSnapshot, restoreDraft, returnedBatchUrl);
   // Batches set aside to finish later (owner, October 14, 2026; lib/use-parked-drafts.ts).
   const parked = useParkedDrafts<CollectionsDraft>("collections");
+  // Counted at Mark remitted (from December 1, 2026): the handover gives the method and reference; no cash count here.
+  const handover = useHandover(!dto && cleared && cleared.employeeName === mas ? cleared.id : "", (loaded) => { setPaymentMethod(loaded.method); setPaymentReference(loaded.reference); });
   const selectedPaymentMethod = paymentMethods.find((method) => method.name === paymentMethod);
   // A method marked cash, or named Cash, as the server counts it (cashMethodNames in lib/entry-batches.ts).
   const isCashPayment = Boolean(selectedPaymentMethod?.isCash) || paymentMethod.trim().toLowerCase() === "cash";
@@ -1020,13 +1025,14 @@ export default function CollectionsPage() {
     if (returnedEdit) { await saveReturnedEdit(returnedEdit); return; }
 
     // Not cash (owner, November 27, 2026): the reference no. is required; it goes to Bank Deposits with the batch.
-    const referenceProblem = !isCashPayment && selectedPaymentMethod ? paymentReferenceProblem(paymentReference, selectedPaymentMethod.name) : "";
+    if (handover?.closed) { setSaveMessage("This handover was already counted and closed. For more money, mark it remitted as a new handover."); return; }
+    const referenceProblem = !handover && !isCashPayment && selectedPaymentMethod ? paymentReferenceProblem(paymentReference, selectedPaymentMethod.name) : "";
     if (referenceProblem) {
       setSaveMessage(referenceProblem);
       document.getElementById("payment-reference")?.focus();
       return;
     }
-    const controlProblem = (isCashPayment && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, isCashPayment ? cashDue : totalDue, isCashPayment);
+    const controlProblem = !handover && ((isCashPayment && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, isCashPayment ? cashDue : totalDue, isCashPayment));
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1277,6 +1283,8 @@ export default function CollectionsPage() {
    * cash or a new handover.
    */
   async function markRemitted(submission: CollectionSubmissionSummary) {
+    // From December 1, 2026: one window for the whole handover, New Sales and Collections, with the method and the count.
+    if (handoverCountOn(manilaNow().date)) { setHandoverTarget({ employeeId: submission.masEmployeeId, branchId: submission.branchId, mas: submission.mas, branch: submission.branch }); return; }
     const remit = Math.round((submission.totalAmount - submission.totalIncentive) * 100) / 100;
     if (!await confirmDialog(`Mark ${submission.mas}'s batch remitted now (${formatCurrency(remit)} to remit)? Only once the cash is in your hands: this time decides the incentive.`)) return;
     const send = (handover = "") => fetch("/api/collection-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remit", id: submission.id, handover }) })
@@ -1345,6 +1353,7 @@ export default function CollectionsPage() {
       {submissionError && <p role="alert" className="text-sm text-destructive">{submissionError}</p>}
       {!returnedEdit && <UnremittedCollectionsWarning submissions={submissionList} onShow={() => setTab("submitted")} />}
 
+      <MarkRemittedDialog target={handoverTarget} onClose={() => setHandoverTarget(null)} onDone={(text) => { setHandoverTarget(null); setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} />
       {tab === "submitted" ? <CollectionSubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={reviewing?.id ?? ""} onOpen={(submission) => void openSubmission(submission)} onReject={(submission) => void rejectSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} onClosed={(text) => { setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} /> : <>
       {reviewing && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -1494,17 +1503,17 @@ export default function CollectionsPage() {
 
             <div className="space-y-2">
               <Label htmlFor="payment-method">Remittance Method *</Label>
-              <select id="payment-method" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
+              <select id="payment-method" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} disabled={Boolean(handover)} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
                 {!paymentMethods.length && <option value="">No remittance methods configured</option>}
                 {paymentMethods.map((method) => <option key={method.id} value={method.name}>{method.name}</option>)}
               </select>
-              <p className="text-xs text-muted-foreground">How the MAS remitted this batch to the office.</p>
+              <p className="text-xs text-muted-foreground">{handover ? "Set at Mark remitted for the whole handover." : "How the MAS remitted this batch to the office."}</p>
             </div>
 
             {selectedPaymentMethod && !isCashPayment ? (
               <div className="space-y-2">
                 <Label htmlFor="payment-reference">{selectedPaymentMethod.name} reference no.{returnedEdit ? "" : " *"}</Label>
-                <Input id="payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} placeholder="Transaction / deposit slip number" aria-required={!returnedEdit} onChange={(event) => setPaymentReference(event.target.value)} />
+                <Input id="payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} disabled={Boolean(handover)} placeholder="Transaction / deposit slip number" aria-required={!returnedEdit} onChange={(event) => setPaymentReference(event.target.value)} />
                 <p className="text-xs text-muted-foreground">Required, with its number. From {showDate(CARRY_START)} the batch is recorded by itself in the report&apos;s Bank Deposits with this reference and the MAS. Attach the receipt or transfer screenshot too.</p>
               </div>
             ) : (
@@ -2112,7 +2121,8 @@ export default function CollectionsPage() {
                 <span className="text-muted-foreground">Total remittance <strong className="tabular-nums text-foreground">{totalDue === null ? "pending" : formatCurrency(totalDue)}</strong></span>
                 <span className="text-muted-foreground">{collections.length} {collections.length === 1 ? "entry" : "entries"}</span>
               </div>
-              {!returnedEdit && <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={isCashPayment ? cashDue : totalDue} cash={isCashPayment} counts={cashCounts} onCountsChange={setCashCounts} />}
+              {!returnedEdit && handover && <HandoverSaveBar handover={handover} />}
+              {!returnedEdit && !handover && <ControlTotalField id="control-total" title="The net total the MAS wrote on the turnover sheet: amount collected less incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={isCashPayment ? cashDue : totalDue} cash={isCashPayment} counts={cashCounts} onCountsChange={setCashCounts} />}
               {saveMessage && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">{saveMessage}</div>}
               <div className="flex gap-2">
                 <Button type="button" className="flex-1" onClick={async () => { if (showPreview) { void saveCollections(); return; } await alertDialog(COLLECTION_CHECK_REMINDER, { title: "Check every entry before saving", warning: true, confirmLabel: "I have checked every entry" }); setShowPreview(true); }} disabled={saving}>

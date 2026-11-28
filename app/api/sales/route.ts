@@ -21,6 +21,7 @@ import { ageRestrictionError } from "@/lib/program-age";
 
 import { inTransaction, isUniqueViolation } from "@/lib/db";
 import { recordTurnoverVariance, TURNOVER_NOTE_MAX, varianceLabel } from "@/lib/turnover-variance";
+import { handoverForSave, settleHandover } from "@/lib/mas-handover";
 import { calculateSaleIncentive, noIncentiveReasonOf, tiersForBranch, withoutIncentive } from "@/lib/remittance";
 import { newSalesDoubleEntry, personKey } from "@/lib/duplicate-entries";
 import { anotherPersonProblem } from "@/lib/member-identity";
@@ -130,6 +131,12 @@ function nextMemberNumber() {
 }
 
 /** Compares Philippine mobile numbers regardless of spaces, dashes, or a +63 prefix; blank when no usable number. */
+
+/** What the save says about the handover: still waiting for its other batches, or counted and matching. */
+function handoverNote(settled: { waiting: number } | null) {
+  if (!settled) return "";
+  return settled.waiting ? ` The handover is worked out when its other batch${settled.waiting === 1 ? " is" : "es are"} saved (${settled.waiting} still to save).` : " The handover matches: everything handed over is accounted for.";
+}
 
 export const POST = withEncoder(async function POST(request: Request) {
   // Day Off locks the day's entries (lib/day-off.ts).
@@ -246,6 +253,13 @@ async function saveSales(request: Request, user: SessionUser) {
         { status: 400 },
       );
     }
+
+    // Counted at Mark remitted (lib/mas-handover.ts, from December 1, 2026): every sale takes the handover's method and
+    // reference, and its short or over is worked out once, when its last batch is saved; no cash count or turnover total.
+    let handover: Awaited<ReturnType<typeof handoverForSave>> = null;
+    try { handover = await handoverForSave(clearingId); }
+    catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "The handover cannot take this batch." }, { status: 400 }); }
+    if (handover) for (const sale of body.sales) if (sale) sale.paymentMethod = handover.method;
 
     // A member's or claimant's contact number may not be any employee's number (e.g. the MAS's own phone).
     const employeeContacts = new Map(employees.map((employee) => [phoneKey(employee.contact), employee] as const).filter(([key]) => key));
@@ -651,23 +665,24 @@ async function saveSales(request: Request, user: SessionUser) {
     // control total = counted − penalty (lib/entry-controls.ts). A page opened before still sends the control total.
     const cashNames = await cashMethodNames();
     // Counted by denomination (cashCount): the total is worked out from the pieces, not taken from the page.
-    const cashCount = (body.cashCount !== undefined || body.cashCounted !== undefined) && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
+    const cashCount = !handover && (body.cashCount !== undefined || body.cashCounted !== undefined) && body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames));
     const countsProblem = cashCount && body.cashCount !== undefined ? cashCountsProblem(body.cashCount) : "";
     if (countsProblem) return NextResponse.json({ success: false, message: countsProblem }, { status: 400 });
     // Bank or e-wallet batch (owner, November 27, 2026): the reference no. is required and goes to Bank Deposits with the
     // batch (lib/clerk-cash.ts recordBatchTransfer, from December 1, 2026).
     const transferMethod = body.sales.every((sale) => isCashMethod(String(sale.paymentMethod ?? ""), cashNames)) ? "" : String(body.sales[0]?.paymentMethod ?? "").trim();
-    const paymentReference = String(body.paymentReference ?? "").trim();
+    const paymentReference = handover ? handover.reference : String(body.paymentReference ?? "").trim();
     const referenceProblem = transferMethod ? paymentReferenceProblem(paymentReference, transferMethod) : "";
     if (referenceProblem) return NextResponse.json({ success: false, message: referenceProblem }, { status: 400 });
     const counted = body.cashCount !== undefined ? cashCountTotal(body.cashCount) : Number(body.cashCounted);
-    const controlProblem = cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
+    const controlProblem = handover ? "" : cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
     if (controlProblem) return NextResponse.json({ success: false, message: controlProblem }, { status: 400 });
     const controlTotal = cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100;
     const typedNote = typeof body.controlTotalNote === "string" ? body.controlTotalNote.trim() : "";
     const controlNote = cashCount ? cashCountNote(counted, penalty, typedNote, body.cashCount) : typedNote;
     if (controlNote.length > TURNOVER_NOTE_MAX) return NextResponse.json({ success: false, message: `The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.` }, { status: 400 });
     let variance: { id: string; difference: number } | null = null;
+    let settled: Awaited<ReturnType<typeof settleHandover>> = null;
 
     /*
      * =====================================================
@@ -900,7 +915,10 @@ async function saveSales(request: Request, user: SessionUser) {
       // submissionCount: the sales on the batch when the clerk opened it; the MAS may have added more today since.
       if (submissionId) await markSubmissionSaved(submissionId, savedSales.map((saved) => saved.saleId), submissionBranch, body.submissionCount);
       if (transferMethod) await recordBatchTransfer({ kind: "New Sales", branch: body.branch.trim(), mas: body.mas.trim(), method: transferMethod, reference: paymentReference, amount: totalRemittance - fidelity, entryIds: savedSales.map((saved) => saved.saleId) });
-      variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
+      if (handover) {
+        settled = await settleHandover({ clearingId, kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), batchTotal: totalRemittance });
+        variance = settled?.variance ?? null;
+      } else variance = await recordTurnoverVariance({ kind: "New Sales", entryIds: savedSales.map((saved) => saved.saleId), branch: body.branch.trim(), mas: body.mas.trim(), accountableEmployeeId: selectedStaff.id, dateRemitted: body.dateRemitted.trim(), controlTotal, systemTotal: totalRemittance, note: controlNote });
     });
 
     // Cash on spot (owner, November 26, 2026): the account is paid in full by its New Sale, so its full payment is recorded
@@ -920,7 +938,7 @@ async function saveSales(request: Request, user: SessionUser) {
     return NextResponse.json({
       success: true,
       message:
-        `All new sales were saved successfully.${recorded ? ` ${cashCount ? "Cash count" : "Turnover sheet"} ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : ""}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}${fullPaymentNotes.length ? ` ${fullPaymentNotes.join(" ")}` : ""}`,
+        `All new sales were saved successfully.${recorded ? ` ${handover ? "Handover count" : cashCount ? "Cash count" : "Turnover sheet"} ${varianceLabel(recorded.difference).toLowerCase()} (${recorded.id}); the slip goes to Discrepancy.` : handoverNote(settled)}${slips.length ? ` Cash sent for approval: ${slips.join(", ")}.` : " Attach the receipt photo in My Entries to send them for approval."}${fullPaymentNotes.length ? ` ${fullPaymentNotes.join(" ")}` : ""}`,
       savedSales,
       slips,
       varianceId: recorded?.id,

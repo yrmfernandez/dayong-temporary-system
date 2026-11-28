@@ -435,6 +435,13 @@
       "when": 1795761942166,
       "tag": "0061_finance_remittance_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1795849033369,
+      "tag": "0062_mas_handover",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ import { calculateRemittance, differentRateOf, noIncentiveReasonOf, tiersForBran
 import { getEmployees } from "@/lib/employees";
 import { getBranches } from "@/lib/google-sheets-data";
 import { entryKey, recordedOrNumbers } from "@/lib/duplicate-entries";
+import { handoverForSave, settleHandover } from "@/lib/mas-handover";
 import { markCollectionSubmissionSaved, reviewableCollectionSubmission, waitingSubmissionProblem } from "@/lib/collection-submissions";
 import type { SessionUser } from "@/lib/auth";
 import { validDate } from "@/lib/manila-date";
@@ -28,6 +29,11 @@ import { sameName } from "@/lib/match-keys";
  * The same branch or MAS name, ignoring case and extra spaces: accounts keep the MAS as first encoded (e.g. "Nagliba,
  * Marissa") while the employee and the Clearing pick may be spelled "NAGLIBA, MARISSA" (owner, October 13, 2026).
  */
+
+/** What the save says about the handover: still waiting for its other batches, or counted and matching. */
+const handoverText = (settled: { waiting: number; variance: unknown } | null) => !settled ? "" : settled.waiting
+  ? ` The handover is worked out when its other batch${settled.waiting === 1 ? " is" : "es are"} saved (${settled.waiting} still to save).`
+  : " The handover matches: everything handed over is accounted for.";
 
 export async function GET(request: Request) {
   if (!(await userWithPageAccess("/collections"))) return Response.json({ success: false, message: "You do not have access to Collections." }, { status: 403 });
@@ -121,8 +127,11 @@ async function saveCollections(request: Request, user: SessionUser) {
      */
     const memberMas = collectedBy === "Collector" || collectedBy === "DTO" ? String(body.memberMas ?? "").trim() || mas : mas;
     const originalMas = collectedBy === "Collector" || (collectedBy === "DTO" && !sameName(memberMas, mas)) ? memberMas : "";
-    const paymentMethod = await findActivePaymentMethod(String(body.paymentMethod ?? ""));
-    const paymentReference = String(body.paymentReference ?? "").trim();
+    // Counted at Mark remitted (lib/mas-handover.ts, from December 1, 2026): the handover gives the method and reference,
+    // and its short or over is worked out once, when its last batch is saved; no cash count or turnover total here.
+    const handover = clearingId ? await handoverForSave(clearingId) : null;
+    const paymentMethod = await findActivePaymentMethod(handover ? handover.method : String(body.paymentMethod ?? ""));
+    const paymentReference = handover ? handover.reference : String(body.paymentReference ?? "").trim();
     // Required again when the method is not cash (owner, November 27, 2026; optional from October 8): it is the remarks
     // of the batch's Bank Deposits record (lib/clerk-cash.ts recordBatchTransfer). Cash batches send none.
     const referenceProblem = paymentMethod.isCash ? (paymentReference.length > PAYMENT_REFERENCE_MAX ? `The payment reference must be ${PAYMENT_REFERENCE_MAX} characters or fewer.` : "") : paymentReferenceProblem(paymentReference, paymentMethod.name);
@@ -239,11 +248,11 @@ async function saveCollections(request: Request, user: SessionUser) {
       // Cash batch (owner, November 27, 2026): the cash counted, compared with total remittance + penalty; recorded as
       // control total = counted − penalty (lib/entry-controls.ts). A page opened before still sends the control total.
       // Counted by denomination (cashCount): the total is worked out from the pieces, not taken from the page.
-      const cashCount = paymentMethod.isCash && (body.cashCount !== undefined || body.cashCounted !== undefined);
+      const cashCount = !handover && paymentMethod.isCash && (body.cashCount !== undefined || body.cashCounted !== undefined);
       const countsProblem = cashCount && body.cashCount !== undefined ? cashCountsProblem(body.cashCount) : "";
       if (countsProblem) throw new Error(countsProblem);
       const counted = body.cashCount !== undefined ? cashCountTotal(body.cashCount) : Number(body.cashCounted);
-      const controlProblem = cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
+      const controlProblem = handover ? "" : cashCount ? controlTotalProblem(counted, expectedCash(totalRemittance, penalty), true) : controlTotalProblem(body.controlTotal, totalRemittance);
       if (controlProblem) throw new Error(controlProblem);
       const controlNote = String(body.controlTotalNote ?? "").trim();
       if (controlNote.length > TURNOVER_NOTE_MAX) throw new Error(`The turnover note must be ${TURNOVER_NOTE_MAX} characters or fewer.`);
@@ -258,14 +267,18 @@ async function saveCollections(request: Request, user: SessionUser) {
       // A bank or e-wallet batch is recorded in Bank Deposits (non-cash) with its MAS and reference, from December 1, 2026:
       // the entries' remittance only; Fidelity and penalty may be paid in cash and stay in the cash summary.
       if (!paymentMethod.isCash) await recordBatchTransfer({ kind: "Collections", branch: selectedBranch.name, mas: accountable.name, method: paymentMethod.name, reference: paymentReference, amount: remittanceCents / 100, entryIds: [batchId] });
+      if (handover) {
+        const settled = await settleHandover({ clearingId, kind: "Collections", entryIds: ids, batchTotal: totalRemittance, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted });
+        return { ids, grossCents, variance: settled?.variance ?? null, cashCount: false, handover: settled };
+      }
       const variance = await recordTurnoverVariance({ kind: "Collections", entryIds: ids, branch: selectedBranch.name, mas: accountable.name, accountableEmployeeId: accountable.id, dateRemitted, controlTotal: cashCount ? cashCountControlTotal(counted, penalty) : Math.round(Number(body.controlTotal) * 100) / 100, systemTotal: totalRemittance, note: cashCount ? cashCountNote(counted, penalty, controlNote, body.cashCount) : controlNote });
-      return { ids, grossCents, variance, cashCount };
+      return { ids, grossCents, variance, cashCount, handover: null };
     });
     // Saved as DTO, the batch's Mark remitted clearing (the MAS's handover) gets no entries: removed, as nothing is encoded under it.
     if (submission && dto && submission.clearingId) await releaseSubmissionClearing(submission.clearingId, `MAS batch ${submission.id} was saved as DTO (${saved.ids.join(", ")}); nothing was encoded under this handover`);
     // Paid in cash: straight to Pending Approval (lib/entry-batches.ts); other methods wait for the receipt photo.
     const slips = await submitCashAfterSave(saved.ids);
-    const varianceText = saved.variance ? ` ${saved.cashCount ? "Cash count" : "Turnover sheet"} ${varianceLabel(saved.variance.difference).toLowerCase()} (${saved.variance.id}); the slip goes to Discrepancy.` : "";
+    const varianceText = saved.variance ? ` ${saved.handover ? "Handover count" : saved.cashCount ? "Cash count" : "Turnover sheet"} ${varianceLabel(saved.variance.difference).toLowerCase()} (${saved.variance.id}); the slip goes to Discrepancy.` : handoverText(saved.handover);
     return Response.json({ success: true, collectionIds: saved.ids, slips, varianceId: saved.variance?.id, grossCollection: saved.grossCents / 100, message: `${saved.ids.length} collection(s) saved${penalty > 0 ? ` with a ${penalty.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} penalty` : ""}.${varianceText} ${slips.length ? `Cash sent for approval: ${slips.join(", ")}.` : "Attach the receipt photo in My Entries to send them for approval."}` }, { status: 201 });
   } catch (error) {
     // Another save used the same OR Number at the same moment; the database's unique rule refused this one.

@@ -73,7 +73,7 @@ const peso = (value: number) => value.toLocaleString("en-PH", { style: "currency
 export const isCashCountNote = (note: string) => String(note ?? "").startsWith("Cash counted ");
 
 /** "Cash count" or "Turnover sheet": where a recorded short or over came from, for messages and slip remarks. */
-export const varianceSource = (note: string) => isCashCountNote(note) ? "Cash count" : "Turnover sheet";
+export const varianceSource = (note: string) => String(note ?? "").startsWith("Handover ") ? "Handover count" : isCashCountNote(note) ? "Cash count" : "Turnover sheet";
 
 /** Philippine bills and coins counted for a Cash batch, largest first (₱20 is one row, bill or coin). */
 export const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25] as const;

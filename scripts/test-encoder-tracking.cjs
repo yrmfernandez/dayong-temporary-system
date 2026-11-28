@@ -7047,3 +7047,169 @@ test('Inventory has its own sidebar section for Administrators, Finance and Entr
   assert.ok(sections("Entry Clerk", { "entry clerk": ["/new-sales"] }).some((section) => section.title === "Inventory"), "kept in the menu with configured pages");
   assert.ok(!sections("MAS").some((section) => section.title === "Inventory"));
 });
+
+test('handover rules: method lines, cash from the pieces, merging, how the batches are saved (owner, November 28, 2026)', () => {
+  const rules = harness().load('lib/handover-rules.ts');
+  const methods = [{ name: 'Cash', isCash: true, requiresReference: false }, { name: 'GCash', isCash: false, requiresReference: true }];
+  const clean = rules.cleanHandoverLines([{ method: 'cash', counts: { 1000: '2', 500: '2' } }, { method: 'GCash', amount: '2220', reference: '1234567' }], methods);
+  assert.equal(clean.problem, '');
+  assert.deepEqual(clean.lines, [{ method: 'Cash', cash: true, amount: 3000, reference: '', counts: { 500: 2, 1000: 2 } }, { method: 'GCash', cash: false, amount: 2220, reference: '1234567' }]);
+  assert.equal(rules.handoverReceived(clean.lines), 5220);
+  assert.equal(rules.handoverCash(clean.lines), 3000);
+  assert.equal(rules.handoverText(clean.lines), 'Cash ₱3,000.00 (₱1,000×2, ₱500×2) · GCash ₱2,220.00 ref 1234567');
+  assert.match(rules.cleanHandoverLines([], methods).problem, /Choose how the MAS remitted/);
+  assert.match(rules.cleanHandoverLines([{ method: 'Cash', counts: {} }], methods).problem, /Count the cash/);
+  assert.match(rules.cleanHandoverLines([{ method: 'Cash', amount: 500, counts: {} }], methods).problem, /Count the cash/, 'a typed cash amount is not taken');
+  assert.match(rules.cleanHandoverLines([{ method: 'GCash', amount: 100, reference: '' }], methods).problem, /GCash reference no/);
+  assert.match(rules.cleanHandoverLines([{ method: 'GCash', amount: 0, reference: '1234567' }], methods).problem, /Enter the GCash amount/);
+  assert.match(rules.cleanHandoverLines([{ method: 'Bank' }], methods).problem, /not an active remittance method/);
+  assert.match(rules.cleanHandoverLines([{ method: 'GCash', amount: 1, reference: '1234567' }, { method: 'gcash', amount: 1, reference: '7654321' }], methods).problem, /listed twice/);
+  // Cash in it, or two methods: saved as cash (the bank part goes to Bank Deposits); one bank method alone: that method.
+  assert.deepEqual(rules.handoverBatchMethod(clean.lines), { method: 'Cash', reference: '', cash: true });
+  assert.deepEqual(rules.handoverBatchMethod([clean.lines[1]]), { method: 'GCash', reference: '1234567', cash: false });
+  // Part of the earlier handover: the same method adds up, cash pieces too.
+  const merged = rules.mergeHandoverLines(clean.lines, [{ method: 'Cash', cash: true, amount: 200, reference: '', counts: { 100: 2, 500: 0 } }]);
+  assert.deepEqual(merged[0], { method: 'Cash', cash: true, amount: 3200, reference: '', counts: { 500: 2, 1000: 2, 100: 2 } });
+  assert.equal(clean.lines[0].amount, 3000, 'the earlier lines are not changed');
+  const controls = harness().load('lib/entry-controls.ts');
+  assert.equal(controls.varianceSource(rules.handoverVarianceNote('CLR-1', clean.lines, 5230, 'New Sales + Collections', '')), 'Handover count');
+  assert.equal(rules.handoverCountOn('2026-11-30'), false);
+  assert.equal(rules.handoverCountOn('2026-12-01'), true);
+});
+
+test('Mark remitted from December 1: one handover with method lines and count, the short worked out once when the last batch is saved (owner, November 28, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }, { employee_id: 'DPE-0003', full_name: 'Clerk Three' }], { skipExisting: true });
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Santos', first_name: 'Ana' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const submissions = 'app/api/collection-submissions/route.ts', handover = 'app/api/mas-handover/route.ts';
+  assert.equal((await call(collector, submissions, 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' })).status, 201);
+  const [batch] = (await call(clerk, submissions, 'GET', '/api/collection-submissions?view=review')).body.submissions;
+  const lines = [{ method: 'Cash', counts: { 100: '2' } }, { method: 'GCash', amount: 70, reference: '9876543' }];
+  try {
+    // Before December 1 the window is not used.
+    globalThis.dayongHandoverStart = '2999-01-01';
+    assert.match((await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: [batch.id], lines, note: 'MAS short' })).body.message, /starts on December 1, 2026/);
+    globalThis.dayongHandoverStart = '2000-01-01';
+    const options = (await call(clerk, handover, 'GET', '/api/mas-handover?employeeId=DPE-0001&branchId=BR-1')).body;
+    assert.equal(options.success, true, JSON.stringify(options));
+    assert.deepEqual(options.batches.map((item) => [item.kind, item.id, item.toRemit]), [['Collections', batch.id, 280]]);
+    assert.deepEqual(options.methods.map((item) => item.name), ['Cash', 'GCash']);
+    // ₱200 cash + ₱70 GCash for ₱280: short by ₱10, which needs a note.
+    assert.match((await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: [batch.id], lines })).body.message, /Short by ₱10\.00: write a note/);
+    const marked = await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: [batch.id], lines, note: 'MAS to pay Monday' });
+    assert.equal(marked.status, 200, JSON.stringify(marked.body));
+    assert.match(marked.body.message, /marked remitted at .* Short by ₱10\.00 for now/);
+    const [clearing] = await query('select clearing_id, covers, amount::float8 as amount, handover_lines, handover_note from clearings');
+    assert.deepEqual([clearing.covers, clearing.amount, clearing.handover_note], ['Collections', 270, 'MAS to pay Monday']);
+    assert.equal(clearing.handover_lines.length, 2);
+    assert.deepEqual(await query('select status, clearing_id from collection_submissions'), [{ status: 'Remitted', clearing_id: clearing.clearing_id }]);
+    // Marking it again is refused: it is no longer waiting.
+    assert.match((await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: [batch.id], lines, note: 'again' })).body.message, /no longer waiting/);
+
+    // Saved with no method, cash count or control total: the handover gives them; the short is recorded once, here.
+    const [entry] = batch.entries;
+    const saved = await call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', {
+      branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId: clearing.clearing_id, submissionId: batch.id, dateRemitted: today, collectedBy: 'Collector', memberMas: 'Mas Two',
+      collections: [{ memberNumber: 'PH-1', programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber: '12345 B', orDate: entry.orDate }],
+    });
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.match(saved.body.message, /Handover count short by ₱10\.00/);
+    assert.deepEqual(await query('select remittance_method, remittance_amount::float8 as remit from collections'), [{ remittance_method: 'Cash', remit: 280 }]);
+    const [variance] = await query('select control_total::float8 as control, system_total::float8 as system, difference::float8 as difference, note from turnover_variances');
+    assert.deepEqual([variance.control, variance.system, variance.difference], [270, 280, -10]);
+    assert.match(variance.note, /^Handover CLR-.*: received ₱270\.00 \(Cash ₱200\.00 \(₱100×2\) · GCash ₱70\.00 ref 9876543\) for Collections, expected ₱280\.00: MAS to pay Monday$/);
+    // The GCash part is money forwarded to the bank, so cash on hand is the ₱200 counted.
+    assert.deepEqual(await query('select amount::float8 as amount, transfer_type, non_cash, mas from bank_deposits'), [{ amount: 70, transfer_type: 'GCash', non_cash: false, mas: 'Col One' }]);
+    const [closed] = await query('select handover_closed_at is not null as closed, handover_variance_id from clearings');
+    assert.equal(closed.closed, true);
+    assert.equal(closed.handover_variance_id, saved.body.varianceId);
+    // A closed handover takes no more batches.
+    await assert.rejects(clerk.load('lib/mas-handover.ts').handoverForSave(clearing.clearing_id), /already counted and closed/);
+  } finally { delete globalThis.dayongHandoverStart; }
+});
+
+test('Mark remitted on either page lists both kinds; a batch marked later as part of the earlier handover keeps its time, and the short waits for the last batch (owner, November 28, 2026)', async () => {
+  const as = (user) => {
+    const h = harness(user);
+    h.rows.Branches = [[], ['BR-1', 'BR-1', '', '', '', '', '', '', '', '', '', '', 'active']];
+    h.rows.Employees = [[], ['DPE-0001', 'Col One', 'BR-1', 'Collector', 'active'], ['DPE-0002', 'Mas Two', 'BR-1', 'MAS', 'active'], ['DPE-0003', 'Clerk Three', 'BR-1', 'Entry Clerk', 'active']];
+    h.rows['Employee Branches'] = [[], ['EBA-1', 'DPE-0001', 'BR-1'], ['EBA-2', 'DPE-0002', 'BR-1'], ['EBA-3', 'DPE-0003', 'BR-1']];
+    h.rows.Programs = [[], ['DP-1', 'CODE', 'Program', 350, 'active', '', '', '', '', '', 'No', 0, 0]];
+    h.rows['Program Incentives'] = [[], ['INC-1', 'DP-1', 'MAS', 1, 12, 'percentage', 0, 50], ['INC-2', 'DP-1', 'Collector', 1, 12, 'percentage', 0, 20]];
+    h.rows['Remittance Methods'] = [[], ['PMT-CASH', 'Cash', true, false, 'active'], ['PMT-GCASH', 'GCash', false, true, 'active']];
+    return h;
+  };
+  const collector = as({ userId: 'USR-C', employeeId: 'DPE-0001', name: 'Col One', roleNames: ['Collector'], permissions: {} });
+  const clerk = as({ userId: 'USR-K', employeeId: 'DPE-0003', name: 'Clerk Three', roleNames: ['Entry Clerk'], permissions: {} });
+  await seedSaleLinks([['DP-1', 'Program']], ['DPE-0001', 'Col One']);
+  await seed('employees', [{ employee_id: 'DPE-0002', full_name: 'Mas Two' }, { employee_id: 'DPE-0003', full_name: 'Clerk Three' }], { skipExisting: true });
+  const today = collector.load('lib/remittance-deadline.ts').manilaNow().date;
+  const doi = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86400000).toISOString().slice(0, 10);
+  await seed('members', [{ member_id: 'MEM-1', member_number: 'PH-1', surname: 'Santos', first_name: 'Ana' }]);
+  await seed('member_programs', [{ enrollment_id: 'ENR-1', member_id: 'MEM-1', member_number: 'PH-1', program_id: 'DP-1', doi, branch: 'BR-1', mas: 'Mas Two', status: 'Active', collector_employee_id: 'DPE-0001' }]);
+  // A New Sales batch of the same person waiting in the branch.
+  await seed('sale_submissions', [{ submission_id: 'MSS-1', branch_id: 'BR-1', branch: 'BR-1', mas_employee_id: 'DPE-0001', mas: 'Col One', status: 'Submitted', sales: [{ id: 'card-1', orDate: today, program: { programId: 'DP-1', amountPaid: 350 } }], sale_count: 1, total_amount: 350, submitted_at: new Date().toISOString() }]);
+  const call = async (h, file, method, url, body) => {
+    const route = h.load(file);
+    const response = await route[method](new Request(`http://localhost${url}`, method === 'GET' ? {} : { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
+    return { status: response.status, body: await response.json() };
+  };
+  const handover = 'app/api/mas-handover/route.ts';
+  assert.equal((await call(collector, 'app/api/collection-submissions/route.ts', 'POST', '/api/collection-submissions', { entries: [{ enrollmentId: 'ENR-1', months: 1, amount: null, waiver: false }], collectedBy: 'Collector' })).status, 201);
+  try {
+    globalThis.dayongHandoverStart = '2000-01-01';
+    const options = (await call(clerk, handover, 'GET', '/api/mas-handover?employeeId=DPE-0001&branchId=BR-1')).body;
+    assert.equal(options.success, true, JSON.stringify(options));
+    assert.deepEqual(options.batches.map((item) => item.kind), ['New Sales', 'Collections'], 'both kinds, whichever page it was opened from');
+    const collections = options.batches.find((item) => item.kind === 'Collections');
+    // The Collections money now (New Sales unticked: not paid yet), exact.
+    const first = await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: [collections.id], lines: [{ method: 'Cash', counts: { 100: '2', 20: '4' } }] });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.deepEqual(await query('select status from sale_submissions'), [{ status: 'Submitted' }], 'the unticked batch stays waiting');
+    const [clearing] = await query('select clearing_id, cleared_at, covers from clearings');
+    assert.equal(clearing.covers, 'Collections');
+    // The New Sales money later: the window offers the earlier handover; part of it keeps its time and adds the cash.
+    const later = (await call(clerk, handover, 'GET', '/api/mas-handover?employeeId=DPE-0001&branchId=BR-1')).body;
+    assert.deepEqual(later.earlier.map((item) => [item.id, item.closed, item.received]), [[clearing.clearing_id, false, 280]]);
+    const second = await call(clerk, handover, 'POST', '/api/mas-handover', { employeeId: 'DPE-0001', branchId: 'BR-1', batchIds: ['MSS-1'], handover: clearing.clearing_id, lines: [{ method: 'Cash', counts: { 100: '3', 50: '1' } }], note: 'checked twice' });
+    assert.equal(second.status, 200, JSON.stringify(second.body));
+    const [after] = await query('select count(*)::int as clearings, max(covers) as covers, max(amount)::float8 as amount from clearings');
+    assert.deepEqual(after, { clearings: 1, covers: 'Both', amount: 630 }, 'one handover for both kinds');
+    const [line] = (await query('select handover_lines from clearings'))[0].handover_lines;
+    assert.deepEqual([line.method, line.amount, line.counts], ['Cash', 630, { 20: 4, 50: 1, 100: 5 }]);
+    const [sale] = await query('select status, clearing_id, remitted_at from sale_submissions');
+    assert.deepEqual([sale.status, sale.clearing_id], ['Remitted', clearing.clearing_id]);
+    assert.equal(new Date(sale.remitted_at).getTime(), new Date(clearing.cleared_at).getTime(), 'it keeps the earlier time');
+    // Collections saved first: nothing recorded yet, the New Sales batch is still to save.
+    const [batch] = (await call(clerk, 'app/api/collection-submissions/route.ts', 'GET', '/api/collection-submissions?view=review')).body.submissions;
+    const [entry] = batch.entries;
+    const saved = await call(clerk, 'app/api/collections/route.ts', 'POST', '/api/collections', {
+      branch: 'BR-1', mas: 'Col One', accountableEmployeeId: 'DPE-0001', clearingId: clearing.clearing_id, submissionId: batch.id, dateRemitted: today, collectedBy: 'Collector', memberMas: 'Mas Two',
+      collections: [{ memberNumber: 'PH-1', programId: 'DP-1', monthFrom: entry.monthFrom, monthTo: entry.monthTo, amountCollected: entry.amount, nopFrom: entry.nopFrom, nopTo: entry.nopTo, orNumber: '12345 B', orDate: entry.orDate }],
+    });
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.match(saved.body.message, /worked out when its other batch is saved \(1 still to save\)/);
+    assert.deepEqual(await query('select count(*)::int as n from turnover_variances'), [{ n: 0 }]);
+    assert.deepEqual(await query('select handover_closed_at is null as open from clearings'), [{ open: true }]);
+  } finally { delete globalThis.dayongHandoverStart; }
+});

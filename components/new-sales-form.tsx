@@ -39,6 +39,8 @@ import { useDeclaredNonWorkingDays } from "@/lib/use-work-calendar";
 import { AlreadySavedNote } from "@/components/already-saved-note";
 import type { AlreadySaved } from "@/lib/submission-already-saved";
 import { ControlTotalField } from "@/components/control-total-field";
+import { HandoverSaveBar, MarkRemittedDialog, useHandover, type HandoverTarget } from "@/components/mark-remitted-dialog";
+import { handoverCountOn } from "@/lib/handover-rules";
 import { EntryFigures } from "@/components/entry-figures";
 import { BACKDATE_REASON_MIN, cashCountsProblem, cashCountTotal, cleanCashCounts, controlTotalDifference, controlTotalProblem, expectedCash, type CashCounts, varianceLabel, INCOMPLETE_APPLICATION_MESSAGE, isIncompleteApplicationNumber, lateCheckDay, needsBackdateReason, nextApplicationNumber, PAYMENT_REFERENCE_MAX, paymentReferenceProblem } from "@/lib/entry-controls";
 import { CARRY_START } from "@/lib/cash-carry";
@@ -266,7 +268,7 @@ function updateAddress(
  */
 /** A MAS submission as /api/sale-submissions returns it (lib/sale-submissions.ts). */
 type SubmissionSummary = {
-  id: string; branch: string; mas: string; status: "Submitted" | "Remitted" | "Rejected" | "Returned" | "Saved"; sales: NewSale[]; saleCount: number; totalAmount: number;
+  id: string; branchId: string; branch: string; masEmployeeId: string; mas: string; status: "Submitted" | "Remitted" | "Rejected" | "Returned" | "Saved"; sales: NewSale[]; saleCount: number; totalAmount: number;
   submittedAt: string; returnReason: string; reviewedByName: string;
   /** 3:00 PM the next working day after the earliest application date; Remitted: the handover recorded (clearingId, "YYYY-MM-DD HH:MM"). */
   incentiveDeadline: string; clearingId: string; remittedAt: string; remittedByName: string;
@@ -312,6 +314,7 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   const submissionBranches = useSubmissionBranches(submissionList);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionRevision, setSubmissionRevision] = useState(0);
+  const [handoverTarget, setHandoverTarget] = useState<HandoverTarget | null>(null);
 
   // The first sale starts expanded, so its form is ready to fill in.
   const [initialSale] = useState(emptyNewSale);
@@ -336,6 +339,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
   }, []);
   // A method marked cash, or named Cash, as the server counts it (cashMethodNames in lib/entry-batches.ts).
   const allCash = Boolean(paymentMethods.find((method) => method.name === paymentMethod)?.isCash) || paymentMethod.trim().toLowerCase() === "cash";
+  // Counted at Mark remitted (from December 1, 2026): the handover gives the method and reference; no cash count here.
+  const handover = useHandover(masMode ? "" : clearingId, (loaded) => { setPaymentMethod(loaded.method); setPaymentReference(loaded.reference); });
 
   const [expandedSales, setExpandedSales] =
     useState<Record<string, boolean>>(() => ({ [initialSale.id]: true }));
@@ -1274,6 +1279,8 @@ export function NewSalesForm({ mode = "clerk" }: { mode?: "clerk" | "mas" }) {
    * the details can be typed later. Already cleared today: asks whether it is the same cash or a new handover.
    */
   const markRemitted = async (submission: SubmissionSummary) => {
+    // From December 1, 2026: one window for the whole handover, New Sales and Collections, with the method and the count.
+    if (handoverCountOn(manilaNow().date)) { setHandoverTarget({ employeeId: submission.masEmployeeId, branchId: submission.branchId, mas: submission.mas, branch: submission.branch }); return; }
     if (!await confirmDialog(`Mark ${submission.mas}'s New Sales remitted now (${submission.saleCount} sale${submission.saleCount === 1 ? "" : "s"}, ${formatPeso(submission.totalAmount)} collected)? Only once the cash is in your hands: this time decides the incentive.`)) return;
     const send = (handover = "") => fetch("/api/sale-submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remit", id: submission.id, handover }) })
       .then(async (response) => ({ response, result: await response.json() }));
@@ -1437,7 +1444,8 @@ Is this cash part of that handover?`) ? "same"
     }
 
     // The turnover total belongs to the first save: a Returned batch is not compared with it again.
-    const controlProblem = returnedEdit ? "" : ((allCash && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, checkedTotal, allCash));
+    if (!returnedEdit && handover?.closed) { setSaveMessage("This handover was already counted and closed. For more money, mark it remitted as a new handover."); return; }
+    const controlProblem = returnedEdit || handover ? "" : ((allCash && cashCountsProblem(cashCounts)) || controlTotalProblem(enteredTotal, checkedTotal, allCash));
     if (controlProblem) {
       setSaveMessage(controlProblem);
       return;
@@ -1475,7 +1483,7 @@ Is this cash part of that handover?`) ? "same"
       setSaveMessage("Add at least one receipt photo for this batch.");
       return;
     }
-    const referenceProblem = allCash ? "" : paymentReferenceProblem(paymentReference, paymentMethod);
+    const referenceProblem = allCash || handover ? "" : paymentReferenceProblem(paymentReference, paymentMethod);
     if (referenceProblem) {
       setSaveMessage(referenceProblem);
       document.getElementById("sales-payment-reference")?.focus();
@@ -1667,7 +1675,8 @@ Is this cash part of that handover?`) ? "same"
       {masMode && tab === "submitted" ? (
         <MySubmissions submissions={submissionList} activeId={submissionId} onOpen={(submission, asNew) => void openSubmission(submission, asNew)} />
       ) : tab === "submitted" ? (
-        <SubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} onClosed={(text) => { setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} />
+        <><MarkRemittedDialog target={handoverTarget} onClose={() => setHandoverTarget(null)} onDone={(text) => { setHandoverTarget(null); setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} />
+        <SubmissionList submissions={submissionBranches.shown} branchPicker={submissionBranches.picker} activeId={submissionId} onOpen={(submission) => void openSubmission(submission)} onRemit={(submission) => void markRemitted(submission)} onReject={(submission) => void rejectSubmission(submission)} onRefresh={() => setSubmissionRevision((value) => value + 1)} onClosed={(text) => { setSubmissionError(""); setSaveMessage(text); setSubmissionRevision((value) => value + 1); }} /></>
       ) : (<>
       {submissionId && (
         <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -3195,15 +3204,15 @@ Is this cash part of that handover?`) ? "same"
         <CardContent className="space-y-3 pt-5">
           <div className="max-w-sm space-y-1">
             <Label htmlFor="sales-remittance-method">Remittance method (whole batch) *</Label>
-            <select id="sales-remittance-method" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
+            <select id="sales-remittance-method" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={paymentMethod} disabled={Boolean(handover)} onChange={(event) => { setPaymentMethod(event.target.value); setPaymentReference(""); }}>
               {!paymentMethods.length && <option value="">Loading...</option>}
               {paymentMethods.map((method) => <option key={method.name} value={method.name}>{method.name}</option>)}
             </select>
-            <p className="text-xs text-muted-foreground">{allCash ? "Cash: no receipt photo needed." : "Not cash: add the receipt photo of the transfer below."}</p>
+            <p className="text-xs text-muted-foreground">{handover ? "Set at Mark remitted for the whole handover. " : ""}{allCash ? "Cash: no receipt photo needed." : "Not cash: add the receipt photo of the transfer below."}</p>
           </div>
           {!allCash && paymentMethod && !returnedEdit && <div className="max-w-sm space-y-1">
             <Label htmlFor="sales-payment-reference">{paymentMethod} reference no. *</Label>
-            <Input id="sales-payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} placeholder="Transaction / deposit slip number" aria-required onChange={(event) => setPaymentReference(event.target.value)} />
+            <Input id="sales-payment-reference" maxLength={PAYMENT_REFERENCE_MAX} value={paymentReference} disabled={Boolean(handover)} placeholder="Transaction / deposit slip number" aria-required onChange={(event) => setPaymentReference(event.target.value)} />
             <p className="text-xs text-muted-foreground">Required, with its number. From {showDate(CARRY_START)} the batch is recorded by itself in the report&apos;s Bank Deposits with this reference and the MAS.</p>
           </div>}
           <div className="grid gap-3 lg:grid-cols-2">
@@ -3261,7 +3270,8 @@ Is this cash part of that handover?`) ? "same"
             <p className={`truncate text-muted-foreground ${masMode ? "hidden md:block" : ""}`}>{branch || "Branch not selected"} · {mas || "MAS not selected"}</p>
             {saveMessage && <p role="status" className="mt-1 font-medium">{saveMessage}</p>}
           </div>
-          {!masMode && !returnedEdit && (
+          {!masMode && !returnedEdit && handover && <HandoverSaveBar handover={handover} />}
+          {!masMode && !returnedEdit && !handover && (
             <ControlTotalField id="sales-control-total" title="The net total the MAS wrote on the turnover sheet: amount paid less MAS incentives, plus Fidelity. Not the total collections, and not copied from the summary." value={controlTotal} onChange={setControlTotal} note={controlTotalNote} onNoteChange={setControlTotalNote} totalRemittance={checkedTotal} cash={allCash} counts={cashCounts} onCountsChange={setCashCounts} />
           )}
           <div className="flex gap-2">

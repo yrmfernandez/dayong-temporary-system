@@ -456,6 +456,16 @@ export const clearings = pgTable("clearings", {
   closed_reason: text(),
   /** What the person is remitting (owner, October 10, 2026): "Both", "New Sales" or "Collections"; each is tracked on its own. */
   covers: text().notNull().default("Both"),
+  /**
+   * The handover counted at Mark remitted (owner, November 28, 2026; from December 1, 2026; lib/mas-handover.ts): how the
+   * MAS remitted, one line per method ({ method, cash, amount, reference, counts }), the cash counted by denomination.
+   * Null on clearings without a count (before then, or Mark cleared). The short or over is worked out once, when the
+   * last batch of the handover is saved (handover_closed_at, handover_variance_id).
+   */
+  handover_lines: jsonb(),
+  handover_note: text(),
+  handover_closed_at: moment("handover_closed_at"),
+  handover_variance_id: text(),
   ...encoder(),
 }, (t) => [index("clearings_employee_date_idx").on(t.employee_id, t.cleared_date), index("clearings_status_idx").on(t.status)]).enableRLS();
 

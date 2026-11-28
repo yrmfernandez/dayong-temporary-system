@@ -56,17 +56,6 @@ function CashCountField({ id, counts, onCountsChange, note, onNoteChange, expect
   const total = cashCountTotal(counts);
   const status = total ? controlTotalStatus(total, expected, true) : null;
   const short = status?.tone === "variance" ? varianceLabel(status.difference) : status?.tone === "match" ? "Matches" : "";
-  const row = (denomination: number) => {
-    const key = String(denomination), pieces = Number(counts[key]) || 0;
-    return (
-      <label key={key} className="grid grid-cols-[3.75rem_4.5rem_minmax(0,1fr)] items-center gap-2 text-sm">
-        <span className="text-right font-medium tabular-nums">₱{denomination.toLocaleString("en-PH")}</span>
-        <Input id={denomination === 1000 ? `${id}-1000` : undefined} type="text" inputMode="numeric" autoComplete="off" maxLength={6} className="h-8 px-2 text-right tabular-nums" value={String(counts[key] ?? "")} placeholder="0"
-          onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value.replace(/\D/g, "") })} aria-label={`Pieces of ₱${denomination}`} />
-        <span className={`text-right tabular-nums ${pieces ? "" : "text-muted-foreground/60"}`}>{peso(pieces * denomination)}</span>
-      </label>
-    );
-  };
   return (
     <div className="w-full space-y-2 lg:w-auto">
       {open && (
@@ -78,10 +67,7 @@ function CashCountField({ id, counts, onCountsChange, note, onNoteChange, expect
               <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>Done</Button>
             </span>
           </div>
-          <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-            <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Bills</p>{BILLS.map(row)}</div>
-            <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coins</p>{COINS.map(row)}</div>
-          </div>
+          <DenominationCounter id={id} counts={counts} onCountsChange={onCountsChange} />
           <p className="mt-2 text-xs text-muted-foreground">Everything the MAS handed over for this batch, with Fidelity and any penalty.</p>
         </div>
       )}
@@ -97,6 +83,31 @@ function CashCountField({ id, counts, onCountsChange, note, onNoteChange, expect
       {status?.tone === "variance" && (
         <Input aria-label="Cash count note" className="w-full max-w-md" maxLength={TURNOVER_NOTE_MAX} value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Note on the short/over (optional), e.g. MAS to pay tomorrow" />
       )}
+    </div>
+  );
+}
+
+/**
+ * The pieces of each bill and coin, bills and coins in two even columns, every subtotal always shown; whole pieces only.
+ * Used by Cash counted and by the Mark remitted window (components/mark-remitted-dialog.tsx). The ₱1,000 box has the
+ * ID `${id}-1000`.
+ */
+export function DenominationCounter({ id, counts, onCountsChange }: { id: string; counts: CashCounts; onCountsChange: (counts: CashCounts) => void }) {
+  const row = (denomination: number) => {
+    const key = String(denomination), pieces = Number(counts[key]) || 0;
+    return (
+      <label key={key} className="grid grid-cols-[3.75rem_4.5rem_minmax(0,1fr)] items-center gap-2 text-sm">
+        <span className="text-right font-medium tabular-nums">₱{denomination.toLocaleString("en-PH")}</span>
+        <Input id={denomination === 1000 ? `${id}-1000` : undefined} type="text" inputMode="numeric" autoComplete="off" maxLength={6} className="h-8 px-2 text-right tabular-nums" value={String(counts[key] ?? "")} placeholder="0"
+          onChange={(event) => onCountsChange({ ...counts, [key]: event.target.value.replace(/\D/g, "") })} aria-label={`Pieces of ₱${denomination}`} />
+        <span className={`text-right tabular-nums ${pieces ? "" : "text-muted-foreground/60"}`}>{peso(pieces * denomination)}</span>
+      </label>
+    );
+  };
+  return (
+    <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+      <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Bills</p>{BILLS.map(row)}</div>
+      <div className="space-y-1.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coins</p>{COINS.map(row)}</div>
     </div>
   );
 }
